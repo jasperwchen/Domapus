@@ -1,20 +1,12 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => ({
   base: mode === "production" ? "/Domapus/" : "/",
   server: {
     host: "::",
     port: 3677,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3677',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-    },
   },
   build: {
     rollupOptions: {
@@ -27,10 +19,7 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [
-    react(),
-    mode === 'development' && componentTagger(),
-  ].filter(Boolean),
+  plugins: [react()],
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "./src"),
