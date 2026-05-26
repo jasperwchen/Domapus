@@ -3,6 +3,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
 import { HelpCircle, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { getMetricLabel } from "@/lib/metrics";
+import { computeQuantiles } from "@/lib/quantiles";
 
 interface LegendProps {
   selectedMetric: string;
@@ -22,18 +24,6 @@ function formatLegendValue(value: number, metric: string): string {
   return value.toLocaleString();
 }
 
-function computeQuantiles(values: number[], percentiles: number[]) {
-  if (!values || values.length === 0) return percentiles.map(() => 0);
-  const sorted = [...values].sort((a, b) => a - b);
-  return percentiles.map((p) => {
-    const idx = (sorted.length - 1) * p;
-    const lower = Math.floor(idx);
-    const upper = Math.ceil(idx);
-    const weight = idx - lower;
-    return sorted[lower] * (1 - weight) + sorted[upper] * weight;
-  });
-}
-
 export function Legend({ selectedMetric, metricValues, isExport = false, autoScale, onAutoScaleChange, isIndexReady = true }: LegendProps) {
   const isMobile = useIsMobile();
 
@@ -51,24 +41,6 @@ export function Legend({ selectedMetric, metricValues, isExport = false, autoSca
       max: formatLegendValue(max, selectedMetric),
     };
   }, [metricValues, selectedMetric]);
-
-  const getMetricDisplayName = (metric: string): string => {
-    const metricNames: Record<string, string> = {
-      zhvi: "Zillow Home Value Index",
-      median_sale_price: "Median Sale Price",
-      median_ppsf: "Median Price per Sq Ft",
-      sale_to_list_ratio: "Sale-to-List Ratio",
-      avg_sale_to_list_ratio: "Sale-to-List Ratio",
-      median_dom: "Median Days on Market",
-    };
-    return (
-      metricNames[metric] ||
-      metric
-        .split("_")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")
-    );
-  };
 
   const gradient =
     "linear-gradient(to right, hsl(var(--choropleth-1)), hsl(var(--choropleth-2)), hsl(var(--choropleth-3)), hsl(var(--choropleth-4)), hsl(var(--choropleth-5)), hsl(var(--choropleth-6)), hsl(var(--choropleth-7)), hsl(var(--choropleth-8)))";
@@ -128,7 +100,7 @@ export function Legend({ selectedMetric, metricValues, isExport = false, autoSca
   return (
     <div className="border border-border rounded-lg p-4 w-full max-w-xs bg-card/95 backdrop-blur-sm shadow-xl">
       <h3 className="text-sm font-semibold mb-3 text-foreground">
-        {getMetricDisplayName(selectedMetric)}
+        {getMetricLabel(selectedMetric)}
       </h3>
 
       {!isIndexReady && (

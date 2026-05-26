@@ -1,7 +1,13 @@
-import * as d3 from "d3-scale";
 import { ZipData } from "./types";
+import { METRICS, getMetricLabel, type FormatType, type MetricInfo } from "@/lib/metrics";
+import { getMetricValue } from "@/lib/metric-value";
+import { computeQuantileBuckets } from "@/lib/quantiles";
 
-// Converts a state abbreviation into its full name
+// Re-exports so existing call sites continue to work without churn.
+export { METRICS as METRIC_DEFINITIONS, getMetricLabel, getMetricValue, computeQuantileBuckets };
+export type { FormatType, MetricInfo };
+
+// State code → full name
 const STATE_MAP: Record<string, string> = {
   'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
   'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
@@ -21,41 +27,6 @@ export function getStateName(stateCode: string | null | undefined): string {
   if (!stateCode) return "N/A";
   const code = stateCode.trim().toUpperCase();
   return STATE_MAP[code] || stateCode;
-}
-
-// Type for format options used in formatting functions
-export type FormatType = 'currency' | 'number' | 'percent' | 'ratio' | 'price' | 'days' | 'percentage';
-
-// Metric info type for reuse across components
-export interface MetricInfo {
-  key: keyof ZipData;
-  label: string;
-  format: FormatType;
-  momKey?: keyof ZipData;
-  yoyKey?: keyof ZipData;
-}
-
-// Standard metric definitions for reuse
-export const METRIC_DEFINITIONS: Record<string, MetricInfo> = {
-  zhvi: { key: "zhvi", label: "Zillow Home Value Index", format: 'price', momKey: "zhvi_mom", yoyKey: "zhvi_yoy" },
-  median_sale_price: { key: "median_sale_price", label: "Median Sale Price", format: 'price', momKey: "median_sale_price_mom", yoyKey: "median_sale_price_yoy" },
-  median_list_price: { key: "median_list_price", label: "Median List Price", format: 'price', momKey: "median_list_price_mom", yoyKey: "median_list_price_yoy" },
-  median_ppsf: { key: "median_ppsf", label: "Median Price per Sq Ft", format: 'price', momKey: "median_ppsf_mom", yoyKey: "median_ppsf_yoy" },
-  homes_sold: { key: "homes_sold", label: "Homes Sold", format: 'number', momKey: "homes_sold_mom", yoyKey: "homes_sold_yoy" },
-  pending_sales: { key: "pending_sales", label: "Pending Sales", format: 'number', momKey: "pending_sales_mom", yoyKey: "pending_sales_yoy" },
-  new_listings: { key: "new_listings", label: "New Listings", format: 'number', momKey: "new_listings_mom", yoyKey: "new_listings_yoy" },
-  inventory: { key: "inventory", label: "Inventory", format: 'number', momKey: "inventory_mom", yoyKey: "inventory_yoy" },
-  median_dom: { key: "median_dom", label: "Median Days on Market", format: 'number', momKey: "median_dom_mom", yoyKey: "median_dom_yoy" },
-  avg_sale_to_list_ratio: { key: "avg_sale_to_list_ratio", label: "Sale-to-List Ratio", format: 'ratio', momKey: "avg_sale_to_list_mom", yoyKey: "avg_sale_to_list_ratio_yoy" },
-  sold_above_list: { key: "sold_above_list", label: "% Sold Above List", format: 'percent', momKey: "sold_above_list_mom", yoyKey: "sold_above_list_yoy" },
-  off_market_in_two_weeks: { key: "off_market_in_two_weeks", label: "% Off Market in 2 Weeks", format: 'percent', momKey: "off_market_in_two_weeks_mom", yoyKey: "off_market_in_two_weeks_yoy" },
-};
-
-// Helper to get metric value with proper typing
-export function getMetricValue(data: ZipData | undefined, metric: string): number {
-  if (!data) return 0;
-  const value = data[metric as keyof ZipData];
-  return typeof value === "number" && isFinite(value) ? value : 0;
 }
 
 // Format any numeric value based on format type
@@ -100,29 +71,12 @@ export function getComparison(current: number | null | undefined, compare: numbe
   return diff > 0 ? 'higher' : 'lower';
 }
 
-/**
- * Computes quantile buckets using D3
- * @param values Array of metric values
- * @param numBuckets Number of color buckets
- * @returns Array of thresholds
- */
-export function computeQuantileBuckets(values: number[], numBuckets = 8): number[] {
-  const validValues = values.filter(v => v > 0).sort((a, b) => a - b);
-  if (validValues.length === 0) return [];
-
-  const scale = d3.scaleQuantile<number>()
-    .domain(validValues)
-    .range(Array.from({ length: numBuckets }, (_, i) => i));
-
-  return scale.quantiles();
-}
-
 export function getMetricDisplay(data: ZipData, selectedMetric: string): string {
   if (!data || !data.zipCode) {
     return `<div class="p-2">No data available</div>`;
   }
 
-  const metricInfo = METRIC_DEFINITIONS[selectedMetric];
+  const metricInfo = METRICS[selectedMetric];
   const value = metricInfo ? data[metricInfo.key] : null;
   const formattedValue = typeof value === 'number' && isFinite(value)
     ? formatMetricValue(value, metricInfo?.format || 'number')

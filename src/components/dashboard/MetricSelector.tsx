@@ -1,37 +1,15 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
+import { METRICS as METRIC_INFO, LITE_METRICS, type MetricKey } from "@/lib/metrics";
 
-export type MetricType =
-  | "zhvi"
-  | "median_sale_price"
-  | "median_ppsf"
-  | "avg_sale_to_list_ratio"
-  | "median_dom"
-  | "median_list_price"
-  | "homes_sold"
-  | "pending_sales"
-  | "new_listings"
-  | "inventory"
-  | "sold_above_list"
-  | "off_market_in_two_weeks";
+export type MetricType = MetricKey;
 
-export const METRICS = {
-  "zhvi": "Zillow Home Value Index",
-  "median_sale_price": "Median Sale Price",
-  "median_list_price": "Median List Price",
-  "median_ppsf": "Median Price per Sq Ft",
-  "homes_sold": "Homes Sold",
-  "pending_sales": "Pending Sales",
-  "new_listings": "New Listings",
-  "inventory": "Inventory",
-  "avg_sale_to_list_ratio": "Sale-to-List Ratio",
-  "median_dom": "Median Days on Market",
-  "sold_above_list": "% Sold Above List",
-  "off_market_in_two_weeks": "% Off Market in 2 Weeks",
-} as const;
-
-// Fields available in the lite data file (loaded first for fast initial render)
-const LITE_METRICS = new Set<string>(["zhvi"]);
+// Tests and a couple of legacy callers import `METRICS` from this file
+// as a flat key → label record. Keep that shape, sourced from the
+// authoritative METRICS in lib/metrics.ts.
+export const METRICS: Record<string, string> = Object.fromEntries(
+  Object.entries(METRIC_INFO).map(([key, info]) => [key, info.label])
+);
 
 interface MetricSelectorProps {
   selectedMetric: MetricType;
@@ -50,22 +28,25 @@ export function MetricSelector({ selectedMetric, onMetricChange, isFullDataLoade
         Metric:
       </label>
       <Select value={selectedMetric} onValueChange={handleMetricChange}>
-        <SelectTrigger className="w-50 h-8 text-sm px-3 justify-between" aria-label="Select visualization metric">
+        <SelectTrigger className="w-48 h-9 text-sm px-3 justify-between" aria-label="Select visualization metric">
           <div className="flex-1 text-left truncate pr-2">
             <SelectValue placeholder="Select a metric" />
           </div>
         </SelectTrigger>
         <SelectContent className="z-[9999]">
-          {Object.entries(METRICS).map(([key, label]) => (
-            <SelectItem key={key} value={key}>
-              <span className="flex items-center gap-1.5">
-                {label}
-                {!isFullDataLoaded && !LITE_METRICS.has(key) && (
-                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                )}
-              </span>
-            </SelectItem>
-          ))}
+          {Object.entries(METRICS).map(([key, label]) => {
+            const isLoading = !isFullDataLoaded && !LITE_METRICS.has(key);
+            return (
+              <SelectItem key={key} value={key} disabled={isLoading}>
+                <span className="flex items-center gap-1.5">
+                  {label}
+                  {isLoading && (
+                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                </span>
+              </SelectItem>
+            );
+          })}
         </SelectContent>
       </Select>
     </div>
