@@ -3,74 +3,117 @@ import { render, screen, act } from "@testing-library/react";
 import { MapLibreMap } from "../MapLibreMap";
 import maplibregl from "maplibre-gl";
 
-vi.mock("maplibre-gl", () => {
+// Hoisted so vi.mock (which is hoisted to the top of the module) can access these.
+const mocks = vi.hoisted(() => {
   const mockResize = vi.fn();
   const mockTriggerRepaint = vi.fn();
-  let lastMap: any = null;
 
   class MockMap {
-    handlers: Record<string, Function[]> = {};
+    static lastInstance: MockMap | null = null;
+    handlers: Record<string, Array<(payload?: unknown) => void>> = {};
 
     constructor() {
-      lastMap = this;
-      setTimeout(() => {
-        this.emit("load");
-      }, 0);
+      MockMap.lastInstance = this;
+      setTimeout(() => this.emit("load"), 0);
     }
 
-    on(event: string, cb: Function) {
+    on(event: string, cb: (payload?: unknown) => void) {
       if (!this.handlers[event]) this.handlers[event] = [];
       this.handlers[event].push(cb);
     }
 
-    once(event: string, cb: Function) {
+    once(event: string, cb: (payload?: unknown) => void) {
       const onceHandler = (payload?: unknown) => {
         cb(payload);
-        this.handlers[event] = (this.handlers[event] || []).filter(h => h !== onceHandler);
+        this.handlers[event] = (this.handlers[event] || []).filter((h) => h !== onceHandler);
       };
       this.on(event, onceHandler);
     }
 
     emit(event: string, payload?: unknown) {
-      (this.handlers[event] || []).forEach(cb => cb(payload));
+      (this.handlers[event] || []).forEach((cb) => cb(payload));
     }
 
     addControl() {}
-    getCenter() { return { lat: 0, lng: 0 }; }
-    getBounds() { return { toArray: () => [[-1, -1], [1, 1]] as [[number, number], [number, number]] }; }
-    getZoom() { return 5; }
-    resize() { mockResize(); }
-    triggerRepaint() { mockTriggerRepaint(); }
+    getCenter() {
+      return { lat: 0, lng: 0 };
+    }
+    getBounds() {
+      return {
+        toArray: () => [
+          [-1, -1],
+          [1, 1],
+        ] as [[number, number], [number, number]],
+      };
+    }
+    getZoom() {
+      return 5;
+    }
+    resize() {
+      mockResize();
+    }
+    triggerRepaint() {
+      mockTriggerRepaint();
+    }
     remove() {}
-    isStyleLoaded() { return true; }
-    loaded() { return true; }
-    getSource() { return null; }
-    getLayer() { return null; }
-    getStyle() { return { layers: [] as any[] }; }
+    isStyleLoaded() {
+      return true;
+    }
+    loaded() {
+      return true;
+    }
+    getSource() {
+      return null;
+    }
+    getLayer() {
+      return null;
+    }
+    getStyle() {
+      return { layers: [] };
+    }
     scrollZoom = { setZoomRate() {}, setWheelZoomRate() {} };
   }
 
   class MockPopup {
-    setLngLat() { return this; }
-    setHTML() { return this; }
-    addTo() { return this; }
+    setLngLat() {
+      return this;
+    }
+    setHTML() {
+      return this;
+    }
+    addTo() {
+      return this;
+    }
     remove() {}
   }
 
-  const mockModule = {
-    Map: MockMap,
-    Popup: MockPopup,
-    AttributionControl: class {},
-    NavigationControl: class {},
-    __getLastMap: () => lastMap,
-    __getMockResize: () => mockResize,
-    __getMockTriggerRepaint: () => mockTriggerRepaint,
-  };
-
-  return { ...mockModule, default: mockModule };
+  return { MockMap, MockPopup, mockResize, mockTriggerRepaint };
 });
 
-const mockProcessData = vi.fn(async () => ({}) as any);
+interface MockMapLibreModule {
+  Map: typeof mocks.MockMap;
+  Popup: typeof mocks.MockPopup;
+  AttributionControl: new () => unknown;
+  NavigationControl: new () => unknown;
+  __getLastMap: () => InstanceType<typeof mocks.MockMap> | null;
+  __getMockResize: () => ReturnType<typeof vi.fn>;
+  __getMockTriggerRepaint: () => ReturnType<typeof vi.fn>;
+}
+
+vi.mock("maplibre-gl", () => {
+  const mod: MockMapLibreModule = {
+    Map: mocks.MockMap,
+    Popup: mocks.MockPopup,
+    AttributionControl: class {},
+    NavigationControl: class {},
+    __getLastMap: () => mocks.MockMap.lastInstance,
+    __getMockResize: () => mocks.mockResize,
+    __getMockTriggerRepaint: () => mocks.mockTriggerRepaint,
+  };
+  return { ...mod, default: mod };
+});
+
+const mockProcessData = vi.fn(async () => ({}) as never);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -79,12 +122,11 @@ beforeEach(() => {
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, value: 800 });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 600 });
 
-  (globalThis as any).ResizeObserver = class {
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
     observe() {}
     disconnect() {}
   };
 });
-
 
 describe("MapLibreMap", () => {
   it("suppresses non-fatal decoding errors", async () => {
@@ -101,14 +143,14 @@ describe("MapLibreMap", () => {
       />
     );
 
-    // Trigger map load
     await act(async () => {
       vi.runAllTimers();
     });
 
-    const lastMap = (maplibregl as any).__getLastMap();
+    const mod = maplibregl as unknown as MockMapLibreModule;
+    const lastMapInstance = mod.__getLastMap();
     await act(async () => {
-      lastMap.emit("error", { error: { message: "decoding failed" } });
+      lastMapInstance?.emit("error", { error: { message: "decoding failed" } });
     });
 
     expect(screen.queryByText("Map internal error. Reloading...")).toBeNull();
@@ -132,14 +174,15 @@ describe("MapLibreMap", () => {
       vi.runAllTimers();
     });
 
-    const lastMap = (maplibregl as any).__getLastMap();
+    const mod = maplibregl as unknown as MockMapLibreModule;
+    const lastMapInstance = mod.__getLastMap();
     await act(async () => {
-      lastMap.emit("error", { error: { message: "WebGL context lost." } });
+      lastMapInstance?.emit("error", { error: { message: "WebGL context lost." } });
       vi.runAllTimers();
     });
 
-    expect((maplibregl as any).__getMockResize()).toHaveBeenCalled();
-    expect((maplibregl as any).__getMockTriggerRepaint()).toHaveBeenCalled();
+    expect(mod.__getMockResize()).toHaveBeenCalled();
+    expect(mod.__getMockTriggerRepaint()).toHaveBeenCalled();
     expect(screen.queryByText("Map internal error. Reloading...")).toBeNull();
   });
 });

@@ -19,16 +19,15 @@ import { ZipData } from "../map/types";
 // maplibre-gl mock — WebGL-free, simulates source loading correctly
 // ---------------------------------------------------------------------------
 vi.mock("maplibre-gl", () => {
-  let lastMap: MockMap | null = null;
-
   class MockMap {
+    static lastInstance: MockMap | null = null;
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     _loaded = true;
     _styleLoaded = true;
     _sourcesLoaded: Record<string, boolean> = {};
 
     constructor() {
-      lastMap = this;
+      MockMap.lastInstance = this;
       setTimeout(() => this.emit("load"), 0);
     }
 
@@ -101,7 +100,7 @@ vi.mock("maplibre-gl", () => {
     Popup: MockPopup,
     AttributionControl: class {},
     NavigationControl: class {},
-    __getLastMap: () => lastMap,
+    __getLastMap: () => MockMap.lastInstance,
   };
   return { ...mod, default: mod };
 });
