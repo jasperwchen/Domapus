@@ -21,7 +21,10 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - run: npm ci
+      # `npm ci` would be preferred for reproducibility, but the lockfile is
+       # generated locally on Windows where Linux-only optional deps
+       # (@emnapi/*, etc.) aren't recorded. `npm install` tolerates that.
+      - run: npm install
       - run: npm run build
 
       - uses: peaceiris/actions-gh-pages@v4

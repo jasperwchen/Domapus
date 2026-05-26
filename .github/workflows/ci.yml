@@ -19,7 +19,9 @@ jobs:
           node-version: 20
           cache: npm
 
-      - run: npm ci
+      # `npm install` (not `npm ci`) because the lockfile is generated on
+      # Windows and omits Linux-only optional deps that npm-on-Linux expects.
+      - run: npm install
 
       - name: Lint
         run: npm run lint
@@ -44,4 +46,6 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Test pipeline
-        run: pytest scripts/tests
+        # python -m pytest puts the repo root on sys.path so
+        # `from scripts.update_market_data import ...` resolves.
+        run: python -m pytest scripts/tests
