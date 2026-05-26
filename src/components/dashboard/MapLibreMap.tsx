@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import maplibregl, { LngLatBoundsLike, MapMouseEvent, ExpressionSpecification } from 'maplibre-gl';
+import maplibregl, { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
 import { getMetricDisplay, getMetricValue, computeQuantileBuckets } from "./map/utils";
 import { ZipData } from "./map/types";
@@ -75,7 +75,7 @@ export function MapLibreMap({
     const style = map.getStyle();
     if (!style?.layers) return;
 
-    style.layers.forEach((layer) => {
+    style.layers.forEach((layer: LayerSpecification) => {
       if (layer.type !== "symbol") return;
       const layout = (layer.layout ?? {}) as Record<string, unknown>;
       if (!layout["text-field"]) return;
@@ -379,7 +379,7 @@ export function MapLibreMap({
       const style = map.getStyle();
       if (!style || !style.layers) return;
       const styleLayers = style.layers;
-      styleLayers.forEach((layer) => {
+      styleLayers.forEach((layer: LayerSpecification) => {
         if ('source-layer' in layer) {
           const sourceLayer = layer['source-layer'] as string;
           if (sourceLayer === "transportation" || sourceLayer === "transportation_name") {
@@ -397,8 +397,8 @@ export function MapLibreMap({
       });
 
       const layers = map.getStyle().layers;
-      const stateBoundaryLayer = layers.find((l) => l.id === "boundary_state");
-      const labelLayer = layers.find((l) => l.id === "watername_ocean");
+      const stateBoundaryLayer = layers.find((l: LayerSpecification) => l.id === "boundary_state");
+      const labelLayer = layers.find((l: LayerSpecification) => l.id === "watername_ocean");
       const beforeId = stateBoundaryLayer?.id || labelLayer?.id;
 
       // Fill layer
@@ -456,6 +456,8 @@ export function MapLibreMap({
           "text-padding": 8,
           "symbol-placement": "point",
           "symbol-sort-key": ["to-number", ["get", "ZCTA5CE20"]],
+          // Deterministic stacking so the winning duplicate doesn't jitter on pan.
+          "symbol-z-order": "auto",
           "text-ignore-placement": false,
           "symbol-avoid-edges": true
         },
@@ -522,14 +524,14 @@ export function MapLibreMap({
       return;
     }
 
-    const stepExpression: ExpressionSpecification = [
+    const stepExpression = [
       "step",
       ["coalesce", ["feature-state", "metricValue"], 0],
       "transparent",
       0.001,
       CHOROPLETH_COLORS[0],
       ...buckets.flatMap((threshold, i) => [threshold, CHOROPLETH_COLORS[Math.min(i + 1, CHOROPLETH_COLORS.length - 1)]])
-    ] as ExpressionSpecification;
+    ];
 
     // Only update feature states if needed
     const shouldUpdateStates = customBuckets === null || lastProcessedMetric.current !== selectedMetric || lastProcessedDataKeys.current !== currentDataKeys;
@@ -635,7 +637,16 @@ export function MapLibreMap({
         <button
           onClick={() => {
             handleResetBounds();
-            window.history.replaceState({}, document.title, window.location.pathname);
+            const params = new URLSearchParams(window.location.search);
+            params.delete('lat');
+            params.delete('lng');
+            params.delete('zoom');
+            const query = params.toString();
+            window.history.replaceState(
+              {},
+              document.title,
+              query ? `${window.location.pathname}?${query}` : window.location.pathname
+            );
           }}
           style={{
             position: 'absolute',

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle, useState, useCallback } from "react";
-import maplibregl, { ExpressionSpecification } from "maplibre-gl";
+import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ZipData } from "../map/types";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";
+import { getMetricLabel } from "@/lib/metrics";
+import { getMetricValue } from "@/lib/metric-value";
+import { computeQuantileBuckets, computeQuantiles } from "@/lib/quantiles";
 import bbox from "@turf/bbox";
 import { featureCollection, point } from "@turf/helpers";
 
@@ -21,8 +24,15 @@ export const ATTRIBUTION_FONT = "32px sans-serif";
 export const ATTRIBUTION_BASELINE_Y = EXPORT_CANVAS_PAD + 48;
 export const ATTRIBUTION_RIGHT_X = EXPORT_CANVAS_W - EXPORT_CANVAS_PAD;
 
-const ALASKA_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-168.5, 54.5], [-141.0, 71.5]];
+// Alaska bbox is bounded by what fits the inset at PMTILES_MIN_ZOOM (=3, the lowest
+// zoom level the tileset publishes). At zoom 3, a 224×144 px inset can fit ~9° of
+// latitude after Mercator stretching at lat 60°+, so we focus on the populated
+// Anchorage / Fairbanks / Juneau corridor and accept that the Aleutians and arctic
+// communities fall outside the frame. Lower minzooms would require regenerating the
+// tileset, which we don't want to do.
+const ALASKA_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-156.0, 56.5], [-130.0, 65.5]];
 const HAWAII_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-160.5, 18.9], [-154.8, 22.3]];
+const PMTILES_MIN_ZOOM = 3;
 const MAP_READY_TIMEOUT_MS = 10_000;
 
 export interface PrintStageProps {
@@ -41,39 +51,6 @@ export interface PrintStageRef {
   exportToCanvas: () => Promise<HTMLCanvasElement>;
 }
 
-function getMetricValue(data: ZipData | undefined, metric: string): number {
-  if (!data) return 0;
-  const value = data[metric as keyof ZipData];
-  return typeof value === "number" && isFinite(value) ? value : 0;
-}
-
-function computeQuantileBuckets(values: number[], numBuckets = 8): number[] {
-  const sorted = [...values].filter(v => v > 0).sort((a, b) => a - b);
-  if (sorted.length === 0) return [];
-  const minVal = sorted[0];
-  const maxVal = sorted[sorted.length - 1];
-  const thresholds: number[] = [];
-  const epsilon = (maxVal - minVal) * 1e-6 || 1e-6;
-  const q = (p: number) => sorted[Math.floor(p * (sorted.length - 1))];
-  for (let i = 1; i < numBuckets; i++) {
-    let val = q(i / numBuckets);
-    if (thresholds.length && val <= thresholds[thresholds.length - 1]) val = thresholds[thresholds.length - 1] + epsilon;
-    thresholds.push(val);
-  }
-  return thresholds;
-}
-
-const getMetricDisplayName = (metric: string): string => {
-  const metricNames: Record<string, string> = {
-    "zhvi": "Zillow Home Value Index",
-    "median_sale_price": "Median Sale Price",
-    "median_ppsf": "Median Price per Sq Ft",
-    "avg_sale_to_list_ratio": "Sale-to-List Ratio",
-    "median_dom": "Median Days on Market",
-  };
-  return metricNames[metric] || metric.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-};
-
 const getDate = (): string =>
   new Date(new Date().setMonth(new Date().getMonth() - 1))
     .toLocaleDateString("en-US", { month: "long", year: "numeric" });
@@ -83,18 +60,6 @@ function formatLegendValue(value: number, metric: string): string {
   if (m.includes("price") || m.includes("zhvi")) return `$${(value / 1000).toFixed(0)}k`;
   if (m.includes("ratio")) return `${value.toFixed(1)}%`;
   return value.toLocaleString();
-}
-
-function computeQuantiles(values: number[], percentiles: number[]) {
-  if (!values || values.length === 0) return percentiles.map(() => 0);
-  const sorted = [...values].sort((a, b) => a - b);
-  return percentiles.map((p) => {
-    const idx = (sorted.length - 1) * p;
-    const lower = Math.floor(idx);
-    const upper = Math.ceil(idx);
-    const weight = idx - lower;
-    return sorted[lower] * (1 - weight) + sorted[upper] * weight;
-  });
 }
 
 /** Wait for a map to reach the idle state then capture its GL canvas as an image. */
@@ -283,7 +248,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     if (includeTitleRef.current) {
       ctx.fillStyle = "#0f172a";
       ctx.font = "bold 72px sans-serif";
-      ctx.fillText(`${getMetricDisplayName(selectedMetricRef.current)} by ZIP Code`, PAD, PAD + 72);
+      ctx.fillText(`${getMetricLabel(selectedMetricRef.current)} by ZIP Code`, PAD, PAD + 72);
 
       ctx.fillStyle = "#475569";
       ctx.font = "42px sans-serif";
@@ -403,7 +368,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     const currentMetric = selectedMetricRef.current;
 
     const pmtilesUrl = new URL(`${BASE_PATH}data/us_zip_codes.pmtiles`, window.location.origin).href;
-    const stepExpression: ExpressionSpecification = [
+    const stepExpression = [
       "step",
       ["coalesce", ["feature-state", "metricValue"], 0],
       "#efefef",
@@ -412,7 +377,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
         threshold,
         CHOROPLETH_COLORS[Math.min(i + 1, CHOROPLETH_COLORS.length - 1)],
       ]),
-    ] as ExpressionSpecification;
+    ];
 
     let loadedCount = 0;
     const requiredMaps = regionScope === "national"
@@ -446,7 +411,12 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
         attributionControl: false,
         fadeDuration: 0,
         renderWorldCopies: false,
-        preserveDrawingBuffer: true,
+        // maplibre-gl v5: preserveDrawingBuffer moved out of MapOptions root into canvasContextAttributes.
+        // Required for getCanvas() during PNG/PDF export to capture pixels instead of a blank buffer.
+        canvasContextAttributes: { preserveDrawingBuffer: true },
+        // Insets fit Alaska/Hawaii at very low zooms; without this, fitBounds picks a zoom
+        // below the PMTiles tileset's minimum and the choropleth layer renders nothing.
+        minZoom: PMTILES_MIN_ZOOM,
       });
       mapsRef.current[key] = map;
 
@@ -458,7 +428,9 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
           if (bounds) {
             const isValid = bounds.flat().every(n => Number.isFinite(n));
             if (isValid) {
-              const padding = key === "main" ? 40 : 20;
+              // Inset uses tight padding so the tightened AK bbox can fit horizontally
+              // at the PMTiles min zoom (the constraint is the tileset, not the bbox).
+              const padding = key === "main" ? 40 : 8;
               const maxZoom = key === "main" ? 12 : 6;
               map.fitBounds(bounds, { padding, animate: false, maxZoom });
             }
@@ -498,7 +470,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
           map.addLayer({
             id: "zips-fill", type: "fill", source: "zips", "source-layer": "us_zip_codes",
             filter: filterExpr as import("maplibre-gl").FilterSpecification,
-            paint: { "fill-color": stepExpression, "fill-opacity": 0.9 },
+            paint: { "fill-color": stepExpression as unknown as string, "fill-opacity": 0.9 },
           }, firstCityLayerId);
 
           map.addLayer({
@@ -610,7 +582,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
           {includeTitle && (
             <div>
               <h1 className="text-3xl font-bold leading-tight text-gray-900">
-                {getMetricDisplayName(selectedMetric)} by ZIP Code
+                {getMetricLabel(selectedMetric)} by ZIP Code
               </h1>
               <p className="text-base mt-1 text-gray-500">{regionName} • {getDate()}</p>
             </div>
@@ -646,7 +618,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
                   <span className="text-[10px] uppercase tracking-wider font-semibold py-0.5 px-2 bg-slate-50 text-slate-500 border-b">
                     Alaska
                   </span>
-                  <div className="w-48 h-32 relative">
+                  <div className="w-56 h-36 relative">
                     <div ref={alaskaMapRef} className="absolute inset-0" />
                   </div>
                 </div>
@@ -656,7 +628,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
                   <span className="text-[10px] uppercase tracking-wider font-semibold py-0.5 px-2 bg-slate-50 text-slate-500 border-b">
                     Hawaii
                   </span>
-                  <div className="w-48 h-32 relative">
+                  <div className="w-56 h-36 relative">
                     <div ref={hawaiiMapRef} className="absolute inset-0" />
                   </div>
                 </div>

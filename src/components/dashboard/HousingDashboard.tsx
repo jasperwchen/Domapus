@@ -299,7 +299,7 @@ export function HousingDashboard() {
   // Show error state if data failed to load
   if (loadError) {
     return (
-      <div className="w-full h-screen bg-dashboard-bg flex items-center justify-center">
+      <div className="w-full h-screen-safe bg-dashboard-bg flex items-center justify-center">
         <div className="bg-card p-8 rounded-lg shadow-lg max-w-md text-center">
           <div className="text-destructive text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold text-foreground mb-2">Unable to Load Data</h2>
@@ -316,7 +316,7 @@ export function HousingDashboard() {
   }
 
   return (
-    <div className="w-full h-screen bg-dashboard-bg overflow-hidden flex flex-col">
+    <div className="w-full h-screen-safe bg-dashboard-bg overflow-hidden flex flex-col">
       {/* Skip Navigation Link */}
       <a 
         href="#main-map" 

@@ -15,13 +15,12 @@ export function useDataWorker() {
   const requestsRef = useRef<Map<string, PendingRequest>>(new Map());
   const isInitializedRef = useRef(false);
 
-  console.log('[useDataWorker] Worker initialized');
-
   useEffect(() => {
     if (isInitializedRef.current) return;
     const worker = new DataProcessorWorker();
     workerRef.current = worker;
     isInitializedRef.current = true;
+    console.log('[useDataWorker] Worker initialized');
 
     worker.onmessage = (event: MessageEvent) => {
       const { id, type, data, error } = event.data;
