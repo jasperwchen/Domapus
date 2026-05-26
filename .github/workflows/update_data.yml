@@ -25,11 +25,11 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pandas requests
+        pip install -r requirements.txt
 
     - name: Run Data Update Pipeline
       run: |
-        python -u scripts/update-market-data.py
+        python -u scripts/update_market_data.py
 
     - name: Create Archive Copy
       id: archive_logic
