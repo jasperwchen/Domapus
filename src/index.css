@@ -171,12 +171,10 @@ html, body {
   contain: layout style paint;
 }
 
-.maplibregl-canvas {
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: optimize-contrast;
-  image-rendering: crisp-edges;
-  -ms-interpolation-mode: nearest-neighbor;
-}
+/* The previous image-rendering: crisp-edges/optimize-contrast block was
+   appropriate for raster tiles, but our basemap and ZIP layers are vector —
+   crisp-edges aliases vector text and stroke lines into a jagged mess at
+   non-integer zoom. Default rendering is correct for WebGL/vector. */
 
 /* MapLibre popup styles */
 .maplibregl-popup-content {
@@ -227,6 +225,20 @@ html, body {
 
   .animate-slide-up {
     animation: slide-up 0.3s ease-out;
+  }
+
+  /* Mobile-safe viewport height. Plain 100vh on iOS Safari includes the
+     URL bar's collapsed area, leaving the bottom of the map clipped when
+     the toolbar appears. Dynamic viewport height (dvh) tracks the visible
+     viewport; we layer it after vh so older browsers fall through. */
+  .h-screen-safe {
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .min-h-screen-safe {
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 }
 
@@ -281,8 +293,3 @@ html, body {
   }
 }
 
-/* Ensure smooth transitions without layout shifts */
-* {
-  /* Use transform and opacity for animations - they don't cause layout shifts */
-  transition-property: transform, opacity, color, background-color, border-color;
-}
