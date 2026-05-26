@@ -1,0 +1,81 @@
+{
+    "antimeridian_adjusted_bounds": "-176.696676,17.674030,-64.565193,71.341223",
+    "description": "Domapus US Zip Codes Boundary. https://github.com/Jasperc2024/Domapus",
+    "format": "pbf",
+    "generator": "tippecanoe v2.80.0",
+    "generator_options": "tippecanoe -l us_zip_codes -Z3 -z12 --no-simplification-of-shared-nodes --drop-densest-as-needed --no-tiny-polygon-reduction-at-maximum-zoom '--simplification=5'",
+    "name": "US ZCTA Boundary",
+    "strategies": {
+        "0": {},
+        "1": {},
+        "2": {},
+        "3": {
+            "dropped_by_rate": 99,
+            "tiny_polygons": 5225
+        },
+        "4": {
+            "dropped_by_rate": 94,
+            "tiny_polygons": 2354
+        },
+        "5": {
+            "dropped_by_rate": 76,
+            "tiny_polygons": 961
+        },
+        "6": {
+            "dropped_by_rate": 63,
+            "tiny_polygons": 315
+        },
+        "7": {
+            "dropped_by_rate": 45,
+            "tiny_polygons": 64
+        },
+        "8": {
+            "dropped_by_rate": 32,
+            "tiny_polygons": 36
+        },
+        "9": {
+            "dropped_by_rate": 22,
+            "tiny_polygons": 59
+        },
+        "10": {
+            "dropped_by_rate": 17,
+            "tiny_polygons": 53
+        },
+        "11": {
+            "dropped_by_rate": 10,
+            "tiny_polygons": 57
+        },
+        "12": {}
+    },
+    "tilestats": {
+        "layerCount": 1,
+        "layers": [
+            {
+                "attributeCount": 1,
+                "attributes": [
+                    {
+                        "attribute": "ZCTA5CE20",
+                        "count": 1000,
+                        "type": "string"
+                    }
+                ],
+                "count": 33780,
+                "geometry": "Polygon",
+                "layer": "us_zip_codes"
+            }
+        ]
+    },
+    "type": "overlay",
+    "vector_layers": [
+        {
+            "description": "",
+            "fields": {
+                "ZCTA5CE20": "String"
+            },
+            "id": "us_zip_codes",
+            "maxzoom": 12,
+            "minzoom": 3
+        }
+    ],
+    "version": "2"
+}
