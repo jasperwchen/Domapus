@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         if: github.event.action != 'closed'
-        run: npm ci
+        run: npm install
 
       - name: Build with preview base path
         if: github.event.action != 'closed'
