@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://jasperc2024.github.io/Domapus/">
+  <a href="https://jasperc2024.github.io/Domapus/" target="_blank" rel="noopener noreferrer"> 
     <img src="https://img.shields.io/badge/Live_Website-Open-1E40AF?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Live Website">
   </a>
 </p>
