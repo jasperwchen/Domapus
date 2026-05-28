@@ -590,7 +590,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
           <div className="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap flex-shrink-0 ml-auto mt-1">
             <span>
               Built by{" "}
-              <a href="https://jasperc2024.github.io/Domapus/" target="_blank" rel="noopener noreferrer" className="text-cyan-600 hover:underline">
+              <a href="https://jasperwchen.github.io/Domapus/" target="_blank" rel="noopener noreferrer" className="text-cyan-600 hover:underline">
                 Domapus
               </a>
             </span>

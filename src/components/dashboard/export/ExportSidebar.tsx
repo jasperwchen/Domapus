@@ -188,7 +188,7 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
         pdf.setProperties({
           title: `Domapus Export - ${selectedMetric}`,
           subject: `Real Estate Data for ${regionName}`,
-          creator: "Domapus (https://jasperc2024.github.io/Domapus/)",
+          creator: "Domapus (https://jasperwchen.github.io/Domapus/)",
         });
 
         const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -224,7 +224,7 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
         const attrY = offsetY + (canvasTextTop - 2) * scaleY;
         const attrW = (metrics.width + 4) * scaleX;
         const attrH = (canvasTextBottom - canvasTextTop + 4) * scaleY;
-        pdf.link(attrX, attrY, attrW, attrH, { url: "https://jasperc2024.github.io/Domapus/" });
+        pdf.link(attrX, attrY, attrW, attrH, { url: "https://jasperwchen.github.io/Domapus/" });
 
         pdf.save(`Domapus-${selectedMetric}-${safeRegionName}.pdf`);
       }

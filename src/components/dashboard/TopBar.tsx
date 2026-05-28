@@ -138,7 +138,7 @@ export function TopBar({
               asChild
             >
               <a
-                href="https://github.com/Jasperc2024/Domapus"
+                href="https://github.com/jasperwchen/Domapus"
                 target="_blank"
                 rel="noopener noreferrer"
                 title="GitHub"
