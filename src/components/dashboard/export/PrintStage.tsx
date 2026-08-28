@@ -9,9 +9,10 @@ import { getMetricValue } from "@/lib/metric-value";
 import { computeQuantileBuckets, computeQuantiles } from "@/lib/quantiles";
 import bbox from "@turf/bbox";
 import { featureCollection, point } from "@turf/helpers";
+import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS } from "@/lib/choropleth";
+import { fetchDataDates, formatPeriod } from "@/lib/data-dates";
 
 const BASE_PATH = import.meta.env.BASE_URL;
-const CHOROPLETH_COLORS = ["#FFF9B0", "#FFEB84", "#FFD166", "#FF9A56", "#E84C61", "#C13584", "#7B2E8D", "#2E0B59"];
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 900;
 const BOUNDS_BUFFER = 0.15;
@@ -51,9 +52,6 @@ export interface PrintStageRef {
   exportToCanvas: () => Promise<HTMLCanvasElement>;
 }
 
-const getDate = (): string =>
-  new Date(new Date().setMonth(new Date().getMonth() - 1))
-    .toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
 function formatLegendValue(value: number, metric: string): string {
   const m = metric.toLowerCase();
@@ -103,6 +101,18 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   });
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [scale, setScale] = useState(1);
+  const [zhviPeriod, setZhviPeriod] = useState<string | null>(null);
+
+  // ZHVI is a Zillow series with its own publication month, and it is not stored
+  // per ZIP, so it comes from last_updated.json. Everything else is Redfin and
+  // carries period_end on each record.
+  useEffect(() => {
+    let isMounted = true;
+    fetchDataDates()
+      .then(d => { if (isMounted) setZhviPeriod(d.zhvi_period_end ?? d.period_end); })
+      .catch(() => { /* date is omitted rather than guessed */ });
+    return () => { isMounted = false; };
+  }, []);
 
   const onReadyRef = useRef(onReady);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
@@ -128,6 +138,21 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     filteredData.forEach(zip => { map[zip.zipCode] = zip; });
     return map;
   }, [filteredData]);
+
+  // The period this export actually describes. Previously this was
+  // `today minus one month`, which had nothing to do with the data and stamped
+  // exported maps with a month the numbers did not come from.
+  const dataDate = useMemo(() => {
+    if (selectedMetric.startsWith("zhvi")) {
+      return zhviPeriod ? formatPeriod(zhviPeriod) : "";
+    }
+    let newest: string | null = null;
+    for (const zip of filteredData) {
+      const pe = zip.period_end;
+      if (pe && (newest === null || pe > newest)) newest = pe;
+    }
+    return newest ? formatPeriod(newest) : "";
+  }, [filteredData, selectedMetric, zhviPeriod]);
 
   const { alaskaZips, hawaiiZips, mainlandZips, alaskaBounds, hawaiiBounds, mainlandBounds } = useMemo(() => {
     const ak = new Set<string>(), hi = new Set<string>(), ml = new Set<string>();
@@ -172,7 +197,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   }, [filteredData]);
 
   const buckets = useMemo(
-    () => computeQuantileBuckets(filteredData.map(d => getMetricValue(d, selectedMetric))),
+    // Must match the ramp length, otherwise the top colors are never reached.
+    () => computeQuantileBuckets(filteredData.map(d => getMetricValue(d, selectedMetric)), CHOROPLETH_COLORS.length),
     [filteredData, selectedMetric],
   );
 
@@ -211,6 +237,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   regionNameRef.current = regionName;
   const regionScopeRef = useRef(regionScope);
   regionScopeRef.current = regionScope;
+  const dataDateRef = useRef(dataDate);
+  dataDateRef.current = dataDate;
 
   const exportToCanvas = useCallback(async (): Promise<HTMLCanvasElement> => {
     const EXPORT_W = EXPORT_CANVAS_W;
@@ -252,7 +280,10 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
 
       ctx.fillStyle = "#475569";
       ctx.font = "42px sans-serif";
-      ctx.fillText(`${regionNameRef.current} • ${getDate()}`, PAD, PAD + 130);
+      const subtitle = dataDateRef.current
+        ? `${regionNameRef.current} • ${dataDateRef.current}`
+        : regionNameRef.current;
+      ctx.fillText(subtitle, PAD, PAD + 130);
 
       mapTop = PAD + 170;
     }
@@ -584,7 +615,9 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
               <h1 className="text-3xl font-bold leading-tight text-gray-900">
                 {getMetricLabel(selectedMetric)} by ZIP Code
               </h1>
-              <p className="text-base mt-1 text-gray-500">{regionName} • {getDate()}</p>
+              <p className="text-base mt-1 text-gray-500">
+                {dataDate ? `${regionName} • ${dataDate}` : regionName}
+              </p>
             </div>
           )}
           <div className="flex items-center gap-2 text-xs text-gray-400 whitespace-nowrap flex-shrink-0 ml-auto mt-1">
@@ -640,7 +673,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
             <div className="absolute bottom-4 right-4 z-10 p-4 bg-white/95 backdrop-blur rounded-md">
               <div
                 className="h-4 w-56"
-                style={{ background: `linear-gradient(to right, ${CHOROPLETH_COLORS.join(", ")})`, borderRadius: "4px" }}
+                style={{ background: `linear-gradient(to right, ${CHOROPLETH_GRADIENT_STOPS})`, borderRadius: "4px" }}
               />
               <div className="mt-2 flex justify-between text-xs font-semibold w-56 text-gray-600">
                 <span>{legendDisplay.min}</span>

@@ -311,6 +311,25 @@ describe("PrintStage", () => {
     expect(screen.getByText(/United States/)).toBeInTheDocument();
   });
 
+  it("dates the subtitle from the data, not from today's clock", () => {
+    // A Redfin metric takes its period from the records themselves. The fixture
+    // is period_end 2024-01-31, so the subtitle must read January 2024 no matter
+    // when the test runs. This previously printed `today minus one month`.
+    render(<PrintStage {...defaultProps} selectedMetric="median_sale_price" />);
+    expect(screen.getByText(/United States • January 2024/)).toBeInTheDocument();
+
+    // The exact string the old clock-based implementation would have produced.
+    const clockDerived = new Date(new Date().setMonth(new Date().getMonth() - 1))
+      .toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    expect(screen.queryByText(`United States • ${clockDerived}`)).toBeNull();
+  });
+
+  it("omits the date rather than inventing one when the period is unknown", () => {
+    const undated = Object.values(SAMPLE_ZIP_DATA).map(z => ({ ...z, period_end: null }));
+    render(<PrintStage {...defaultProps} selectedMetric="median_sale_price" filteredData={undated} />);
+    expect(screen.getByText("United States")).toBeInTheDocument();
+  });
+
   it("does not render title when includeTitle is false", () => {
     render(<PrintStage {...defaultProps} includeTitle={false} />);
     expect(screen.queryByText(/by ZIP Code/i)).toBeNull();
