@@ -8,7 +8,7 @@ export interface WorkerMessage {
 
 export interface WorkerResponse {
   id?: string;
-  type: "PROGRESS" | "ERROR" | "DATA_PROCESSED";
+  type: "PROGRESS" | "ERROR" | "DATA_PROCESSED" | "ABORTED";
   data?: DataProcessedResponse | ProgressData;
   error?: string;
 }

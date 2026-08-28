@@ -14,6 +14,13 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   currentAbortController = new AbortController();
   const signal = currentAbortController.signal;
 
+  // Each invocation owns its own id. When a later message aborts this one, the
+  // ABORTED reply must carry THIS id — the caller keys pending promises by id,
+  // and replying with the newer id would settle the wrong request.
+  const abortCurrent = () => {
+    self.postMessage({ type: "ABORTED", id });
+  };
+
   try {
     switch (type) {
       case "LOAD_AND_PROCESS_DATA": {
@@ -98,7 +105,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         self.postMessage({ type: "PROGRESS", data: { phase: "Reconstructing ZIP data..." } });
 
         for (let i = 0; i < zipCodes.length; i++) {
-          if (signal.aborted) return;
+          if (signal.aborted) {
+            abortCurrent();
+            return;
+          }
 
           const zipCode = zipCodes[i];
           const row = rows[i];
@@ -136,7 +146,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     }
   } catch (err) {
     if (signal.aborted) {
-      self.postMessage({ type: "ABORTED", id });
+      abortCurrent();
     } else {
       const errMessage = err instanceof Error ? err.message : "Unknown error";
       const errorType = type || "UNKNOWN";
