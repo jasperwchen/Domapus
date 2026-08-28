@@ -10,19 +10,8 @@ export interface UrlState {
 }
 
 export function useUrlState() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setSearchParams] = useSearchParams();
   const debounceTimerRef = useRef<number | null>(null);
-
-  // Read current state from URL
-  const getUrlState = useCallback((): UrlState => {
-    return {
-      zip: searchParams.get('zip') || undefined,
-      metric: searchParams.get('metric') || undefined,
-      lat: searchParams.get('lat') ? parseFloat(searchParams.get('lat')!) : undefined,
-      lng: searchParams.get('lng') ? parseFloat(searchParams.get('lng')!) : undefined,
-      zoom: searchParams.get('zoom') ? parseFloat(searchParams.get('zoom')!) : undefined,
-    };
-  }, [searchParams]);
 
   // Update URL state (replaceState to avoid polluting browser history)
   const setUrlState = useCallback((updates: Partial<UrlState>, debounce = false) => {
@@ -56,8 +45,5 @@ export function useUrlState() {
     }
   }, [setSearchParams]);
 
-  return {
-    urlState: getUrlState(),
-    setUrlState,
-  };
+  return { setUrlState };
 }

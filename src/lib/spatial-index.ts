@@ -12,7 +12,6 @@ interface ZipBBox {
 
 // Singleton spatial index instance
 let spatialIndex: RBush<ZipBBox> | null = null;
-let indexedZipCodes: Set<string> = new Set();
 
 /**
  * Build or update the spatial index from ZIP data with coordinates
@@ -42,7 +41,6 @@ export function buildSpatialIndex(zipData: Record<string, ZipData>): RBush<ZipBB
   }
   
   spatialIndex.load(items);
-  indexedZipCodes = new Set(items.map(i => i.zipCode));
   return spatialIndex;
 }
 
@@ -65,34 +63,4 @@ export function queryZipsInBounds(
   });
   
   return results.map(r => r.zipCode);
-}
-
-/**
- * Query ZIP codes near a point within a radius (in degrees, ~111km per degree)
- */
-export function queryZipsNearPoint(
-  lng: number,
-  lat: number,
-  radiusDegrees: number = 0.5
-): string[] {
-  return queryZipsInBounds({
-    west: lng - radiusDegrees,
-    south: lat - radiusDegrees,
-    east: lng + radiusDegrees,
-    north: lat + radiusDegrees,
-  });
-}
-
-/**
- * Check if spatial index is ready
- */
-export function isSpatialIndexReady(): boolean {
-  return spatialIndex !== null && indexedZipCodes.size > 0;
-}
-
-/**
- * Get the current index (for advanced use)
- */
-export function getSpatialIndex(): RBush<ZipBBox> | null {
-  return spatialIndex;
 }

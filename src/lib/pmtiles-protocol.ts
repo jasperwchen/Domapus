@@ -19,9 +19,3 @@ export function addPMTilesProtocol() {
     protocolAdded = true; // Mark as added to prevent retries
   }
 }
-
-export function removePMTilesProtocol() {
-  if (!protocolAdded) return;
-  maplibregl.removeProtocol('pmtiles');
-  protocolAdded = false;
-}
