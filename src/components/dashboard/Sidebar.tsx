@@ -6,6 +6,7 @@ import { ZipData } from "./map/types";
 import { Badge } from "@/components/ui/badge";
 import { formatMetricValue, formatChange, METRIC_DEFINITIONS, FormatType, getStateName } from "./map/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { formatPeriod } from "@/lib/data-dates";
 
 const ZipComparison = lazy(() => import("./ZipComparison").then(m => ({ default: m.ZipComparison })));
 
@@ -94,6 +95,7 @@ export function Sidebar({ isOpen, zipData, allZipData, onClose }: SidebarProps) 
                   { label: "County", value: zipData.county },
                   { label: "Metro", value: zipData.metro },
                   { label: "State", value: getStateName(zipData.state) },
+                  { label: "Data through", value: formatPeriod(zipData.period_end) },
                 ].map((item, i) => (
                   <div key={i} className="flex justify-between items-baseline">
                     <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/80">

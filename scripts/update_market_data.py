@@ -11,7 +11,7 @@ import random
 import re
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import BytesIO
 from pathlib import Path
 
@@ -102,8 +102,8 @@ def process_zillow_data(content):
             'zhvi_mom': round(((val / val_mom) - 1), 3) if val_mom and val_mom != 0 else None,
             'zhvi_yoy': round(((val / val_yoy) - 1), 3) if val_yoy and val_yoy != 0 else None,
         }
-    logging.info(f"Zillow: processed {len(results)} ZIPs")
-    return results
+    logging.info(f"Zillow: processed {len(results)} ZIPs (period {curr})")
+    return results, curr
 
 
 # ---------------------------------------------------------------------------
@@ -236,8 +236,11 @@ def assemble_output(zip_mapping, zillow_data, redfin_records):
     return output, max_period_end
 
 
-def validate_output(output):
-    """Reject empty or obviously broken assemblies before they reach the frontend."""
+MAX_DATA_AGE_DAYS = 120
+
+
+def validate_output(output, max_period_end=None, zhvi_period_end=None):
+    """Reject empty, broken, or stale assemblies before they reach the frontend."""
     if not output:
         raise PipelineError("Output is empty — no ZIPs assembled")
 
@@ -251,6 +254,20 @@ def validate_output(output):
         raise PipelineError(
             f"All-null output columns detected (likely input schema drift): {null_columns}"
         )
+
+    for label, period in (("Redfin", max_period_end), ("Zillow ZHVI", zhvi_period_end)):
+        if period is None:
+            raise PipelineError(f"{label} data has no period_end — cannot verify freshness")
+        try:
+            age_days = (datetime.now(timezone.utc).date() - date.fromisoformat(period[:10])).days
+        except ValueError as e:
+            raise PipelineError(f"{label} period_end is not a valid date: {period!r}") from e
+        if age_days > MAX_DATA_AGE_DAYS:
+            raise PipelineError(
+                f"{label} data is stale: newest period is {period} ({age_days} days old, "
+                f"limit {MAX_DATA_AGE_DAYS}). The upstream feed has likely stopped publishing."
+            )
+        logging.info(f"{label} freshness OK: period {period} ({age_days} days old)")
 
     logging.info(f"Output validation passed: {len(output)} ZIPs, {len(KEY_ORDER)} columns")
 
@@ -304,7 +321,7 @@ def main():
 
     zillow_url = "https://files.zillowstatic.com/research/public_csvs/zhvi/Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv"
     zillow_content = download_file(zillow_url, "Zillow")
-    zillow_data = process_zillow_data(zillow_content)
+    zillow_data, zhvi_period_end = process_zillow_data(zillow_content)
     if not zillow_data:
         raise PipelineError("Zillow processing returned no records")
 
@@ -322,7 +339,7 @@ def main():
         raise PipelineError("Redfin processing returned no records")
 
     output_data, max_period_end = assemble_output(zip_mapping, zillow_data, latest_records)
-    validate_output(output_data)
+    validate_output(output_data, max_period_end, zhvi_period_end)
 
     if output_data:
         random_zip = random.choice(list(output_data.keys()))
@@ -358,6 +375,7 @@ def main():
             json.dump({
                 "last_updated_utc": current_timestamp,
                 "period_end": max_period_end,
+                "zhvi_period_end": zhvi_period_end,
                 "total_zip_codes": len(output_data),
                 "zip_codes_changed": zip_codes_changed,
                 "data_points_changed": data_points_changed,

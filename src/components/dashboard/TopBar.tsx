@@ -5,6 +5,7 @@ import { MetricSelector, MetricType } from "./MetricSelector";
 import { SearchBox } from "./SearchBox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { trackError } from "@/lib/analytics";
+import { fetchDataDates, formatPeriod, EMPTY_DATA_DATES, type DataDates } from "@/lib/data-dates";
 
 const GithubIcon = ({ className }: { className?: string }) => (
   <svg
@@ -37,37 +38,27 @@ export function TopBar({
   children,
 }: TopBarProps) {
   const isMobile = useIsMobile();
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [dataDates, setDataDates] = useState<DataDates>(EMPTY_DATA_DATES);
 
   useEffect(() => {
-    const dataUrl = `${BASE_PATH}data/last_updated.json`;
-    const fetchLastUpdated = async () => {
-      try {
-        const res = await fetch(dataUrl);
-        if (!res.ok) throw new Error("Failed to fetch last_updated.json");
-        const data = await res.json();
-        setLastUpdated(data.last_updated_utc);
-      } catch (err: unknown) {
+    let isMounted = true;
+    fetchDataDates()
+      .then((dates) => { if (isMounted) setDataDates(dates); })
+      .catch((err: unknown) => {
         console.error("Error fetching last_updated.json:", err);
-        trackError("last_updated_fetch_failed", (err instanceof Error ? err.message : "Failed to fetch last updated"));
-      }
-    };
-    fetchLastUpdated();
+        trackError("last_updated_fetch_failed", err instanceof Error ? err.message : "Failed to fetch last updated");
+      });
+    return () => { isMounted = false; };
   }, []);
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "N/A";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    } catch {
-      return "N/A";
-    }
-  };
+  const isZillowMetric = selectedMetric.startsWith("zhvi");
+  const activePeriod = isZillowMetric
+    ? dataDates.zhvi_period_end ?? dataDates.period_end
+    : dataDates.period_end;
+  const sourceLabel = isZillowMetric ? "Zillow" : "Redfin";
+  const runDate = dataDates.last_updated_utc
+    ? new Date(dataDates.last_updated_utc).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "unknown";
 
   return (
     <>
@@ -117,12 +108,15 @@ export function TopBar({
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Last Updated */}
             {!isMobile && (
-              <div className="flex items-center text-dashboard-text-secondary gap-2 mr-2">
+              <div
+                className="flex items-center text-dashboard-text-secondary gap-2 mr-2"
+                title={`${sourceLabel} data through ${formatPeriod(activePeriod)}. Site last refreshed ${runDate}.`}
+              >
                 <Calendar className="h-4 w-4 opacity-80" />
                 <div className="flex flex-col">
-                  <span className="text-xs font-medium">Data Updated:</span>
+                  <span className="text-xs font-medium">Data through:</span>
                   <span className="text-xs font-medium whitespace-nowrap">
-                    {formatDate(lastUpdated)}
+                    {formatPeriod(activePeriod)}
                   </span>
                 </div>
               </div>
