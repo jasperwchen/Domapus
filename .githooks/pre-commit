@@ -1,0 +1,5 @@
+#!/bin/sh
+# Keeps tree.txt in sync with the tracked file list on every commit.
+# Enable once with:  git config core.hooksPath .githooks
+node scripts/generate-tree.mjs || exit 1
+git add tree.txt
