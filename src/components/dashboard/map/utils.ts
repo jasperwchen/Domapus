@@ -71,25 +71,44 @@ export function getComparison(current: number | null | undefined, compare: numbe
   return diff > 0 ? 'higher' : 'lower';
 }
 
-export function getMetricDisplay(data: ZipData, selectedMetric: string): string {
+export function createMetricPopupContent(data: ZipData, selectedMetric: string): HTMLElement {
+  const root = document.createElement("div");
+
   if (!data || !data.zipCode) {
-    return `<div class="p-2">No data available</div>`;
+    root.className = "p-2";
+    root.textContent = "No data available";
+    return root;
   }
 
   const metricInfo = METRICS[selectedMetric];
   const value = metricInfo ? data[metricInfo.key] : null;
-  const formattedValue = typeof value === 'number' && isFinite(value)
-    ? formatMetricValue(value, metricInfo?.format || 'number')
+  const formattedValue = typeof value === "number" && isFinite(value)
+    ? formatMetricValue(value, metricInfo?.format || "number")
     : "N/A";
 
-  return `
-      <div class="font-bold text-base">${data.zipCode}</div>
-      <div class="text-sm text-gray-600">${data.city || "Unknown City"}, ${getStateName(data.state)}</div>
-      <div class="text-sm mt-2">
-        <span class="font-semibold">${metricInfo?.label || selectedMetric}:</span>
-        <span class="font-normal"> ${formattedValue}</span>
-      <div class="text-[10px] text-gray-400 mt-1 flex items-center">
-        Click ZIP code to view details
-      </div>
-  `;
+  const add = (className: string, text: string) => {
+    const el = document.createElement("div");
+    el.className = className;
+    el.textContent = text;
+    root.appendChild(el);
+    return el;
+  };
+
+  add("font-bold text-base", data.zipCode);
+  add("text-sm text-gray-600", `${data.city || "Unknown City"}, ${getStateName(data.state)}`);
+
+  const metricRow = document.createElement("div");
+  metricRow.className = "text-sm mt-2";
+  const label = document.createElement("span");
+  label.className = "font-semibold";
+  label.textContent = `${metricInfo?.label || selectedMetric}:`;
+  const val = document.createElement("span");
+  val.className = "font-normal";
+  val.textContent = ` ${formattedValue}`;
+  metricRow.append(label, val);
+  root.appendChild(metricRow);
+
+  add("text-[10px] text-gray-400 mt-1 flex items-center", "Click ZIP code to view details");
+
+  return root;
 }

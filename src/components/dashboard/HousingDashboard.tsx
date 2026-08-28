@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useDataWorker } from "@/hooks/useDataWorker";
 import { ZipData } from "./map/types";
 import { MapExport } from "@/components/MapExport";
@@ -46,7 +46,6 @@ export function HousingDashboard() {
   const [searchZip, setSearchZip] = useState<string>(initialUrlStateRef.current.zip || "");
   const [searchTrigger, setSearchTrigger] = useState<number>(0);
   const [zipData, setZipData] = useState<Record<string, ZipData>>({});
-  const [dataBounds, setDataBounds] = useState<{ min: number; max: number } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSponsorBanner, setShowSponsorBanner] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
@@ -60,7 +59,7 @@ export function HousingDashboard() {
   const initialLoadRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
 
-  const { processData, isLoading } = useDataWorker();
+  const { processData, isLoading, progress } = useDataWorker();
 
   useEffect(() => {
     let isMounted = true;
@@ -87,7 +86,6 @@ export function HousingDashboard() {
 
         if (liteResult) {
           setZipData(liteResult.zip_codes);
-          setDataBounds(liteResult.bounds);
           
           // Build spatial index during idle time
           const scheduleIndexBuild = () => {
@@ -103,6 +101,13 @@ export function HousingDashboard() {
         }
       } catch (error: unknown) {
         console.error("[HousingDashboard] Failed to load lite data:", error);
+        if (isMounted) {
+          setLoadError(
+            error instanceof Error && error.message
+              ? error.message
+              : "Could not load housing data. Check your connection and try again."
+          );
+        }
       }
 
       // --- Phase 2: Load full data in background when idle ---
@@ -120,7 +125,6 @@ export function HousingDashboard() {
           if (fullResult) {
             console.log('[HousingDashboard] Full data loaded in background');
             setZipData(fullResult.zip_codes);
-            setDataBounds(fullResult.bounds);
             setIsFullDataLoaded(true);
 
             // Rebuild spatial index with full data
@@ -292,9 +296,12 @@ export function HousingDashboard() {
     return () => document.removeEventListener('visibilitychange', handleFocus);
   }, [autoScale, updateColors]);
 
-  const legendValues = (visibleZipCodes && visibleZipCodes.length > 0)
-    ? visibleZipCodes.map(zip => zipData[zip]).filter(Boolean).map(d => getMetricValue(d, selectedMetric)).filter(v => v > 0)
-    : Object.values(zipData).map(d => getMetricValue(d, selectedMetric)).filter(v => v > 0);
+  const legendValues = useMemo(() => {
+    const source = (visibleZipCodes && visibleZipCodes.length > 0)
+      ? visibleZipCodes.map(zip => zipData[zip]).filter(Boolean)
+      : Object.values(zipData);
+    return source.map(d => getMetricValue(d, selectedMetric)).filter(v => v > 0);
+  }, [visibleZipCodes, zipData, selectedMetric]);
 
   // Show error state if data failed to load
   if (loadError) {
@@ -372,9 +379,8 @@ export function HousingDashboard() {
               searchZip={searchZip}
               searchTrigger={searchTrigger}
               zipData={zipData}
-              colorScaleDomain={dataBounds ? [dataBounds.min, dataBounds.max] : null}
               isLoading={isLoading}
-              processData={processData}
+              loadingProgress={progress}
               customBuckets={customBuckets}
               onMapMove={handleMapMove}
               onUserInteraction={handleUserInteraction}

@@ -6,6 +6,7 @@ import {
   getComparison,
   computeQuantileBuckets,
   getStateName,
+  createMetricPopupContent,
 } from '../utils';
 import { ZipData } from '../types';
 
@@ -179,5 +180,47 @@ describe('getStateName', () => {
   it('should return N/A for null or undefined', () => {
     expect(getStateName(null)).toBe('N/A');
     expect(getStateName(undefined)).toBe('N/A');
+  });
+});
+
+describe('createMetricPopupContent', () => {
+  const base = {
+    zipCode: '90210',
+    city: 'Beverly Hills',
+    state: 'CA',
+    zhvi: 3500000,
+  } as unknown as ZipData;
+
+  it('renders the ZIP, place and metric value', () => {
+    const el = createMetricPopupContent(base, 'zhvi');
+    const text = el.textContent ?? '';
+    expect(text).toContain('90210');
+    expect(text).toContain('Beverly Hills');
+    expect(text).toContain('California');
+    expect(text).toContain('$3,500,000');
+  });
+
+  it('falls back when the metric has no value', () => {
+    const el = createMetricPopupContent({ ...base, zhvi: null } as ZipData, 'zhvi');
+    expect(el.textContent).toContain('N/A');
+  });
+
+  it('handles a missing record', () => {
+    const el = createMetricPopupContent({} as ZipData, 'zhvi');
+    expect(el.textContent).toBe('No data available');
+  });
+
+  it('treats markup in the data as text, never as HTML', () => {
+    // Guards the popup against a place name that contains markup. The old
+    // string + setHTML version would have parsed and run this.
+    const hostile = {
+      ...base,
+      city: '<img src=x onerror="window.__pwned=1">',
+    } as unknown as ZipData;
+
+    const el = createMetricPopupContent(hostile, 'zhvi');
+
+    expect(el.querySelector('img')).toBeNull();
+    expect(el.textContent).toContain('<img src=x onerror=');
   });
 });

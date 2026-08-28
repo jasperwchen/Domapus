@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import maplibregl, { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
-import { getMetricDisplay, getMetricValue, computeQuantileBuckets } from "./map/utils";
+import { createMetricPopupContent, getMetricValue, computeQuantileBuckets } from "./map/utils";
 import { ZipData } from "./map/types";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";
-import { LoadDataRequest, DataProcessedResponse } from "@/workers/worker-types";
 import { Fullscreen } from "lucide-react";
+import { CHOROPLETH_COLORS } from "@/lib/choropleth";
+import type { ProgressData } from "@/workers/worker-types";
 
 const BASE_PATH = import.meta.env.BASE_URL;
 
@@ -16,9 +17,8 @@ interface MapProps {
   searchZip?: string;
   searchTrigger?: number;
   zipData: Record<string, ZipData>;
-  colorScaleDomain: [number, number] | null;
   isLoading: boolean;
-  processData: (message: { type: string; data?: LoadDataRequest }) => Promise<DataProcessedResponse>;
+  loadingProgress?: ProgressData;
   customBuckets: number[] | null;
   onMapMove: (
     bounds: [[number, number], [number, number]],
@@ -29,12 +29,9 @@ interface MapProps {
   initialZoom?: number;
 }
 
-const CHOROPLETH_COLORS = [
-  "#FFF9B0", "#FFEB84", "#FFD166", "#FFBA49", "#FF9A56",
-  "#F07857", "#E84C61", "#D43D6A", "#C13584", "#9C2A7E",
-  "#7B2E8D", "#2E0B59"
-];
 const MAP_RELOAD_DELAY_MS = 800;
+const RELOAD_ATTEMPTS_KEY = "domapus:map-reload-attempts";
+const MAX_RELOAD_ATTEMPTS = 2;
 
 export function MapLibreMap({
   selectedMetric,
@@ -43,9 +40,12 @@ export function MapLibreMap({
   searchTrigger,
   zipData,
   isLoading,
+  loadingProgress,
   customBuckets,
   onMapMove,
   onUserInteraction,
+  initialCenter,
+  initialZoom,
 }: MapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -57,7 +57,7 @@ export function MapLibreMap({
   const lastMouseEventRef = useRef<MapMouseEvent | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const lastProcessedMetric = useRef<string>("");
-  const lastProcessedDataKeys = useRef<string>("");
+  const lastProcessedDataRef = useRef<Record<string, ZipData> | null>(null);
   const lastBucketsRef = useRef<string>("");
   const highlightedZipRef = useRef<string | null>(null);
   const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -65,6 +65,7 @@ export function MapLibreMap({
   const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const batchIdRef = useRef(0);
   const userInteractionNotifiedRef = useRef(false);
+  const initialViewRef = useRef({ center: initialCenter, zoom: initialZoom });
 
   const getDynamicPadding = useCallback((container: HTMLDivElement) => {
     const minDim = Math.min(container.clientWidth, container.clientHeight);
@@ -97,6 +98,13 @@ export function MapLibreMap({
   }, [zipData, selectedMetric, onZipSelect]);
   const hasData = useMemo(() => Object.keys(zipData).length > 0, [zipData]);
   const scheduleReload = useCallback(() => {
+    const attempts = Number(sessionStorage.getItem(RELOAD_ATTEMPTS_KEY) ?? "0");
+    if (attempts >= MAX_RELOAD_ATTEMPTS) {
+      setError("The map failed to load. Please refresh the page or try a different browser.");
+      return;
+    }
+    sessionStorage.setItem(RELOAD_ATTEMPTS_KEY, String(attempts + 1));
+
     if (reloadTimeoutRef.current) {
       clearTimeout(reloadTimeoutRef.current);
     }
@@ -119,12 +127,13 @@ export function MapLibreMap({
     const defaultBounds: LngLatBoundsLike = [[-124.7844079, 24.7433195], [-66.9513812, 49.3457868]];
     const dynamicPadding = getDynamicPadding(container);
 
-    const params = new URLSearchParams(window.location.search);
-    const urlLat = params.get('lat') ? parseFloat(params.get('lat')!) : undefined;
-    const urlLng = params.get('lng') ? parseFloat(params.get('lng')!) : undefined;
-    const urlZoom = params.get('zoom') ? parseFloat(params.get('zoom')!) : undefined;
-    const hasInitialView = urlLat !== undefined && urlLng !== undefined && urlZoom !== undefined
-      && isFinite(urlLat) && isFinite(urlLng) && isFinite(urlZoom);
+    // The starting view comes from props. This used to re-read lat/lng/zoom from
+    // the URL here as well, so two places independently decided where the map
+    // opens and could disagree.
+    const view = initialViewRef.current;
+    const hasInitialView =
+      view.center !== undefined && view.zoom !== undefined &&
+      isFinite(view.center[0]) && isFinite(view.center[1]) && isFinite(view.zoom);
 
     const map = new maplibregl.Map({
       container,
@@ -132,7 +141,7 @@ export function MapLibreMap({
       minZoom: 3,
       maxZoom: 12,
       ...(hasInitialView
-        ? { center: [urlLng!, urlLat!], zoom: urlZoom! }
+        ? { center: view.center!, zoom: view.zoom! }
         : { bounds: defaultBounds, fitBoundsOptions: { padding: dynamicPadding } }),
       attributionControl: false,
     });
@@ -161,6 +170,7 @@ export function MapLibreMap({
 
     map.once("load", () => {
       console.log("[Map] Map initialized");
+      sessionStorage.removeItem(RELOAD_ATTEMPTS_KEY);
       applyLabelContrast(map);
       setIsMapReady(true);
       const center = map.getCenter();
@@ -320,7 +330,7 @@ export function MapLibreMap({
 
           popupRef.current
             .setLngLat(ev.lngLat)
-            .setHTML(getMetricDisplay(currentZipData[zipCode], currentMetric))
+            .setDOMContent(createMetricPopupContent(currentZipData[zipCode], currentMetric))
             .addTo(map);
 
         } catch (err: unknown) {
@@ -493,21 +503,17 @@ export function MapLibreMap({
     // Ensure layer exists
     if (!map.getLayer("zips-fill")) return;
 
-    const currentDataKeys = Object.keys(zipData).length.toString();
     const currentBucketsStr = JSON.stringify(customBuckets);
     const bucketsUpdated = currentBucketsStr !== lastBucketsRef.current;
+    const metricChanged = lastProcessedMetric.current !== selectedMetric;
+    const dataChanged = lastProcessedDataRef.current !== zipData;
 
-    if (
-      lastProcessedMetric.current === selectedMetric &&
-      lastProcessedDataKeys.current === currentDataKeys &&
-      !bucketsUpdated &&
-      customBuckets === null
-    ) {
+    if (!metricChanged && !dataChanged && !bucketsUpdated && customBuckets === null) {
       return;
     }
 
     lastProcessedMetric.current = selectedMetric;
-    lastProcessedDataKeys.current = currentDataKeys;
+    lastProcessedDataRef.current = zipData;
     lastBucketsRef.current = currentBucketsStr;
 
     const currentBatchId = ++batchIdRef.current;
@@ -533,8 +539,7 @@ export function MapLibreMap({
       ...buckets.flatMap((threshold, i) => [threshold, CHOROPLETH_COLORS[Math.min(i + 1, CHOROPLETH_COLORS.length - 1)]])
     ];
 
-    // Only update feature states if needed
-    const shouldUpdateStates = customBuckets === null || lastProcessedMetric.current !== selectedMetric || lastProcessedDataKeys.current !== currentDataKeys;
+    const shouldUpdateStates = customBuckets === null || metricChanged || dataChanged;
 
     if (shouldUpdateStates) {
       const entries = Object.entries(zipData);
@@ -673,9 +678,47 @@ export function MapLibreMap({
           <Fullscreen style={{ width: '18px', height: '18px', color: '#333' }} />
         </button>
       )}
-      {(isLoading || !isMapReady || error) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10">
-          {error ? <div className="text-red-500 font-bold">{error}</div> : <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />}
+      {/* Only blocks the view while there is nothing to look at. `isLoading` also
+          goes true for the background full-data refresh, which previously threw
+          this overlay back over an already-working map mid-session. */}
+      {((isLoading && !hasData) || !isMapReady || error) && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 z-10">
+          {error ? (
+            <div className="text-red-500 font-bold px-6 text-center">{error}</div>
+          ) : (
+            <>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+              {loadingProgress?.phase && (
+                <div className="w-56 flex flex-col items-center gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {loadingProgress.phase}
+                  </span>
+                  {loadingProgress.total ? (
+                    <>
+                      <div
+                        className="w-full h-1.5 rounded-full bg-muted overflow-hidden"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={loadingProgress.total}
+                        aria-valuenow={loadingProgress.processed ?? 0}
+                        aria-label="Loading housing data"
+                      >
+                        <div
+                          className="h-full bg-primary transition-[width] duration-200"
+                          style={{
+                            width: `${Math.min(100, Math.round(((loadingProgress.processed ?? 0) / loadingProgress.total) * 100))}%`,
+                          }}
+                        />
+                      </div>
+                      <span className="text-[10px] tabular-nums text-muted-foreground/80">
+                        {(loadingProgress.processed ?? 0).toLocaleString()} of {loadingProgress.total.toLocaleString()} ZIP codes
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

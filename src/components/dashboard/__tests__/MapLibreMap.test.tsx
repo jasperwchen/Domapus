@@ -113,8 +113,6 @@ vi.mock("maplibre-gl", () => {
   return { ...mod, default: mod };
 });
 
-const mockProcessData = vi.fn(async () => ({}) as never);
-
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
@@ -135,9 +133,7 @@ describe("MapLibreMap", () => {
         selectedMetric="zhvi"
         onZipSelect={() => undefined}
         zipData={{}}
-        colorScaleDomain={null}
         isLoading={false}
-        processData={mockProcessData}
         customBuckets={null}
         onMapMove={() => undefined}
       />
@@ -162,9 +158,7 @@ describe("MapLibreMap", () => {
         selectedMetric="zhvi"
         onZipSelect={() => undefined}
         zipData={{}}
-        colorScaleDomain={null}
         isLoading={false}
-        processData={mockProcessData}
         customBuckets={null}
         onMapMove={() => undefined}
       />
