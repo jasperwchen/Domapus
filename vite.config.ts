@@ -13,8 +13,7 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks: (id) => {
           if (id.includes('maplibre-gl')) return 'maplibre';
-          if (id.includes('recharts')) return 'charts';
-          if (id.includes('jspdf') || id.includes('html2canvas')) return 'pdf-export';
+          if (id.includes('jspdf')) return 'pdf-export';
         },
       },
     },
