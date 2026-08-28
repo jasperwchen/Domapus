@@ -21,10 +21,7 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      # `npm ci` would be preferred for reproducibility, but the lockfile is
-       # generated locally on Windows where Linux-only optional deps
-       # (@emnapi/*, etc.) aren't recorded. `npm install` tolerates that.
-      - run: npm install
+      - run: npm ci
       - run: npm run build
 
       - uses: peaceiris/actions-gh-pages@v4
@@ -32,3 +29,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           publish_branch: gh-pages
+          # Replace gh-pages each deploy instead of adding a commit to it.
+          # dist/ contains all of public/ (~104 MB, mostly the PMTiles tileset),
+          # so keeping history meant every push to main permanently added
+          # another ~104 MB to the repository.
+          force_orphan: true

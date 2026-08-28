@@ -35,9 +35,12 @@ jobs:
       id: archive_logic
       run: |
         NEW_PERIOD=$(jq -r '.period_end' public/data/last_updated.json)
+        # A missing period_end means last_updated.json is malformed, not that
+        # the data was unchanged (the unchanged case is handled further down and
+        # still exits 0). Failing here lets the "Create issue if failed" step run.
         if [ "$NEW_PERIOD" == "null" ] || [ -z "$NEW_PERIOD" ]; then
           echo "Error: No period_end found in last_updated.json"
-          exit 0
+          exit 1
         fi
 
         LATEST_ARCHIVE_FILE=$(ls public/data/archive/zip-data-*.json.gz 2>/dev/null | sort | tail -n 1)
