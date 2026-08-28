@@ -5,11 +5,11 @@ import { HelpCircle, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getMetricLabel } from "@/lib/metrics";
 import { computeQuantiles } from "@/lib/quantiles";
+import { CHOROPLETH_GRADIENT_STOPS } from "@/lib/choropleth";
 
 interface LegendProps {
   selectedMetric: string;
   metricValues: number[];
-  isExport?: boolean;
   autoScale?: boolean;
   onAutoScaleChange?: (value: boolean) => void;
   isIndexReady?: boolean;
@@ -24,7 +24,7 @@ function formatLegendValue(value: number, metric: string): string {
   return value.toLocaleString();
 }
 
-export function Legend({ selectedMetric, metricValues, isExport = false, autoScale, onAutoScaleChange, isIndexReady = true }: LegendProps) {
+export function Legend({ selectedMetric, metricValues, autoScale, onAutoScaleChange, isIndexReady = true }: LegendProps) {
   const isMobile = useIsMobile();
 
   const legendDisplay = useMemo(() => {
@@ -42,14 +42,11 @@ export function Legend({ selectedMetric, metricValues, isExport = false, autoSca
     };
   }, [metricValues, selectedMetric]);
 
-  const gradient =
-    "linear-gradient(to right, hsl(var(--choropleth-1)), hsl(var(--choropleth-2)), hsl(var(--choropleth-3)), hsl(var(--choropleth-4)), hsl(var(--choropleth-5)), hsl(var(--choropleth-6)), hsl(var(--choropleth-7)), hsl(var(--choropleth-8)))";
-
-  const verticalGradient =
-    "linear-gradient(to top, hsl(var(--choropleth-1)), hsl(var(--choropleth-3)), hsl(var(--choropleth-5)), hsl(var(--choropleth-8)))";
+  const gradient = `linear-gradient(to right, ${CHOROPLETH_GRADIENT_STOPS})`;
+  const verticalGradient = `linear-gradient(to top, ${CHOROPLETH_GRADIENT_STOPS})`;
 
   // Mobile
-  if (isMobile && !isExport) {
+  if (isMobile) {
     return (
       <div className="bg-card/95 backdrop-blur-sm shadow-lg border border-border rounded-lg p-3 w-[155px]">
         {!isIndexReady && (
