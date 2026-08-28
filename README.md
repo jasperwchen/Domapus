@@ -89,7 +89,7 @@ npm run build && npm run preview
 
 **Map:** MapLibre GL JS, Pmtiles, Bbox, RBush
 
-**Export:** html2canvas, jsPDF
+**Export:** Canvas 2D, jsPDF
 
 **Deployment:** Github Pages
 
@@ -97,7 +97,7 @@ npm run build && npm run preview
 
 ## Project Structure
 
-See [tree.txt](tree.txt)
+See [tree.txt](tree.txt) — regenerated on each commit by `npm run tree`.
 
 ---
 
@@ -143,9 +143,10 @@ See [tree.txt](tree.txt)
 3. Make your changes with proper TypeScript types
 4. Test your changes: `npm run build && npm run preview`
 5. Run linting: `npm run lint`
-6. Commit your changes: `git commit -m 'Add amazing feature'`
-7. Push to your branch: `git push origin feature/amazing-feature`
-8. Open a Pull Request
+6. Enable the repo hooks once so `tree.txt` stays current: `git config core.hooksPath .githooks`
+7. Commit your changes: `git commit -m 'Add amazing feature'`
+8. Push to your branch: `git push origin feature/amazing-feature`
+9. Open a Pull Request
 
 ---
 
