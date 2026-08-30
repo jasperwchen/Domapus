@@ -33,10 +33,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <!-- Preload critical data -->
-  <link rel="preload" href="data/zip-data-lite.json" as="fetch" crossorigin />
+  <link rel="preload" href="%VITE_DATA_BASE%zip-data-lite.json" as="fetch" crossorigin />
   <script>
     (function () {
-      var liteUrl = new URL('data/zip-data-lite.json', document.baseURI).href;
+      var liteUrl = new URL('%VITE_DATA_BASE%zip-data-lite.json', document.baseURI).href;
       window.__zipDataLitePromise = fetch(liteUrl)
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
         .catch(function () { return null; });

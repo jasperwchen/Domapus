@@ -1,3 +1,13 @@
-pandas>=1.5.0
-requests>=2.28.0
-pytest>=7.4.0
+# Pinned exactly. The pipeline's correctness depends on pandas semantics, so an
+# unpinned range means a library release can silently change published numbers
+# with no diff to review. This file was `pandas>=1.5.0` while PyPI's current
+# release was 3.0.5 — the next scheduled run would have installed a major
+# version with mandatory copy-on-write straight into the sort/dedup path.
+#
+# pandas 2.3.3 is the newest 2.x with cp314 wheels (2.3.2 and older have none,
+# and CI pins Python 3.14, so anything older would build from source).
+# Moving to pandas 3.x is a deliberate migration, not an accident: it makes
+# copy-on-write mandatory and changes several dtype behaviours.
+pandas==2.3.3
+requests==2.32.5
+pytest==8.4.2

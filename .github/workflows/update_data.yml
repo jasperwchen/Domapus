@@ -9,9 +9,14 @@ on:
     - cron: '0 0 26 * *' # Runs at 00:00 UTC on the 26th of every month
   workflow_dispatch:
 
+concurrency:
+  group: data-pipeline
+  cancel-in-progress: false
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
 
     steps:
     - name: Checkout repository
