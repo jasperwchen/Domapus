@@ -48,8 +48,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
-    "@testing-library/jest-dom": "^6.1.5",
-    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/d3-array": "^3.2.2",
     "@types/d3-scale": "^4.0.9",
