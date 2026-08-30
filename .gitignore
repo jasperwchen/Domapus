@@ -3,6 +3,8 @@
 # IDE and editors
 .idea/
 .vscode/
+.claude/
+CLAUDE.md
 
 # Dependencies
 node_modules/
@@ -110,3 +112,12 @@ android-sdk/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+datap/
+
+# Local bare-repo mirror
+domapus-mirror.git/
+
+# Benchmark run logs and superseded results; committed baselines are kept.
+bench/results/*.log
+bench/results/superseded/

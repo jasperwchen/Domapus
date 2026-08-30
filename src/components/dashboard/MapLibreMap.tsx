@@ -3,13 +3,13 @@ import maplibregl, { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createMetricPopupContent, getMetricValue, computeQuantileBuckets } from "./map/utils";
 import { ZipData } from "./map/types";
+import { dataUrl } from "@/lib/data-url";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";
 import { Fullscreen } from "lucide-react";
 import { CHOROPLETH_COLORS } from "@/lib/choropleth";
 import type { ProgressData } from "@/workers/worker-types";
 
-const BASE_PATH = import.meta.env.BASE_URL;
 
 interface MapProps {
   selectedMetric: string;
@@ -398,7 +398,7 @@ export function MapLibreMap({
         }
       });
 
-      const pmtilesUrl = new URL(`${BASE_PATH}data/us_zip_codes.pmtiles`, window.location.origin).href;
+      const pmtilesUrl = dataUrl("us_zip_codes.pmtiles");
 
       map.addSource("zips", {
         type: "vector",

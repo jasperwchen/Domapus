@@ -1,3 +1,5 @@
+import { dataUrl } from "./data-url";
+
 // Fetches public/data/last_updated.json once and shares the result.
 //
 // Two different dates live in that file and they mean different things:
@@ -22,7 +24,7 @@ let cached: Promise<DataDates> | null = null;
 export function fetchDataDates(): Promise<DataDates> {
   if (cached) return cached;
 
-  const url = new URL(`${import.meta.env.BASE_URL}data/last_updated.json`, window.location.origin).href;
+  const url = dataUrl("last_updated.json");
   cached = fetch(url)
     .then((res) => {
       if (!res.ok) throw new Error(`last_updated.json returned ${res.status}`);

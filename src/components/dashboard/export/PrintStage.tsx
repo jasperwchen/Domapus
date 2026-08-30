@@ -9,10 +9,10 @@ import { getMetricValue } from "@/lib/metric-value";
 import { computeQuantileBuckets, computeQuantiles } from "@/lib/quantiles";
 import bbox from "@turf/bbox";
 import { featureCollection, point } from "@turf/helpers";
+import { dataUrl } from "@/lib/data-url";
 import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS } from "@/lib/choropleth";
 import { fetchDataDates, formatPeriod } from "@/lib/data-dates";
 
-const BASE_PATH = import.meta.env.BASE_URL;
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 900;
 const BOUNDS_BUFFER = 0.15;
@@ -398,7 +398,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     const currentFilteredData = filteredDataRef.current;
     const currentMetric = selectedMetricRef.current;
 
-    const pmtilesUrl = new URL(`${BASE_PATH}data/us_zip_codes.pmtiles`, window.location.origin).href;
+    const pmtilesUrl = dataUrl("us_zip_codes.pmtiles");
     const stepExpression = [
       "step",
       ["coalesce", ["feature-state", "metricValue"], 0],

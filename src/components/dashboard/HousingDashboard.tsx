@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useDataWorker } from "@/hooks/useDataWorker";
 import { ZipData } from "./map/types";
 import { MapExport } from "@/components/MapExport";
+import { dataUrl } from "@/lib/data-url";
 import { buildSpatialIndex, queryZipsInBounds } from "@/lib/spatial-index";
 import { computeQuantileBuckets, getMetricValue } from "./map/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -21,7 +22,6 @@ interface DataPayload {
   bounds: { min: number; max: number; };
 }
 
-const BASE_PATH = import.meta.env.BASE_URL;
 function getInitialUrlParams() {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -70,7 +70,7 @@ export function HousingDashboard() {
       hasRun = true;
 
       // --- Phase 1: Load lite data for fast initial render ---
-      const liteUrl = new URL(`${BASE_PATH}data/zip-data-lite.json`, window.location.origin).href;
+      const liteUrl = dataUrl("zip-data-lite.json");
       const earlyBuffer: ArrayBuffer | null = await ((window as unknown as Record<string, unknown>).__zipDataLitePromise as Promise<ArrayBuffer | null> | undefined ?? Promise.resolve(null));
 
       try {
@@ -114,7 +114,7 @@ export function HousingDashboard() {
       const loadFullData = async () => {
         if (!isMounted) return;
         try {
-          const fullUrl = new URL(`${BASE_PATH}data/zip-data.json`, window.location.origin).href;
+          const fullUrl = dataUrl("zip-data.json");
           const fullResult = await processData({
             type: 'LOAD_AND_PROCESS_DATA',
             data: { url: fullUrl, selectedMetric: 'zhvi' }

@@ -8,9 +8,16 @@ on:
 permissions:
   contents: write
 
+# deploy.yml and preview.yml both write gh-pages, so they must not race.
+# Queue rather than cancel: a cancelled deploy leaves the site on an older build.
+concurrency:
+  group: gh-pages-write
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -24,13 +31,24 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      - name: Guard published size
+        run: |
+          BYTES=$(du -sb dist | cut -f1)
+          LIMIT=$((300 * 1024 * 1024))
+          echo "dist/ = $((BYTES / 1048576)) MiB (limit $((LIMIT / 1048576)) MiB)"
+          if [ "$BYTES" -gt "$LIMIT" ]; then
+            echo "::error::dist/ is $((BYTES / 1048576)) MiB, over the $((LIMIT / 1048576)) MiB guard."
+            echo "GitHub Pages hard-fails at 1 GiB for the whole branch. Check what"
+            echo "grew, and whether it belongs in public/ (published) or elsewhere."
+            exit 1
+          fi
+
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           publish_branch: gh-pages
-          # Replace gh-pages each deploy instead of adding a commit to it.
-          # dist/ contains all of public/ (~104 MB, mostly the PMTiles tileset),
-          # so keeping history meant every push to main permanently added
-          # another ~104 MB to the repository.
+          # Replace gh-pages rather than adding to it: dist/ carries all of public/,
+          # so keeping history added another copy per push. This also wipes
+          # pr-preview/, which the preview action re-publishes on the next PR push.
           force_orphan: true

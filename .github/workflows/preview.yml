@@ -8,9 +8,15 @@ permissions:
   contents: write
   pull-requests: write
 
+# Shared with deploy.yml: both write the gh-pages branch. See the note there.
+concurrency:
+  group: gh-pages-write
+  cancel-in-progress: false
+
 jobs:
   preview:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,7 +33,30 @@ jobs:
 
       - name: Build with preview base path
         if: github.event.action != 'closed'
-        run: npx vite build --base /Domapus/pr-preview/pr-${{ github.event.number }}/
+        env:
+          # Read production data instead of publishing a copy. Previews each carried
+          # their own 92 MB tileset, which put gh-pages at 800 MiB of a 1 GiB limit.
+          VITE_DATA_BASE: https://jasperwchen.github.io/Domapus/data/
+        run: |
+          npx vite build --base /Domapus/pr-preview/pr-${{ github.event.number }}/
+          node scripts/prune-dist.mjs dist --preview
+          # Data URLs point at production, so the local copy is dead weight.
+          rm -rf dist/data
+
+      - name: Guard gh-pages total size
+        if: github.event.action != 'closed'
+        run: |
+          git fetch origin gh-pages --depth=1 || exit 0
+          CURRENT=$(git ls-tree -r -l origin/gh-pages | awk '{s+=$4} END {print s+0}')
+          INCOMING=$(du -sb dist | cut -f1)
+          TOTAL=$((CURRENT + INCOMING))
+          LIMIT=$((700 * 1024 * 1024))
+          echo "gh-pages $((CURRENT / 1048576)) MiB + preview $((INCOMING / 1048576)) MiB = $((TOTAL / 1048576)) MiB"
+          if [ "$TOTAL" -gt "$LIMIT" ]; then
+            echo "::error::gh-pages would reach $((TOTAL / 1048576)) MiB, over the $((LIMIT / 1048576)) MiB guard (GitHub Pages hard-fails at 1024)."
+            echo "Close merged PRs so their previews are reclaimed, or check what grew."
+            exit 1
+          fi
 
       - name: Deploy / clean up preview
         uses: rossjrw/pr-preview-action@v1
