@@ -1166,3 +1166,54 @@ question. 34 tests pass on 3.14.
 
 **react-router x2, medium** — fixed by `d6a1380`; the alerts predate that push and clear on
 the next scan. Local `npm audit` already reports 0.
+
+---
+
+## 2026-09-05 — a workflow GitHub silently refused to run
+
+**Symptom.** Three consecutive CI runs failed with no failing step, no
+annotation, and no log — `gh run view` said only "This run likely failed because
+of a workflow file issue". The giveaway was in `gh run list`: the workflow's name
+showed as **`.github/workflows/ci.yml`** rather than **`CI`**. GitHub falls back
+to the file path when it cannot parse the file well enough to read its `name:`.
+
+**Cause.** One line:
+
+    run: pip install --only-binary=:all: -r requirements.txt
+
+A plain YAML scalar **may not contain ": "** — colon followed by space. Here
+`--only-binary=:all:` is followed by ` -r`, so the parser sees a nested mapping
+where a string was intended. Nothing about the line looks like YAML, which is
+what makes it easy to write and hard to see. In a block scalar the same command
+is fine:
+
+    run: |
+      pip install --only-binary=:all: -r requirements.txt
+
+**How it got in.** I edited `ci.yml` and then validated `update_data.yml`. The
+other file got the same flag but inside an existing `run: |` block, so it was
+genuinely fine — and its run succeeded, which made the green "Update ZIP code
+market Data" run look like evidence the change was good. Validating a file
+adjacent to the one you changed is not validating your change.
+
+**Fix, and the guard.** `scripts/check_workflows.py` strict-parses every
+workflow and reports file, line and column. Verified both directions: it passes
+on the corrected tree and, with the plain scalar reintroduced, reports
+`ci.yml: mapping values are not allowed here (line 67, column 44)`.
+
+Wired in **two** places, deliberately:
+
+* `.githooks/pre-commit` — the only place that catches `ci.yml` breaking itself,
+  since a workflow that will not parse never reaches the job that would check it.
+  Skips silently if PyYAML is absent so it cannot block a commit on a bare
+  machine.
+* the `pipeline` CI job — catches every *sibling* workflow, and runs even for
+  contributors who have not enabled the hook.
+
+Neither placement covers the whole space alone. The pair does, and the docstring
+says which is which so nobody later deletes one as redundant.
+
+**Worth noting what this failure mode costs.** A broken workflow file is
+invisible in every place you would normally look: no red step, no annotation, no
+log line. Only the run's *name* changes. That is a worse signal than the
+property-type bug's, which at least produced a wrong number somebody could check.

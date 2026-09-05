@@ -59,7 +59,13 @@ jobs:
         # which spent four minutes compiling and then failed with
         # "Could not find a package configuration file provided by Arrow",
         # an error that says nothing about the actual cause.
-        run: pip install --only-binary=:all: -r requirements.txt
+        #
+        # A BLOCK SCALAR, not `run: pip install ...`. A plain YAML scalar may not
+        # contain ": " (colon-space), and `--only-binary=:all: -r` has one. As a
+        # plain scalar GitHub rejects the whole file and the run shows up named
+        # ".github/workflows/ci.yml" instead of "CI", with no job ever starting.
+        run: |
+          pip install --only-binary=:all: -r requirements.txt
 
       - name: Ban implicit deduplication
         # drop_duplicates and groupby().last() delegate the tie-break to a sort
@@ -77,6 +83,13 @@ jobs:
             echo "::error::drop_duplicates/groupby().last()/.first() are banned in pipeline/."
             exit 1
           fi
+
+      - name: Workflow YAML is parseable
+        # Catches a sibling workflow GitHub would silently refuse to run. It
+        # cannot catch THIS file breaking itself — a workflow that will not parse
+        # never reaches the job that checks it — which is why the same script is
+        # in .githooks/pre-commit, where it runs before the push.
+        run: python scripts/check_workflows.py
 
       - name: Test pipeline
         run: python -m pytest tests -q

@@ -1,5 +1,12 @@
 #!/bin/sh
-# Keeps tree.txt in sync with the tracked file list on every commit.
 # Enable once with:  git config core.hooksPath .githooks
+
+# Keeps tree.txt in sync with the tracked file list on every commit.
 node scripts/generate-tree.mjs || exit 1
 git add tree.txt
+
+# A workflow GitHub cannot parse starts NO jobs and annotates nothing — the run
+# just appears named after its file path. Catching it here is the only place it
+# can be caught before it reaches GitHub, because a broken ci.yml cannot run the
+# job that would have checked itself. Skips silently without PyYAML.
+python scripts/check_workflows.py || exit 1
