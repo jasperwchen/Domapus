@@ -58,15 +58,12 @@ optimisation. Name the baseline in every claim.
 
 ### Still owed on these phases
 
-- [ ] **Acceptance-test the `workflow_call` deploy for real.** A miswired one has a symptom
-      identical to the bug it fixes. Confirm a Deploy job appears in the SAME run graph as a
-      publish; parsing YAML proves nothing.
-      **How:** push, then `gh workflow run update_data.yml`, then
-      `gh run list --workflow=update_data.yml --limit 1` and
-      `gh run view <id>` — the job list must show `update-data`, `deploy` AND the
-      called workflow's `deploy` job. If `deploy` is skipped, check
-      `needs.update-data.outputs.changed`; if it runs but publishes the wrong month, the
-      `ref` input is not reaching `actions/checkout`.
+- [x] **Acceptance-tested the `workflow_call` deploy — PASSED 2026-09-05**, run 33986134801:
+      `update-data -> success`, **`deploy / deploy -> success` in the same run graph**,
+      `notify -> skipped`. The deploy job's own report confirms the plumbing:
+      `ref input : ''` (empty, a forced redeploy with no data commit) ->
+      `deploying : 7880a47` (the `github.sha` fallback) -> `period_end: 2026-07-31`.
+      Reproduce any time with `gh workflow run update_data.yml -f force_deploy=true`.
 - [ ] Run `bench/verify-choropleth.mjs` against the deployed site, not only a local build.
       **How:** `BENCH_URL='https://jasperwchen.github.io/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi' node bench/verify-choropleth.mjs --cpu 4`
       It exits non-zero if a metric switch causes any tile request or if

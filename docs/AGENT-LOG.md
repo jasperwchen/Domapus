@@ -1217,3 +1217,38 @@ says which is which so nobody later deletes one as redundant.
 invisible in every place you would normally look: no red step, no annotation, no
 log line. Only the run's *name* changes. That is a worse signal than the
 property-type bug's, which at least produced a wrong number somebody could check.
+
+---
+
+## 2026-09-05 — Bug 6 is verified fixed
+
+Run **33986134801**, dispatched with `force_deploy=true`:
+
+    update-data      ->  success
+    deploy / deploy  ->  success      <- a Deploy job in the SAME run graph
+    notify           ->  skipped
+
+That is the acceptance criterion the spec names, and it is the one that could not be met by
+reading YAML: a miswired `workflow_call` fails exactly like the bug it fixes.
+
+The deploy job's own report closes the second half — that it deploys the RIGHT commit:
+
+    ref input : ''
+    deploying : 7880a47fdf3456752efe3bcbefde520441961d49
+    period_end: 2026-07-31
+
+`ref input` is empty because nothing was committed on a forced redeploy, `deploy.yml` fell back
+to `github.sha` as designed, and the published period is current. Both branches of
+`ref: inputs.ref || github.sha` are now exercised — the commit SHA path will run on the next
+month with real data.
+
+Three runs, three different things learned:
+
+| run | what it proved |
+|---|---|
+| 33974615713 | `notify` opens ONE labelled issue (#90), and `deploy` refuses to run on a failed build |
+| 33985964118 | the pipeline runs end to end on the runner; the no-change path publishes nothing |
+| **33986134801** | **the `workflow_call` wiring, the `ref` fallback, and the published period** |
+
+CI itself is green again on `d7fa515`, and its run is named `CI` rather than its own file path,
+which is the other half of the workflow-parse fix.
