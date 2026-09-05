@@ -17,7 +17,9 @@
 # Moving to pandas 3.x is a deliberate migration, not an accident: it makes
 # copy-on-write mandatory and changes several dtype behaviours.
 pandas==2.3.3
-requests==2.32.5
+# 2.33.0 patches GHSA-gc5v-m9x4-r6x2, insecure temp file reuse in
+# extract_zipped_paths(). Pure-Python wheel, so no cp314 question.
+requests==2.33.0
 pytest==8.4.2
 
 # pyarrow does the CSV streaming ingest: 1.33 GB in ~35 s against pandas'
@@ -29,6 +31,11 @@ pytest==8.4.2
 # spent four minutes trying to compile Arrow C++ before failing. Verified on the
 # real 1.33 GB file under Python 3.14: `zip-data.json` is byte-identical to the
 # 19.0.1 output, so the bump changes no published number.
+#
+# Pinned to the LATEST rather than that 22.0.0 minimum, and the difference turned
+# out to matter: GHSA-rgxp-2hwp-jwgg (high, use-after-free reading an IPC file
+# with pre-buffering) covers >= 15.0.0 and < 23.0.1, so 22.0.0 would have kept a
+# high-severity advisory open while satisfying the wheel requirement.
 pyarrow==25.0.1
 
 # numpy is deliberately NOT pinned here. Nothing in pipeline/ imports it — the

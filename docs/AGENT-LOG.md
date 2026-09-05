@@ -1110,3 +1110,59 @@ So the notify rewiring is **verified working**: one labelled issue, not one issu
 `deploy` skipping on a failed build is also the right behaviour, but it means the actual Bug 6
 acceptance test — a Deploy job in the same run graph as a *successful* publish — is still owed
 and needs a green `update-data`.
+
+---
+
+## 2026-09-05 — the deploy acceptance test, and the gap it exposed
+
+Run 33985964118, after the pyarrow fix: **`update-data` succeeded**, and `deploy` was
+**skipped**.
+
+That skip is correct. `if: needs.update-data.outputs.changed == 'true'`, and the data had
+not changed — same Redfin vintage, same period, already published locally — so
+`data_points_changed` was 0, nothing was committed, and there was nothing to deploy.
+
+**But it means the fix for Bug 6 could not be verified.** The bug is "the data commit never
+deploys"; the acceptance test is "a Deploy job appears in the same run graph as a publish";
+and until upstream data happens to change there is no publish to attach it to. A fix that
+cannot be tested until the failure condition recurs naturally is a fix nobody can trust.
+
+**Added `force_deploy`, a dispatch-only input.** `if: ... || inputs.force_deploy` runs the
+Deploy job regardless of whether data changed. `ref` is then empty, and `deploy.yml` already
+falls back to `github.sha` for exactly that case. It doubles as the way to redeploy current
+data after a frontend-only change.
+
+Run history so far:
+
+| run | update-data | deploy | notify | what it proved |
+|---|---|---|---|---|
+| 33974615713 | failure (pyarrow build) | skipped | **success** | notify opens ONE labelled issue (#90), not one per run; deploy correctly refuses to run on a failed build |
+| 33985964118 | **success** | skipped | skipped | the pipeline runs end to end on the runner; the no-change path publishes nothing, as designed |
+| next, with `force_deploy` | — | — | — | the Bug 6 wiring itself |
+
+---
+
+## 2026-09-05 — the rest of the dependency alerts
+
+The push warned about 5 alerts where local `npm audit` reported 0. Split by ecosystem:
+
+**pyarrow, GHSA-rgxp-2hwp-jwgg, HIGH** — use-after-free reading an IPC file with
+pre-buffering, `>= 15.0.0, < 23.0.1`. Already showed `state: fixed` by the time it was
+looked at, because the CI fix had moved the pin to 25.0.1.
+
+**This one retroactively justifies a choice that was made for a different reason.** The pin
+had to clear cp314, whose minimum is 22.0.0; latest was chosen instead only because the
+version needed re-verifying against the real file either way. **22.0.0 would have satisfied
+the wheel requirement and kept a high-severity advisory open.** Picking the minimum that
+satisfies the stated constraint is not the same as picking the right version, and here the
+difference was a HIGH.
+
+We do not read Arrow IPC files — the pipeline reads CSV and reads/writes Parquet — so the
+advisory was very likely not reachable either. Fixed regardless; the cost was zero.
+
+**requests, GHSA-gc5v-m9x4-r6x2, medium** — insecure temp file reuse in
+`extract_zipped_paths()`, `< 2.33.0`. Bumped to 2.33.0. Pure-Python wheel, so no cp314
+question. 34 tests pass on 3.14.
+
+**react-router x2, medium** — fixed by `d6a1380`; the alerts predate that push and clear on
+the next scan. Local `npm audit` already reports 0.

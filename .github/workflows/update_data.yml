@@ -17,6 +17,16 @@ on:
         description: Why. Recorded verbatim in the manifest.
         type: string
         required: false
+      force_deploy:
+        description: >-
+          Run the Deploy job even when the data did not change. This exists so
+          the workflow_call wiring can be ACCEPTANCE TESTED on demand — without
+          it, the fix for "the data commit never deploys" cannot be verified
+          until upstream data happens to change, which is a poor property for
+          that particular fix to have. Also useful to redeploy the current data
+          after a frontend-only change.
+        type: boolean
+        default: false
 
 concurrency:
   group: data-pipeline
@@ -156,9 +166,11 @@ jobs:
   # miswired workflow_call looks identical to the original bug.
   deploy:
     needs: update-data
-    if: needs.update-data.outputs.changed == 'true'
+    if: needs.update-data.outputs.changed == 'true' || inputs.force_deploy
     uses: ./.github/workflows/deploy.yml
     with:
+      # Empty when nothing was committed (a forced redeploy of unchanged data).
+      # deploy.yml falls back to `github.sha` for exactly that case.
       ref: ${{ needs.update-data.outputs.sha }}
     permissions:
       contents: write
