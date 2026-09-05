@@ -5,7 +5,7 @@ import { MetricSelector, MetricType } from "./MetricSelector";
 import { SearchBox } from "./SearchBox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { trackError } from "@/lib/analytics";
-import { fetchDataDates, formatPeriod, EMPTY_DATA_DATES, type DataDates } from "@/lib/data-dates";
+import { fetchDataDates, formatPeriod, formatPeriodDay, formatRedfinWindow, EMPTY_DATA_DATES, type DataDates } from "@/lib/data-dates";
 
 const GithubIcon = ({ className }: { className?: string }) => (
   <svg
@@ -25,7 +25,6 @@ interface TopBarProps {
   onMetricChange: (metric: MetricType) => void;
   onSearch: (zipCode: string, trigger: number) => void;
   hideMobileControls?: boolean;
-  isFullDataLoaded?: boolean;
   children?: React.ReactNode; // Optional buttons like <MapExport />
 }
 
@@ -34,7 +33,6 @@ export function TopBar({
   onMetricChange,
   onSearch,
   hideMobileControls = false,
-  isFullDataLoaded = false,
   children,
 }: TopBarProps) {
   const isMobile = useIsMobile();
@@ -56,6 +54,14 @@ export function TopBar({
     ? dataDates.zhvi_period_end ?? dataDates.period_end
     : dataDates.period_end;
   const sourceLabel = isZillowMetric ? "Zillow" : "Redfin";
+  // Zillow ZHVI is a monthly index, so "Jul 2026" is the honest label. Redfin
+  // rows are a rolling three-month window, so the header names the window.
+  // NOT "90 days": the window is calendar-aligned and runs 89-92 days.
+  const periodLabel = isZillowMetric ? "Data through:" : "3 months ending:";
+  const periodValue = isZillowMetric ? formatPeriod(activePeriod) : formatPeriodDay(activePeriod);
+  const periodPhrase = isZillowMetric
+    ? `through ${formatPeriod(activePeriod)}`
+    : formatRedfinWindow(activePeriod);
   const runDate = dataDates.last_updated_utc
     ? new Date(dataDates.last_updated_utc).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
     : "unknown";
@@ -92,7 +98,6 @@ export function TopBar({
             <MetricSelector
               selectedMetric={selectedMetric}
               onMetricChange={onMetricChange}
-              isFullDataLoaded={isFullDataLoaded}
             />
           )}
         </div>
@@ -110,13 +115,13 @@ export function TopBar({
             {!isMobile && (
               <div
                 className="flex items-center text-dashboard-text-secondary gap-2 mr-2"
-                title={`${sourceLabel} data through ${formatPeriod(activePeriod)}. Site last refreshed ${runDate}.`}
+                title={`${sourceLabel} data — ${periodPhrase}. Site last refreshed ${runDate}.`}
               >
                 <Calendar className="h-4 w-4 opacity-80" />
                 <div className="flex flex-col">
-                  <span className="text-xs font-medium">Data through:</span>
+                  <span className="text-xs font-medium">{periodLabel}</span>
                   <span className="text-xs font-medium whitespace-nowrap">
-                    {formatPeriod(activePeriod)}
+                    {periodValue}
                   </span>
                 </div>
               </div>
@@ -170,7 +175,7 @@ export function TopBar({
           style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
         >
           <div className="space-y-2.5">
-            <MetricSelector selectedMetric={selectedMetric} onMetricChange={onMetricChange} isFullDataLoaded={isFullDataLoaded} />
+            <MetricSelector selectedMetric={selectedMetric} onMetricChange={onMetricChange} />
             <SearchBox onSearch={onSearch} />
           </div>
         </div>

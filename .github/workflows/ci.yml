@@ -43,11 +43,22 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.14'
+          python-version-file: .python-version
           cache: pip
 
       - name: Install pipeline deps
         run: pip install -r requirements.txt
 
+      - name: Ban implicit deduplication
+        # drop_duplicates and groupby().last() delegate the tie-break to a sort
+        # algorithm's internals. That is exactly how an arbitrary property type
+        # per ZIP shipped for months. Use an explicit named reducer instead, so
+        # the choice is written down in source.
+        run: |
+          if grep -rnE 'drop_duplicates|groupby\([^)]*\)\.(last|first)\(' pipeline/; then
+            echo "::error::drop_duplicates/groupby().last() are banned in pipeline/."
+            exit 1
+          fi
+
       - name: Test pipeline
-        run: python -m pytest scripts/tests
+        run: python -m pytest tests -q

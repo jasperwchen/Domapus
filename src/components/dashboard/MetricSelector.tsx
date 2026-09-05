@@ -1,23 +1,29 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
-import { METRICS as METRIC_INFO, LITE_METRICS, type MetricKey } from "@/lib/metrics";
+import { PAINTED_METRICS, type MetricKey } from "@/lib/metrics";
 
 export type MetricType = MetricKey;
 
-// Tests and a couple of legacy callers import `METRICS` from this file
-// as a flat key → label record. Keep that shape, sourced from the
-// authoritative METRICS in lib/metrics.ts.
+// The dropdown offers the PAINTED subset only — 8 of 15. The other 7 are carried
+// on the wire and shown in the ZIP detail panel, but never colour the map.
+//
+// The cut is measured, not taste: pairwise Spearman on the latest period
+// collapses the 14 Redfin metrics to ~5 independent axes. The five count metrics
+// are effectively one variable (rho 0.91-0.99; new_listings vs active_listings
+// is 0.986) and the four price metrics another (0.81-0.89). Offering all 15
+// would be offering the same map several times over.
+//
+// Tests and a couple of legacy callers import `METRICS` from this file as a flat
+// key -> label record. Keep that shape.
 export const METRICS: Record<string, string> = Object.fromEntries(
-  Object.entries(METRIC_INFO).map(([key, info]) => [key, info.label])
+  Object.entries(PAINTED_METRICS).map(([key, info]) => [key, info.label])
 );
 
 interface MetricSelectorProps {
   selectedMetric: MetricType;
   onMetricChange: (metric: MetricType) => void;
-  isFullDataLoaded?: boolean;
 }
 
-export function MetricSelector({ selectedMetric, onMetricChange, isFullDataLoaded = false }: MetricSelectorProps) {
+export function MetricSelector({ selectedMetric, onMetricChange }: MetricSelectorProps) {
   const handleMetricChange = (metric: string) => {
     onMetricChange(metric as MetricType);
   };
@@ -34,19 +40,11 @@ export function MetricSelector({ selectedMetric, onMetricChange, isFullDataLoade
           </div>
         </SelectTrigger>
         <SelectContent className="z-[9999]">
-          {Object.entries(METRICS).map(([key, label]) => {
-            const isLoading = !isFullDataLoaded && !LITE_METRICS.has(key);
-            return (
-              <SelectItem key={key} value={key} disabled={isLoading}>
-                <span className="flex items-center gap-1.5">
-                  {label}
-                  {isLoading && (
-                    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                  )}
-                </span>
-              </SelectItem>
-            );
-          })}
+          {Object.entries(METRICS).map(([key, label]) => (
+            <SelectItem key={key} value={key}>
+              {label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
     </div>

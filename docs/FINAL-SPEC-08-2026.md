@@ -4,6 +4,8 @@
 **Author:** chief architect synthesis, 2026-08-30.
 **Implementer:** one high-school student, ~8 h/week, school in session.
 **Read `docs/todos.md` first** for the append-only running state. This document is the *plan*; that file is the *progress*.
+while implementing this. all progress have to be logged so no context or info is lost if things happen like hitting a limit. 
+make sure to add doc or comments when nessecary so future dev dont accidentally make the same mistake or undo the thoughtful design.
 
 ---
 
@@ -20,6 +22,14 @@ Every number below is tagged:
 Where the three proposals disagreed, this document picks one and says why. Where the three
 adversarial critiques found a fatal flaw, this document contains the *fix*, not a restatement.
 Section 10 lists what is deliberately not being built.
+
+**Section 1.5 supersedes every Redfin column name, `PROPERTY_TYPE` reference and
+`PERIOD_DURATION` assertion elsewhere in this document.** Redfin rebuilt the Data Center; the
+old feed froze on 2026-06-02 and the replacement was resolved and verified on 2026-09-03.
+Sections 2, 4 and 6 have **not** yet been rewritten against it — where they disagree with §1.5,
+§1.5 wins. §1.5.8 lists the specific contracts that are now void. **§1.5.9 replaces every count
+in this document with a full-file measurement, and §1.5.10 documents four defects in the feed's
+own numbers that no amount of renaming fixes.** Read both before §2.
 
 ---
 
@@ -45,11 +55,17 @@ proposals that does not serve those two principles is cut, and Section 10 says s
 
 #### Bug 1 — THE HEADLINE: arbitrary property type per ZIP
 
-`scripts/update_market_data.py:158-160`:
+`scripts/update_market_data.py:155` — and the same call again at `:157`:
 
 ```python
-chunk = chunk.sort_values('PERIOD_END').drop_duplicates('zip_code', keep='last')
+chunk       = chunk.sort_values('PERIOD_END').drop_duplicates('zip_code', keep='last')    # :155
+best_so_far = combined.sort_values('PERIOD_END').drop_duplicates('zip_code', keep='last') # :157
 ```
+
+**There are two of these, not one.** The second call re-runs the same arbitrary selection when
+the current chunk is merged with the best row seen so far, so the surviving property type can
+change again at chunk boundaries. Both go in Phase 1; the CI grep in §8.4 is what guarantees a
+third one cannot appear later.
 
 Redfin's true primary key is `(PERIOD_END, REGION, PROPERTY_TYPE_ID)` — five property-type rows
 share every `(ZIP, period)`. The code deduplicates on `zip_code` alone, and pandas' default sort
@@ -85,9 +101,14 @@ The brief states the tileset renders ~1% of ZCTAs at z3 with a rural bias. Both 
 two independent decoders confirmed it **[M]**:
 
 - `dropped_by_rate: 99` in `us_zip_codes.pmtiles.metadata.json` is a **count of drop events**,
-  not a percentage. Decoding all 7 z3 tiles gives **31,828 distinct ZCTAs = 94.2%** of 33,780.
-  z4 = 97.5%, z5 = 99.2%, z9 = 99.97%.
-- The bias runs the **other way**. Among the ~1,933 ZCTAs absent at z3 the leading cities are
+  not a percentage. Decoding all 7 z3 tiles gives **31,828 distinct ZCTAs = 94.2%** of the
+  **33,791** ZCTAs. z4 = 97.5%, z5 = 99.2%, z9 = 99.97%. *(**Corrected 2026-09-04.** Earlier
+  drafts of this bullet insisted on 33,771 as "one denominator everywhere". That was
+  `zcta-meta.csv`'s row count — a derived file — and it is 20 short of the Census source.
+  §1.5.9 settles it at **33,791**, confirmed three ways from `cb_2020_us_zcta520_500k`, so the z3
+  coverage is 31,828 / 33,791 = **94.19%** and the missing set is **1,963**, not 1,943. Assertion
+  A1 (§5.7) still runs; it now confirms a known value rather than discovering one.)*
+- The bias runs the **other way**. Among the **1,963** ZCTAs absent at z3 the leading cities are
   New York, Washington DC, Boston, Los Angeles, San Diego. Non-metro share of the missing set is
   22.0% against a 24.5% baseline. It is a mild **urban** skew, and this repo's own earlier
   measurement agrees: at z3, 44.1% of metro ZCTAs are sub-pixel vs 25.0% of non-metro; at z4
@@ -180,9 +201,10 @@ plus one ~6 KB pointer commit.
 #### Bug 8 — statistical: every uncertainty number in the dossiers is 2.33× too small
 
 The analytics dossier's sampling-noise constant `K = 0.240` was estimated with a **lag-1**
-high-pass filter. `PERIOD_DURATION` is uniformly 90 **[M]**, so consecutive observations are
-trailing 3-month windows sharing **two of three months of transactions**, and their sampling
-noise is strongly positively correlated. A lag-1 filter therefore cancels most of the noise it is
+high-pass filter. The window is a trailing three months — uniformly 90 days on the old feed, and
+89-92 calendar-aligned days on the new one (§1.5.10 Defect 4), which changes nothing here — so
+consecutive observations share **two of three months of transactions**, and their sampling noise
+is strongly positively correlated. A lag-1 filter therefore cancels most of the noise it is
 trying to measure.
 
 Independently reproduced twice **[M]**, lag sweep on the full All-Residential panel:
@@ -201,7 +223,10 @@ Plausibility settles it: `K = 0.5395` implies within-ZIP `sd(log price) = 0.430`
 home-price ratio of **1.79x** inside one ZIP — realistic. `K = 0.240` implies **1.29x**, which
 would mean ZIP-level housing stock is implausibly homogeneous.
 
-Consequence for the latest period (20,010 reporting ZIPs) **[M]**:
+Consequence for the latest period **[M]**. *(The tier counts below were computed on the dead
+feed's 20,010 reporting ZIPs. The new feed reports **26,148** ZIPs with `HOMES SOLD` (§1.5.9), so
+the tier **percentages** must be recomputed before they are quoted — §12 item 11. The 2.33x ratio
+and the direction of the error are properties of `K`, not of the sample, and do not move.)*
 
 | Reliability tier | Under K = 0.240 (wrong) | Under K = 0.5395 (correct) |
 |---|---|---|
@@ -240,11 +265,501 @@ other. Fixed in §6.7 with an asserted source contract and explicit UI labelling
 
 ---
 
+## 1.5 Upstream feed migration — Redfin Data Center [BLOCKING, 2026-09-03]
+
+Redfin rebuilt the Data Center. Everything in sections 2, 4 and 6 that names a Redfin
+column, a `PROPERTY_TYPE`, or `PERIOD_DURATION` was written against a feed that no
+longer receives updates. This section is the new ground truth. Read it before §2.
+
+### 1.5.1 The old feed froze; it did not 404
+
+`redfin-public-data/redfin_market_tracker/zip_code_market_tracker.tsv000.gz` still
+returns **200 OK**. Its `Last-Modified` is pinned at **2026-06-02**, newest
+`PERIOD_END` **2026-05-31**. Same for the county and state siblings. **[M]**
+
+The failure mode is therefore silent: the pipeline downloads 1.5 GB, parses it
+cleanly, and republishes three-month-old numbers as a success. `MAX_DATA_AGE_DAYS =
+120` in `scripts/update_market_data.py` does not trip until ~2026-09-28.
+
+**Which clock — this has to be named, and an earlier draft did not name it.** Three
+dates could be called "the age of the data", and on the healthy 2026-09-04 feed they
+are **34 days apart** **[M]**:
+
+| clock | value | age on 2026-09-04 | what it measures |
+|---|---|---|---|
+| `PERIOD END` (newest row) | 2026-07-31 | 35 d | how stale the *market window* is |
+| `LAST UPDATED` (column) | 2026-08-03 | 32 d | the vintage Redfin stamped |
+| **HTTP `Last-Modified`** | **2026-09-02** | **2 d** | **how long the file has been silent** |
+
+Only the third measures publication silence, and it is the one to use. The other two
+are inherently ~a month behind even when the feed is perfectly healthy, because a
+rolling-3-month window ending 2026-07-31 cannot be published before August. **A
+45-day threshold on `PERIOD END` false-trips on a healthy feed within ten days** —
+Redfin publishes monthly, so `PERIOD END` ages from ~35 to ~65 days between
+publications, crossing 45 every single month. That was the bug in the earlier draft
+of this paragraph.
+
+**And staleness must not hard-fail.** An earlier draft said "a frozen feed must be a
+CONTRACT violation, not a DRIFT warning" and set a 45-day hard fail. That cannot work
+alongside §2.3, which ships the outage banner **inside `manifest.json`** — a hard
+fail refuses to publish, so the manifest carrying the banner is never written and the
+banner can never render. The two sections cancelled each other out.
+
+The resolution, and it is the one that keeps both properties:
+
+| condition | action |
+|---|---|
+| ETag unchanged since the last run | exit 0, no download, no publish. Nothing new exists; this is not a failure. |
+| ETag changed, `Last-Modified` < 45 d | normal run. |
+| ETag changed, `Last-Modified` >= 45 d | **publish anyway**, set `manifest.upstream_stale_days`, render §2.3's banner, and open **one** issue per new fingerprint — never one per cron tick. |
+
+Stale data is still the best data available, and refusing to publish it makes the
+site *more* wrong, not less. What made the old feed dangerous was that it was
+frozen **and silent**; the banner is what removes the silence. `upstream_stale_days`
+clears itself the moment a publication lands, so the banner is manifest-driven and
+cannot be left hardcoded on (§12 item 25).
+
+### 1.5.2 The dataset — resolved, not guessed
+
+**`redfin_data_center/housing_market/monthly/all_zips.csv`**
+
+```
+https://redfin-public-data.s3.us-west-2.amazonaws.com/redfin_data_center/housing_market/monthly/all_zips.csv
+```
+
+On the Data Center downloads page this is the card **Housing Market Tracker** →
+frequency **Monthly** → geography **Zip Codes** → coverage **All Zip Codes**.
+
+| property | value |
+|---|---|
+| format | plain CSV, RFC-4180 quoted. **Not gzipped** — `.csv.gz` returns 403 **[M]** |
+| size | **1,331,318,985 B** (1.33 GB) **[M]** |
+| columns | 50 = 8 identifiers + 14 metrics x 3 (base, MoM, YoY) **[M]** |
+| rows | **4,930,000**, zero ragged. Latest period holds 29,738 ZIPs; 26,148 have `HOMES SOLD` **[M]** |
+| history | **173 periods**, `2012-03-31` .. `2026-07-31` **[M]** |
+| ordering | `PERIOD END` **strictly descending**, verified over all 4,930,000 rows. The newest period is the first **~8.05 MB**, not ~15 MB **[M]** |
+| refreshed | 2026-09-02; newest `PERIOD END` 2026-07-31 **[M]** |
+| manifest | `redfin_data_center/index.json`, 10,174 B, public — every dataset x geography **[M]** |
+| integrity | S3 `ETag` is a **single-part MD5**. A local md5 of the whole file reproduces it exactly: `b1436909d98d5411891049c3ee882c70` **[M]**. Whole-object verification works — on the full-download path only |
+
+Three independent confirmations that this is the all-residential aggregate, i.e. the
+true successor to `zip_code_market_tracker`:
+
+1. Methodology, verbatim: *"All metrics cover residential properties: single family,
+   condo/co-op, townhouse, and multi-family (2-4 unit)."* Those are exactly the four
+   types the `property_types` dataset breaks out, so this file is their aggregate.
+2. Numerically **[M]**: on ZIPs where all four property-type rows exist, this file's
+   `HOMES SOLD`, `NEW LISTINGS`, `PENDING SALES`, `INVENTORY` and `ACTIVE LISTINGS`
+   equal the sum of the four parts to within +-1 to +-2 units. Each series is cured
+   independently, which accounts for the residual.
+3. Methodology on the window: *"For smaller geographies — cities, zip codes, and
+   neighborhoods — we aggregate over rolling three-month windows."* Identical
+   semantics to the old `PERIOD_DURATION == 90`.
+
+**Rejected alternatives.** `property_types/monthly/all_zips.csv` — 2.86 GB, carries
+`PROPERTY TYPE`, would have to be summed, and reintroduces exactly the aggregation
+bug §1 exists to kill. `housing_market/monthly/zips_in_top_50_metros.csv` — 364 MB
+but top-50-metro ZIPs only, an unacceptable coverage loss for a national choropleth.
+Weekly (`four_weeks`) files exist for country and metro **only**; there is no weekly
+ZIP series.
+
+### 1.5.3 Row structure
+
+Eight identifier columns, then 14 metrics each followed by its MoM and YoY column.
+
+| column | example | note |
+|---|---|---|
+| `LAST UPDATED` | `2026-08-03` | vintage of the whole file |
+| `FREQUENCY` | `Rolling 3 Months` | replaces `PERIOD_DURATION == 90` as the CONTRACT |
+| `PERIOD BEGIN` | `2026-05-01` | new; the old feed only gave the end |
+| `PERIOD END` | `2026-07-31` | primary date key |
+| `REGION ID` | `2509` | Redfin's internal id, not a ZCTA |
+| `REGION TYPE` | `Zip` | replaces `REGION_TYPE == 'zip code'` as the CONTRACT |
+| `REGION NAME` | `07002` | **bare 5-digit ZIP** |
+| `METRO` | `New York, NY metro area` | contains commas — quoted; never split on `,` |
+
+Four parser-breaking changes from the old TSV:
+
+- CSV, not gzipped TSV. `gzip.open` and the tab separator both go.
+- Headers are quoted, spaced, and carry units: `"MEDIAN SALE PRICE NSA ($)"`.
+- `REGION NAME` is a bare ZIP. `extract_zip_code()`'s `Zip Code:\s*(\d{5})` regex
+  matches **nothing**. Read `REGION NAME` directly and assert `REGION TYPE == 'Zip'`.
+- Missing values are the literal string `NA`, not empty. Requires `na_values=['NA']`,
+  otherwise every numeric column loads as `object` and silently coerces to `None`.
+
+`PROPERTY TYPE` and `IS SEASONALLY ADJUSTED` **do not exist in this file**. They exist
+only in `property_types/`, where `IS SEASONALLY ADJUSTED` is `false` throughout **[M]**.
+
+### 1.5.4 The 14 metrics, and what changed
+
+The `legacy name` column is Redfin's own **"Legacy Column Reference"** table from
+redfin.com/news/data-center/methodology/ (saved at `temp-redfin/`). Authoritative,
+not inferred; every row was checked against the raw CSV header. **[M]**
+
+| # | metric (file header) | legacy name | status |
+|---|---|---|---|
+| 1 | `HOMES SOLD` | homes_sold | unchanged |
+| 2 | `MEDIAN SALE PRICE NSA ($)` | median_sale_price | unchanged |
+| 3 | `MEDIAN DAYS ON MARKET (DAYS)` | median_dom | unchanged |
+| 4 | `AVERAGE SALE TO LIST RATIO (%)` | avg_sale_to_list | **already x100** |
+| 5 | `SHARE SOLD ABOVE ORIGINAL LIST (%)` | sold_above_list | **already x100 + REDEFINED** |
+| 6 | `NEW LISTINGS` | new_listings | unchanged |
+| 7 | `ACTIVE LISTINGS` | active_listings | **new to us** |
+| 8 | `INVENTORY` | inventory | unchanged |
+| 9 | `PENDING SALES` | pending_sales | unchanged |
+| 10 | `MEDIAN NEW LISTING PRICE ($)` | median_list_price | **REDEFINED** |
+| 11 | `MEDIAN NEW LISTING PRICE PER SQ.FT. ($)` | median_list_ppsf | **new to us** |
+| 12 | `MEDIAN SALE PRICE PER SQ.FT. ($)` | median_ppsf | unchanged |
+| 13 | `MONTHS OF SUPPLY` | months_of_supply | **new to us** |
+| 14 | `PERCENT OFF MARKET IN TWO WEEKS (%)` | off_market_in_two_weeks | **already x100** |
+
+Net: we used 11 Redfin metrics, we now get 14. Three genuinely new series —
+`ACTIVE LISTINGS` (homes available at any point in the window, 98.4% filled, a
+different question from `INVENTORY`'s end-of-period snapshot), `MONTHS OF SUPPLY`,
+and `MEDIAN NEW LISTING PRICE PER SQ.FT.`. Nothing we used was dropped.
+
+`PRICE DROPS` left this file for its own dataset,
+`price_drops/monthly/all_zips.csv`, same geography grid. We never shipped it.
+
+**Scaling. [C]** Every ratio, share and trend column arrives already in percent or
+percentage points — `101.34`, not `1.0134`. Trend columns are suffixed `(%)` for
+counts and prices, `(PPTS)` for rates and shares. **Delete the `* 100` in
+`_coerce_value()` for all of them, YoY included.** Getting this backwards is a
+silent 100x error that the all-null column guard will not catch.
+
+> **Two exceptions, and they run the other way — see §1.5.10 Defect 1.**
+> `MEDIAN DAYS ON MARKET YOY (%)` and `MONTHS OF SUPPLY YOY (%)` are **not percents**. They
+> are `(value[t] - value[t-12]) * 100`, mislabelled. They need a **division by 100**, not the
+> removal of a multiplication — and `_coerce_value()` already skips the `* 100` for any key
+> containing `dom`, so following the blanket rule above is a no-op there and ships the column
+> 100x too large. Read Defect 1 before touching `_coerce_value()`.
+
+### 1.5.5 Continuity: two series break, the rest survive
+
+Measured against our own published 2026-05-31 snapshot. Control set = the 8,414 ZIPs
+where old `homes_sold` equals new `HOMES SOLD` exactly, i.e. the old row happened to
+be the all-residential one. Within that set the `PROPERTY_TYPE` bug is neutralised, so
+any residual is a real change. **[M]**
+
+| series | exact match | median residual | verdict |
+|---|---|---|---|
+| `median_sale_price` | 97.1% | +$823 | continuous |
+| `median_ppsf` | 96.2% | +$0.79 | continuous |
+| `avg_sale_to_list_ratio` | 96.3% | -0.31 pp | continuous |
+| `median_sale_price_yoy` | 89.3% | -0.71 pp | continuous |
+| `homes_sold_yoy` | 89.4% | +4.05 pp | continuous |
+| `median_dom`, `new_listings`, `pending_sales`, `inventory` | 51-73% | -1 unit | revision noise |
+| `off_market_in_two_weeks` | 73.2% | +1.16 pp | minor drift |
+| **`sold_above_list`** | **74.3%** | **+6.70 pp** | **BREAK** |
+| **`median_list_price`** | **49.6%** | **+$8,200** | **BREAK** |
+
+`sold_above_list` is now measured against the **original** list price, so price-cut
+homes that resold above the *reduced* price no longer count. The 74.3% that still
+match are ZIPs where nothing was cut, so the two definitions coincide.
+`median_list_price` narrowed to **new listings only** and runs ~$8k below the old
+series.
+
+Neither is backward-comparable. Do not splice old and new history for them; when the
+time-series panel (§6, roadmap item 5) ships, either start those two series at
+2026-06 or mark the discontinuity on the axis.
+
+Across the full 19.5k matched ZIPs — not the control set — old counts run 25-50%
+**below** new (old/new ratio 0.67-0.79). That gap *is* the `PROPERTY_TYPE` bug from
+§1, and moving to this file removes it without a filter. **The
+`PROPERTY_TYPE == 'All Residential'` filter and the five-pair `(PROPERTY_TYPE,
+PROPERTY_TYPE_ID)` CONTRACT in §2.2 are now dead code. Delete them; do not port them.**
+
+### 1.5.6 MoM is gone at ZIP level, and deriving it would be wrong
+
+**[M]** `HOMES SOLD MOM (%)` and every other `MOM` column: **0 of 29,738** non-null in
+the latest ZIP period. Also NA in 2012 and 2020 spot checks. Redfin's own download UI
+greys out the MoM toggle when geography is Zip Codes.
+
+This is deliberate, and the gradient across geographies shows why **[M]**:
+
+| geography | window | MoM populated? |
+|---|---|---|
+| country | calendar month, seasonally adjusted | yes, all metrics except NSA median sale price |
+| metro | calendar month | partially — 15 / 134 |
+| **zip** | **rolling 3 months, NSA** | **none** |
+
+Deriving it from the adjacent period block is technically trivial — the previous
+period sits ~15 MB further into the same file — and it is the wrong call:
+
+1. **The windows overlap by two thirds.** May-Jul against Apr-Jun shares two of three
+   months. The result is not a month-over-month change; it is the change in a
+   3-month trailing mean under a one-month shift. It damps real movement and
+   manufactures smoothness, and a reader will read it as "what happened last month".
+2. **The data is not seasonally adjusted.** Redfin publishes MoM only where it has
+   run X-13ARIMA-SEATS, which is why country has it and ZIP does not. A raw NSA MoM
+   at ZIP level is dominated by season: every February prints a crash.
+3. **ZIP samples are too small.** Most ZIPs sell tens of homes per window. A
+   one-month shift is mostly sampling noise, and §6's own reliability work exists
+   precisely because these counts are thin.
+
+**Decision: drop MoM for all Redfin metrics. Keep YoY.** YoY is published for every
+metric, compares like season to like season, and needs no adjustment. If a
+shorter-horizon read is wanted later, take it from the history panel as a trend over
+several windows, not as a one-step difference.
+
+`zhvi_mom` **stays**. Zillow's ZHVI comes from
+`Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv` — `sm_sa` is smoothed and
+seasonally adjusted on true calendar months, so its MoM is the thing MoM is supposed
+to mean. This asymmetry is intentional and should be stated on the methodology page,
+otherwise it reads as an oversight.
+
+### 1.5.7 Output shape
+
+`KEY_ORDER` goes from 43 fields to 38: drop 11 `*_mom`, add 6 for the three new
+metrics.
+
+```
+city county state metro lat lng                     6  ZCTA metadata, unchanged
+period_end                                          1  from PERIOD END
+zhvi zhvi_mom zhvi_yoy                              3  Zillow, MoM retained
+<14 Redfin metrics> x (value, yoy)                 28
+                                                   --
+                                                   38
+```
+
+The columnar envelope (`{last_updated_utc, f, z, d}`) does not change shape. `f`
+shortens, so `compare_against_existing()` will see a field-list mismatch on the first
+run after the cutover — it rebuilds dicts from the *old* `f`, so every ZIP reads as
+changed. Expected once; do not treat it as a diff-gate failure (§8.5).
+
+Two acquisition consequences for §2:
+
+- **S1 ACQUIRE**: no `.gz`, so no decompression stage and no 12 GiB bomb guard on an
+  archive. The guard is now `Content-Length` against the 1,331,318,985 B expectation,
+  and because the ETag is a **single-part MD5** S1 gains a real integrity CONTRACT:
+  `md5(file) == etag.strip('"')`. Verified byte-identical locally **[M]**, §1.5.9.
+- **Range-GET is REJECTED for data.** An earlier draft proposed `Range: bytes=0-20000000`
+  for the monthly snapshot path. Three reasons it cannot be used:
+  1. **Insufficient.** At ~8.05 MB per period the lag-12 endpoint sits **~97 MB** into the
+     file, so a clean 13-period window needs >= 105 MB — 5.3x the proposed range. Phase 5
+     (K lag sweep, lag-12 YoY, AR(1), LISA, the 82-origin backtest) and Phase 7's history
+     need all **173** periods, i.e. the whole file. A 20 MB range yields raw levels and
+     nothing else.
+  2. **Unverifiable, and deceptively so.** S3 returns the *whole-object* ETag on a `206`.
+     A ranged path would carry `b1436909d98d5411891049c3ee882c70` in its response headers
+     while that digest cannot verify the bytes actually received, and the object exposes no
+     per-range checksum. `md5_verified: true` (§4.5) is achievable **only** on the
+     full-download path. This is precisely the silently-dead branch §8.3 forbids.
+  3. **Worthless.** 1.33 GB at ~22 MB/s **[E]** is ~60 s, on an account where Actions
+     minutes are not binding.
+
+  The one surviving ranged call is a **1 MB shape probe in S0**: `Range: bytes=0-1048575`,
+  read the 50-column header and the first data row's `PERIOD END`, then discard it. Nothing
+  derived from it is published, so it needs no integrity story; it costs ~0.2 s and lets S0
+  fail on schema drift or a stalled vintage before committing to the full download.
+- **The panel is rebuilt from the full file every month and never appended to.** §10.9's
+  argument against incremental append is *strengthened*, not weakened, by the new feed:
+  Redfin documents continuous in-place restatement of history plus a ~4-week curing window
+  (§1.5.10 Defect 2), and every one of the 4,930,000 rows carries the same `LAST UPDATED`,
+  so an appended panel would silently serve numbers Redfin has since revised. `S0`
+  fingerprints on `{ETag, Content-Length, sha256 of the first 1 MB, newest PERIOD END}` —
+  `Last-Modified` is recorded but excluded from the hash, and `LAST UPDATED` is excluded
+  from everything, because it is a stamp Redfin controls and not a property of the bytes.
+
+`housing_market/zip_lookup.csv` is referenced by `index.json` but returns **403**
+**[M]**. `public/data/zcta-meta.csv` stays the source for city/county/metro/lat/lng.
+
+### 1.5.8 Contracts in §2.2 that are now void
+
+| old CONTRACT | replacement |
+|---|---|
+| `PERIOD_DURATION == 90` | `FREQUENCY == 'Rolling 3 Months'` |
+| `REGION_TYPE == 'zip code'` | `REGION TYPE == 'Zip'` |
+| `IS_SEASONALLY_ADJUSTED == false` | column absent; assert it stays absent |
+| 5 `(PROPERTY_TYPE, PROPERTY_TYPE_ID)` pairs | column absent; assert it stays absent |
+| All-Residential filter totality | delete — the file *is* the aggregate |
+| `PROPERTY_TYPE_ID == -1` (S2) | delete |
+| Redfin MD5 on the `.gz` | S3 `ETag` on the CSV |
+| stale-data DRIFT warning at 120 d | **CONTRACT** hard-fail at 45 d — but see §2.3: the banner it replaces cannot render under a hard fail, and the clock must name which date it reads |
+| `RANGES` on the fraction scale (§8.4) | **void.** Percent scale: `avg_sale_to_list (50, 200)`, `sold_above_list (0, 101)`. §1.5.10 Defect 3 |
+| any assertion that the window is 90 days | **void.** 89-92 days, all four occur. §1.5.10 Defect 4 |
+| blanket `recomputed YoY == published YoY` | **void.** Per family only, and never on the newest period for counts. §1.5.10 Defect 2 |
+| panel shape `171 x 24,619` | **void.** Measure `P` and `Z` at S3 every run. §1.5.9 |
+
+PK uniqueness on `(PERIOD END, REGION NAME)` survives and matters more than before:
+it is now the only guard against Redfin re-introducing a breakout dimension.
+
+---
+
+### 1.5.9 Full-file verification — the whole 1.33 GB, not a sample [M]
+
+Everything above was established on the first 140 MB. On 2026-09-04 the complete file was
+downloaded and scanned end to end. Every claim below is from that scan; none is estimated.
+
+| property | measured | supersedes |
+|---|---|---|
+| bytes | 1,331,318,985 — byte-exact against `Content-Length` | — |
+| **md5 of the whole file** | `b1436909d98d5411891049c3ee882c70`, **identical to the S3 ETag** | the "multipart ETag, cannot verify" caveat applies to ZHVI, not to this file |
+| rows | **4,930,000**, zero ragged | 9,725,026 read / 3,298,202 kept |
+| periods `P` | **173**, `2012-03-31` .. `2026-07-31` | 171 |
+| distinct ZIPs `Z` | **33,952** ever · 29,738 latest · 26,148 latest with `HOMES SOLD` | 24,619 / 24,572 / 20,010 |
+| PK `(PERIOD END, REGION NAME)` | **0 duplicates** across all 4,930,000 rows | — |
+| `FREQUENCY` | `Rolling 3 Months`, uniform across all 4,930,000 rows | `PERIOD_DURATION == 90` |
+| `REGION TYPE` | `Zip`, uniform | `REGION_TYPE == 'zip code'` |
+| `LAST UPDATED` | `2026-08-03`, uniform — one vintage for the whole file | — |
+| MoM columns | **0 non-null cells** in 4,930,000 x 14 | closes §1.5.6 permanently |
+
+**The panel is `173 x 33,952`.** Every constant derived from `171 x 24,619` is void, including the
+"170 real month-over-month transitions" that the diff-gate threshold is calibrated on (§8.5, §9).
+Do not carry a period count forward from this document: `P` and `Z` are **measured at S3 on every
+full run**, written to `manifest.panel = {periods, zips}`, and asserted equal to the array shape.
+The values above are what they were on the 2026-08-03 vintage, not a contract.
+
+**Coverage, recomputed against ZCTA [M].** The Census 2020 ZCTA count is **33,791** — confirmed
+three ways from `cb_2020_us_zcta520_500k` (`.shx` file size, `.shx` header length word, and the
+`.dbf` record count), which settles §12 item 6. The 33,771 used elsewhere in this document is
+`zcta-meta.csv`'s row count; that is a *derived* file and it is 20 short. Use 33,791 as the
+denominator, and recompute any percentage in §1.1 or §6 that was taken against 33,771.
+
+| | new **[M]** | old (dead feed) |
+|---|---|---|
+| Redfin ZIPs ever / latest | 33,952 / 29,738 | 24,572 / 20,010 |
+| latest-period ZIPs that are ZCTAs | 28,920 | — |
+| orphans — Redfin ZIP with no ZCTA — latest / ever | **818 / 1,869** | 474 / 1,506 |
+| ZCTAs with no Redfin data, ever | **1,708** (5.1%) | — |
+| ZCTAs with no Redfin data in the latest period | **4,871 (14.4%)** | 6,664 (19.7%) |
+
+`Z` (33,952) now **exceeds** the ZCTA count (33,791): Redfin reports on 1,869 ZIPs that have no
+ZCTA polygon at all — PO-box and non-residential ZIPs. They are not drawable and must not be
+silently dropped; `orphans.json` (§3.2) is what makes them visible.
+
+---
+
+### 1.5.10 Four defects in the feed's own numbers [M]
+
+The migration is not a rename. Three columns do not mean what their headers say, and one period
+does not mean what the other 172 do.
+
+#### Defect 1 — `MEDIAN DAYS ON MARKET YOY (%)` and `MONTHS OF SUPPLY YOY (%)` are not percents
+
+They are the **absolute difference multiplied by 100**, carrying a `(%)` suffix that is a lie.
+
+```
+published = (value[t] - value[t-12]) * 100
+```
+
+Match against that formula at 3% tolerance: `median_dom` **77.4%** (2026-07) and **85.7%**
+(2026-03); `months_of_supply` **59.8%** and **68.9%**. The residual is Defect 2 plus integer
+rounding of the published level, not a second formula. Match against a true percent change:
+**0.3%** and **1.4%**.
+
+Proof it cannot be a percent change: **43.2%** of `median_dom` YoY values and **27.7%** of
+`months_of_supply` YoY values in the latest period are **below −100**, and `(new−old)/old` cannot
+be. Worked rows, 2026-07-31 against 2025-07-31:
+
+| ZIP | metric | new | prior | published YoY | (new−prior)×100 |
+|---|---|---|---|---|---|
+| 29709 | `median_dom` | 50 | 75 | −2496.42 | −2500 |
+| 65262 | `median_dom` | 13 | 55 | −4199.07 | −4200 |
+| 37828 | `months_of_supply` | 1.6 | 7.7 | −606.79 | −610 |
+
+The other twelve YoY columns are genuine: **zero** values below −100 in any of them.
+
+**Decision.** `median_dom_yoy` ships as a **change in days** and `months_of_supply_yoy` as a
+**change in months**, both `published / 100`. Neither is ever labelled a percent, and neither gets
+a `%` suffix in any UI surface.
+
+**The trap this sets, stated so nobody re-walks into it.** §1.5.4 says "delete the `* 100` in
+`_coerce_value()`". That function at `scripts/update_market_data.py:196` already branches on
+`'dom' in key` and skips the `* 100`, because the *old* feed shipped that column in days. Deleting
+a multiplication that is not there is a no-op, and the column then ships **100x too large**.
+`median_dom_yoy` and `months_of_supply_yoy` need a **division**, not the removal of a
+multiplication. This is the one column class where §1.5.4's blanket instruction is wrong.
+
+#### Defect 2 — in the newest period, the level and its YoY are computed on different bases
+
+Redfin's Methodology documents a pre-emptive revision adjustment: if past patterns show that ~5%
+additional home sales are typically reported after a month closes, they raise the estimate of that
+month by ~5% on day one of the following period, shrinking over a ~4-week curing window. What it
+does not say is that the adjustment reaches the **YoY** column and not the **level** column.
+
+Measured on ZIPs where `level[t] == level[t-12]` exactly — where a true YoY is 0 by construction —
+the published YoY is a single non-zero constant, and only in the newest period:
+
+| period end | homes_sold | active_listings | new_listings | pending_sales | inventory | median_sale_price |
+|---|---|---|---|---|---|---|
+| **2026-07-31** | **+2.71** | **+1.21** | **+1.43** | **+0.93** | **+7.09** | 0.00 |
+| 2026-06-30 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 2026-05-31 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 2026-04-30 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+| 2026-03-31 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+
+Confirmed by the implied multiplicative factor `(1 + yoy/100) / (level[t] / level[t-12])` over all
+matched pairs at 2026-07-31: `homes_sold` p05 0.9860 / p50 **1.0270** / p95 1.0272;
+`active_listings` p05 0.9943 / p50 **1.0120** / p95 1.0121; `median_sale_price` 1.0000 throughout.
+The lower tail is integer rounding of small counts, not a second regime.
+
+So the newest period's **count** levels are un-uplifted while its **YoY** is computed on uplifted
+values. Prices and rates are untouched. These constants are a property of the vintage, not of a
+ZIP; they shrink as the curing window closes and are 0 for every settled period.
+
+**Consequence — the YoY reconciliation CONTRACT must be per family, never blanket.** Recomputed
+lag-12 against published, 2026-07-31, at 0.5 / 2% tolerance:
+
+| family | agreement |
+|---|---|
+| `median_sale_price` · `median_ppsf` · `avg_sale_to_list` · `sold_above_list` · `off_market_in_two_weeks` | **100.0%** |
+| `homes_sold` 38.3% · `active_listings` 50.9% | disagrees by construction (the uplift) |
+| `median_dom` 0.3% · `months_of_supply` 1.4% | disagrees by unit (Defect 1) |
+
+§6.4's `1e-6` assertion is correct **only** for prices and rates, and only for periods older than
+the newest. Written as a blanket rule it hard-fails the pipeline every single month. It is also
+unattainable as stated for a second reason: the feed publishes YoY to **2 decimal places**, so
+`1e-6` relative is below the source's own quantisation.
+
+**`n` in `se(median) = K / sqrt(n)` is the published `HOMES SOLD`** — the un-uplifted count. That
+is the right choice: it is the actual number of observations behind the median. The uplifted count
+is a nowcast and would understate the error bar. Say so where `n` is defined.
+
+**The newest period is partly a forecast.** It is restated for ~4 weeks and revised indefinitely
+afterwards. `manifest.json` records the vintage (`LAST UPDATED`) and the measured uplift constants,
+so a later reader can tell how green a given month's numbers were when published.
+
+#### Defect 3 — bounded columns exceed their bounds
+
+| column | measured max | out of bound | reading |
+|---|---|---|---|
+| `SHARE SOLD ABOVE ORIGINAL LIST (%)` | **100.04** | 694 ZIPs > 100 | Defect 2's uplift overshooting a share |
+| `AVERAGE SALE TO LIST RATIO (%)` | **184.61** | 6,128 ZIPs > 100 | not a defect — homes sell over list |
+| `PERCENT OFF MARKET IN TWO WEEKS (%)` | 98.88 | none | |
+
+§8.4's `RANGES` is written on the fraction scale — `avg_sale_to_list: (0.5, 2.0)`,
+`sold_above_list: (0.0, 1.0)` — and rejects **every row** of the new feed. §2.2 keeps column ranges
+in the CONTRACT hard-fail tier, so this is a first-run stop, and §1.5.8 does not list it as void.
+**It is void.** On the percent scale the bounds are `avg_sale_to_list: (50, 200)` and
+`sold_above_list: (0, 101)`. The `101` is deliberate: a share above 100 is upstream nonsense, but
+it is *bounded* upstream nonsense, and a contract that fires on 694 ZIPs every month is a contract
+that gets switched off.
+
+#### Defect 4 — the window is 89 to 92 days, never uniformly 90
+
+`PERIOD BEGIN`..`PERIOD END` is a calendar-aligned rolling three months, so its inclusive length
+takes four values. Over all 4,930,000 rows **[M]**:
+
+| length | rows |
+|---|---|
+| 92 days | 2,857,977 |
+| 91 days | 1,026,380 |
+| 90 days | 733,207 |
+| 89 days | 312,436 |
+
+The old feed's uniform `PERIOD_DURATION == 90` has **no numeric successor**.
+`FREQUENCY == 'Rolling 3 Months'` (§1.5.8) is the contract. `snapshot.json` carries `period_start`
+and `period_end` and **not** `window_days`, and no UI copy may say "90 days" — §2.3's banner and
+§6.1's disclosure strings both currently do.
+
+---
+
 ## 2. Stage-by-stage pipeline architecture
 
 ```mermaid
 flowchart TD
-    subgraph MONTHLY["data.yml — monthly cron, 26th 06:00 UTC, ONE job"]
+    subgraph MONTHLY["data.yml — monthly cron, 26th 06:00 UTC · probe -> run -> publish"]
         S0["S0 PROBE · HEAD both sources · fingerprint vs manifest · 20 s"]
         S1["S1 ACQUIRE · stream to RUNNER_TEMP · Content-Length + Redfin MD5 · bomb guard 12 GiB · 90 s"]
         S2["S2 DECODE · pyarrow stream the .gz · ASSERT PK BEFORE FILTER · PROPERTY_TYPE_ID == -1 · 45 s"]
@@ -268,7 +783,7 @@ flowchart TD
 
     subgraph ANNUAL["geometry.yml — workflow_dispatch ONLY"]
         G1["mapshaper · visvalingam 20 m · keep-shapes · clean"]
-        G2["tippecanoe · -Z3 -z10 · --no-tiny-polygon-reduction"]
+        G2["tippecanoe · -Z2 -z10 · --no-tiny-polygon-reduction"]
         G3["verify_coverage.mjs · 100% ZCTA per zoom · FAIL BELOW 100%"]
         G1 --> G2 --> G3 --> GREL["release geometry-vN · ~20 MB pmtiles"]
     end
@@ -305,15 +820,28 @@ response (do not overwrite good data with suspect data) *is* unambiguous.
 
 ### 2.3 The dead-feed alarm, fixed
 
+> **SUPERSEDED BY §1.5.1 for the staleness threshold.** This section argued for warn-once
+> because a stale feed had **no available remediation** — the author cannot make Redfin
+> publish. That premise died on 2026-09-03: there is now a live replacement feed, so a frozen
+> source is an *actionable* condition and §1.5.1 correctly promotes it to a CONTRACT hard-fail
+> at 45 days. The banner and `upstream_stale_days` below still ship — they are what the site
+> shows during a real outage of the *new* feed. Only the warn-vs-fail decision is overridden.
+
 All three proposals specified a hard failure when Redfin's `Last-Modified` exceeds ~100 days.
-Redfin's `Last-Modified` is **2026-06-02**, 88 days old **[M]**. That check trips on
+Redfin's `Last-Modified` is **2026-06-02** — **93 days old as re-measured 2026-09-03** (was 88 when
+first written; the feed has not republished in the interim, which is itself the finding) **[M]**.
+That check trips on
 **2026-09-10** and then fires on the 26th of every month forever, opening a GitHub issue each
 time, for a condition the author cannot remediate.
 
 **Decision:** the staleness condition **warns once per unchanged fingerprint** and exits 0.
 The site holds the last good published data and renders a visible banner:
 
-> Data as of 90 days ending May 31, 2026. Upstream has not published since 2026-06-02.
+> Data as of the 3 months ending Jul 31, 2026. Upstream has not published since 2026-09-02.
+
+*(Rendered from `period_start`..`period_end` and `frequency`, never from a day count — the window
+is 89-92 days, §1.5.10 Defect 4. The date in this example is the current vintage; the string is
+manifest-driven and `upstream_stale_days` clears itself when a publication lands.)*
 
 The manifest records `upstream_stale_days`. A silent freeze and a monthly false page are both
 wrong; a visible banner is right.
@@ -338,16 +866,36 @@ that is the true key **[M]**.
 **The binding constraints are maintainability, dependency pinning, and alarm hygiene.** Any
 design decision justified by "it might not fit in the runner" is justified by a false premise.
 
-### 2.5 One job, not four
+### 2.5 Three jobs, not one and not four
 
 Proposal 2 split the monthly run into probe / ingest / derive / publish. Rejected. Four jobs cost
 four checkouts, two extra full `pip install`s (the pyarrow cp314 wheel alone is 47.8 MB), and a
 ~180 MB `upload-artifact` / `download-artifact` round trip — roughly **4 minutes of pure
 overhead**. Its only stated benefit is that a late-stage crash does not re-trigger the 1.55 GB
-download, and `actions/cache` keyed on the S0 fingerprint delivers exactly that **inside one job**.
+download, and `actions/cache` keyed on the S0 fingerprint delivers exactly that **inside the
+`run` job**.
 
 `probe` stays as its own 20-second `contents: read` job so the common "nothing changed" path
-never mounts a write token. Everything from S1 to S12 is one job.
+never mounts a write token.
+
+**Where the split actually lands.** An earlier draft of this section said "everything from S1 to
+S12 is one job." That contradicts §8.1 and §8.2, which both assume a separate `publish` — and
+§8.2's `deploy: needs: publish` cannot be written any other way. The resolution:
+
+| Job | Stages | Token | Wall clock |
+|---|---|---|---|
+| `probe` | S0 | `contents: read` | ~20 s |
+| `run` | S1–S11 | `contents: read` | ~10 min |
+| `publish` | S12 + the pointer commit + the `deploy.yml` call | `contents: write` | ~2 min |
+| `notify` | on failure only | `issues: write` | ~10 s |
+
+`run` hands `publish` only `build/publish/**` (~45 MB **[E]**) — not the ~180 MB Proposal 2 was
+moving, because `panel.parquet` and the bronze downloads stay on the runner and no downstream
+job needs them. One ~45 MB artifact round trip is ~25 s, and it buys the property that **the
+~10-minute parse of 1.55 GB of untrusted internet data never holds a token that can write to
+the repo.** That trade is worth 25 seconds. Proposal 2's four-way split, which also
+re-checks-out and re-`pip install`s per job, is not. `actions/cache` keyed on the S0
+fingerprint still delivers crash resumption inside `run`.
 
 ---
 
@@ -369,18 +917,47 @@ Everything else generated leaves git. Repo growth becomes **~6 KB/month**.
 
 | Asset | Raw | gzipped | Fetched by |
 |---|---|---|---|
-| `paint/<metric>.u8` x 12 | 100,000 B each **[C]** | ~28 KB **[E]** | **browser, on the critical path — exactly one at a time** |
+| `paint/<metric>.u8` **x 8** | 100,000 B each **[C]** | ~28 KB **[E]** | **browser, on the critical path — exactly one at a time** |
 | `snapshot.json` | ~4.5 MB **[E]** | ~1.2 MB **[E]** | browser, at first idle |
 | `history/<zip3>.json` x ~890 | ~39 MB total **[E]** | ~11 KB each **[E]** | browser, one per ZIP click (Phase 7) |
-| `panel.parquet` | ~55 MB **[E]** | — | local dev, gate calibration, forecast iteration. **Never fetched by the browser.** |
+| `panel.parquet` | **~262 MB [E from M]** | — | local dev, gate calibration, forecast iteration. **Never fetched by the browser.** |
+| `panel-digest.json` | ~30 KB **[E]** | — | **the only prior-month asset next month's run fetches** |
+| `revisions.json` | ~1 MB **[E]** | — | which `(period, metric)` cells Redfin restated in place since last month |
 | `manifest.json` | ~6 KB | — | next month's diff gate |
-| `orphans.json` | ~30 KB **[E]** | — | QA report |
+| `orphans.json` | ~55 KB **[E]** | — | QA report — **1,869 ZIPs ever, 818 in the latest period** (§1.5.9), not the 474/1,506 an earlier draft assumed |
+
+**The eight painted metrics, and why only eight [M].** Pairwise Spearman over the latest period
+collapses the 14 Redfin metrics onto about five independent axes. The five count metrics are one
+latent variable — `new_listings` against `active_listings` is **rho 0.986**, and every pair in
+that group is 0.91 or higher — and the four price metrics are another (0.81-0.89). Shipping all
+14 paint tables would ship five near-identical maps and four more.
+
+| painted | axis | note |
+|---|---|---|
+| `zhvi` | stock value | the forecast target; smoothest series |
+| `median_sale_price` | price level | the headline |
+| `median_ppsf` | price, size-adjusted | genuinely different spatial pattern from raw price |
+| `homes_sold` | volume | also `n` for every standard error, so it ships regardless |
+| `active_listings` | supply level | 98.7% filled over the full panel, the highest of any Redfin metric |
+| `median_dom` | speed | |
+| `sold_above_list` | competition | 0-100 range maps cleanly |
+| `months_of_supply` | balance | **least correlated metric in the set** (abs rho < 0.54 with everything) |
+
+Panel-only, with their strongest correlate: `median_list_price` (0.871 with `median_sale_price`),
+`median_list_ppsf` (0.888 with `median_ppsf`), `pending_sales` (0.978 with `homes_sold`),
+`new_listings` (0.986 with `active_listings`), `inventory` (0.980 with `active_listings`),
+`avg_sale_to_list_ratio` (0.694 with `sold_above_list`, and its range is 90-104 so a ramp is
+nearly flat), `off_market_in_two_weeks` (-0.538 with `median_dom`).
+
+**All 14 stay in `snapshot.json`.** The split is between what is on the wire and what is a map;
+the marginal wire cost of a panel-only metric is one integer column, and Phase 7's history needs
+them all. Only the eight above get a paint table, a dropdown slot and a `breaks` entry.
 
 ### 3.3 Geometry release `geometry-vN` (roughly annual)
 
 | Asset | Size | Notes |
 |---|---|---|
-| `us_zip_codes.pmtiles` | ~20 MB **[E]** | z3–z10, layer `us_zip_codes`, down from 92,590,855 B **[M]** |
+| `us_zip_codes.pmtiles` | ~20 MB **[E]** | z2–z10, layer `us_zip_codes`, down from 92,590,855 B **[M]** |
 | `zcta-geom.csv` | ~1.4 MB **[E]** | also committed; release copy is the provenance record |
 | `zcta-tiny-points.geojson` | ~40 KB **[E]** | inner points for sub-2 km ZCTAs (§5.6) |
 
@@ -392,23 +969,34 @@ Everything else generated leaves git. Repo growth becomes **~6 KB/month**.
 | `public/data/archive/**` (6 files, 15,154,430 B **[M]**) | Never read by the app; each monthly release **is** the archive. |
 | `.gitattributes` LFS rules, `lfs: true` x2 | 100% waste: `prune-dist.mjs` deletes `data/archive` from `dist` anyway, yet every checkout pulls 14.45 MiB against a 1 GiB/mo quota = **70 checkouts/mo ceiling** **[M]**. |
 | `src/lib/spatial-index.ts`, deps `rbush` + `@types/rbush` | Bug 3. ~7 KB gz off the bundle, 0 added. |
-| 12 `*_mom` columns | Bug 9. |
+| **11** Redfin `*_mom` columns | Bug 9, and §1.5.6: they are non-null for **0 of 4,930,000 rows**. `KEY_ORDER` really holds 12 `_mom` fields; the twelfth is `zhvi_mom`, which **stays** (§1.5.6, §6.4). Deleting all 12 is the mistake this row previously invited. |
 | `scripts/update_market_data.py` | Replaced by `pipeline/` (Phase 1). |
 
 ### 3.5 Build-local, gitignored
 
 ```
-$RUNNER_TEMP/bronze/redfin_zip_tracker.tsv.gz   1,548,403,907 B  [M]  NOT in the working tree
+$RUNNER_TEMP/bronze/redfin_all_zips.csv         1,331,318,985 B  [M]  NOT in the working tree
 $RUNNER_TEMP/bronze/zhvi_zip.csv                  123,065,811 B  [M]
-build/panel.parquet                                     ~55 MB   [E]
+build/panel.parquet                                    ~262 MB   [E from M]
+build/panel-digest.json                                 ~30 KB   [E]
 build/publish/**                                        ~45 MB   [E]
 build/live/**                                                          previous release, for the gate
 build/<stage>_report.json                                              stage handshake
 .cache/**                                                              dev only, keyed by upstream ETag
 ```
 
-`.gitignore` gains: `build/`, `.cache/`, `*.tsv*.gz`, `public/data/*.pmtiles`, `public/data/*.u8`,
-`public/data/snapshot.json`, `public/data/history/`.
+`.gitignore` gains: `build/`, `.cache/`, `public/data/*.pmtiles`, `public/data/*.u8`,
+`public/data/snapshot.json`, `public/data/history/`, and — replacing the old `*.tsv*.gz` —
+**`temp-*/`**, **`*.csv.gz`**, **`*.tsv*.gz`**.
+
+> **`*.tsv*.gz` no longer matches the thing it was written to stop.** The new feed is a plain
+> `.csv`, so the old rule ignores nothing. This is not hypothetical: `temp-redfin/` (1.5 GB of
+> CSVs) and `public/data/temp-geo/` (167 MB of shapefile) are both sitting untracked in the
+> working tree as of 2026-09-04, which is exactly what Phase 0.3 forbids. A bare `*.csv` rule is
+> **wrong** — `public/data/zcta-meta.csv` and `zcta-geom.csv` are committed on purpose — so the
+> rule must be directory-scoped (`temp-*/`), and the download path must use
+> `tempfile.mkdtemp()` under `$RUNNER_TEMP` with a `finally` that removes it. Ignoring a file is
+> the second line of defence; not writing it into the tree is the first.
 
 ### 3.6 Deploy budget
 
@@ -482,7 +1070,7 @@ const classOf       = (zip: string) =>  (table[+zip] & 0x0F) - 1;   // -1 = no d
 const reliabilityOf = (zip: string) => ((table[+zip] >> 4) & 0x03);
 ```
 
-**Why a 100,000-byte direct index rather than a dense 33,771-byte array plus a sorted ZIP list:**
+**Why a 100,000-byte direct index rather than a dense 33,791-byte array plus a sorted ZIP list:**
 ZIP codes are five digits, so the ZIP *is* the array index — a true perfect hash requiring no
 lookup structure, no parse, no worker, and no build step you can forget. 66% of the address space
 is empty and gzip does not care. The dense alternative gzips to ~15 KB but then needs the sorted
@@ -493,6 +1081,25 @@ ZIP list (~86 KB gz) plus a binary search, which is strictly worse **[M]**.
 wire **[M]**. Naming a file `.u8.gz` would make the browser inflate once and any manual
 `DecompressionStream` call inflate again and fail.
 
+**The reliability nibble is metric-invariant, and this is what makes §4.3's cross-artifact
+assertion writable.** Bits 4-5 always carry the ZIP's `MEDIAN SALE PRICE` tier from §6.2 — a
+property of the *transaction sample* in this ZIP-period, not of the painted metric — so the nibble
+is byte-identical across every paint table and equals `snapshot.rel`. §6.2 fits `K` for
+`MEDIAN_SALE_PRICE` only, so a per-metric tier has no defined value for 13 of the 15 metrics
+anyway, and a per-metric encoder would fail §4.3's own assertion on its first run.
+
+**The one carve-out.** `ACTIVE LISTINGS` is a listing-side series that does not depend on sales at
+all, and **3,393 ZIPs in the latest period have an `ACTIVE LISTINGS` value with `HOMES SOLD` null**
+**[M]** — for those, `rse = 0.5395 / sqrt(0)` is undefined. So: where `HOMES SOLD` is null or zero
+the encoder emits tier **0** (§4.2 already fixes 0 = low; it is not given a second meaning), and
+the client **MUST NOT** apply §7.9's 0.38 reliability fade when the painted metric is
+`ACTIVE_LISTINGS`. Dimming a listings map by a sales statistic — and dimming it hardest exactly
+where there were no sales — is a lie the byte layout would otherwise make easy.
+
+`MONTHS_OF_SUPPLY` is **not** carved out: it is inventory divided by the sales rate, so it does
+derive from `HOMES SOLD`, and measured, all 24,593 ZIPs carrying a `MONTHS OF SUPPLY` value also
+carry `HOMES SOLD` **[M]**. The fade is correct there.
+
 **Integrity.** The filename carries the first 8 hex of the file's SHA-256. `manifest.json` names
 it and declares `classes: 7`. The client asserts `byteLength === 100000` and
 `manifest.classes === CHOROPLETH_COLORS.length` and **refuses to paint on mismatch** rather than
@@ -500,74 +1107,191 @@ painting a lie.
 
 ### 4.3 `snapshot-<hash8>.json` — the interaction artifact
 
+> **Rewritten 2026-09-04.** The previous version declared `len(f) == 34` carrying 11 Redfin base
+> metrics and exactly 3 YoY columns, on the fraction scale, with `window_days: 90`. That shape was
+> the dead feed's and is incompatible with §1.5.7. Nine independent audit lenses flagged it; it was
+> the most-reported defect in the document. Everything below is the replacement.
+
 Columnar, the shape the repo already uses, extended with dictionaries and declared scales.
 
 ```jsonc
 {
   "format": "domapus-snapshot",
-  "version": 2,
-  "built_utc": "2026-08-30T06:04:11Z",
-  "period_start": "2026-03-01",
-  "period_end": "2026-05-31",
-  "window_days": 90,                  // carried so the UI cannot forget
-  "zhvi_month": "2026-07-31",
+  "version": 3,
+  "built_utc": "2026-09-26T06:04:11Z",
+  "period_start": "2026-05-01",       // from PERIOD BEGIN
+  "period_end":   "2026-07-31",       // from PERIOD END
+  "frequency":    "Rolling 3 Months", // verbatim from the feed. There is NO window_days.
+  "vintage":      "2026-08-03",       // LAST UPDATED — the curing vintage, see §1.5.10 Defect 2
+  "zhvi_month":   "2026-07-31",
   "classes": 7,
-  "dicts": {
-    "st": ["AK", "AL", ...],          // 53 entries   [M]
-    "ci": ["Aaronsburg", ...],        // 17,732       [M]
-    "co": ["Abbeville County", ...],  // 1,908        [M]
-    "me": ["Abilene, TX", ...]        // 869          [M]
-  },
-  "scales": { "lat": 1e5, "lng": 1e5, "bw": 1e4, "ppsf": 100, "stl": 1000, "rse": 10000, "yoy": 10000 },
-  "breaks": {                          // K-1 = 6 edges per metric, computed over n>=30 ONLY
-    "zhvi":              [ ... ],
-    "median_sale_price": [ ... ]
-  },
-  "classing": { "zhvi": "log-equal", "homes_sold": "quantile", "msp_yoy": "diverging" },
-  "f": ["st","ci","co","me","lat","lng","bw","bs","be","bn","cov", ...],  // 30 names
-  "z": ["00501","00544", ...],        // 33,771 sorted, 5-char, zero-padded
-  "d": [[ ... ], ...]                 // 30 arrays, each length === z.length. COLUMN-major.
+  "dicts": { "st": ["AK", ...], "ci": [...], "co": [...], "me": [...] },
+  "scales": { ... },                  // see below — EVERY name in f appears here
+  "breaks":  { ... },                 // K-1 = 6 edges, for the 9 PAINTED columns only
+  "classing": { ... },                // scheme per painted column
+  "f": [ ... ],                        // 50 names. THE ORDER IS THE CONTRACT.
+  "z": ["00501", ...],                // sorted, 5-char, zero-padded
+  "d": [[ ... ], ...]                 // 50 arrays, each length === z.length. COLUMN-major.
 }
 ```
 
-**Note `d` is column-major** (one array per field), unlike the current file which is row-major
-(one array per ZIP). This is what allows the worker to convert each column directly into a typed
-array in one pass with no per-ZIP object.
+**`window_days` is gone.** The window is 89-92 days depending on the calendar month (§1.5.10
+Defect 4); a single integer cannot express it and the old value of `90` was simply false for most
+periods. The UI renders the window from `period_start`..`period_end` and labels it with
+`frequency`, never with a day count.
 
-The 30 columns:
+#### The 15 metrics — the one table every other section must agree with
+
+`short` is the wire name. It is chosen to be unambiguous: an earlier draft used `stl` and `sal`
+side by side, which read as "sale-to-list" and "sold-to-list" and could not be told apart.
+
+| # | metric key | Redfin header | short | unit shipped | scale | frontend format | painted |
+|---|---|---|---|---|---|---|---|
+| 1 | `zhvi` | *(Zillow ZHVI)* | `zhvi` | dollars | 1 | price | **yes** |
+| 2 | `median_sale_price` | `MEDIAN SALE PRICE NSA ($)` | `msp` | dollars | 1 | price | **yes** |
+| 3 | `median_ppsf` | `MEDIAN SALE PRICE PER SQ.FT. ($)` | `ppsf` | $/sqft | 100 | price | **yes** |
+| 4 | `homes_sold` | `HOMES SOLD` | `hs` | count | 1 | number | **yes** |
+| 5 | `active_listings` | `ACTIVE LISTINGS` | `al` | count | 1 | number | **yes** |
+| 6 | `median_dom` | `MEDIAN DAYS ON MARKET (DAYS)` | `dom` | days | 1 | days | **yes** |
+| 7 | `sold_above_list` | `SHARE SOLD ABOVE ORIGINAL LIST (%)` | `abv` | percent, 0..101 | 100 | percent | **yes** |
+| 8 | `months_of_supply` | `MONTHS OF SUPPLY` | `mos` | months | 100 | number, 1 dp | **yes** |
+| 9 | `median_list_price` | `MEDIAN NEW LISTING PRICE ($)` | `mlp` | dollars | 1 | price | no |
+| 10 | `median_list_ppsf` | `MEDIAN NEW LISTING PRICE PER SQ.FT. ($)` | `lppsf` | $/sqft | 100 | price | no |
+| 11 | `pending_sales` | `PENDING SALES` | `ps` | count | 1 | number | no |
+| 12 | `new_listings` | `NEW LISTINGS` | `nl` | count | 1 | number | no |
+| 13 | `inventory` | `INVENTORY` | `inv` | count | 1 | number | no |
+| 14 | `avg_sale_to_list_ratio` | `AVERAGE SALE TO LIST RATIO (%)` | `s2l` | percent, 50..200 | 100 | percent | no |
+| 15 | `off_market_in_two_weeks` | `PERCENT OFF MARKET IN TWO WEEKS (%)` | `om2` | percent, 0..100 | 100 | percent | no |
+
+Rows 1-8 are painted; the justification for stopping at eight — a measured redundancy argument,
+not a taste one — is in §3.2. Rows 9-15 are carried on the wire and shown in the ZIP detail panel.
+
+#### The 15 YoY columns, and their three incompatible units
+
+Every metric gets a YoY. **They are not all the same kind of number**, which is why one shared
+legend cannot serve them and why only one of them is painted.
+
+**ONE RULE: every change metric is recomputed by us from published levels, in the metric's own
+native unit. No Redfin `*_YOY` column is ever republished.**
+
+| family | columns | shipped as |
+|---|---|---|
+| ratio (9) | `msp` `mlp` `ppsf` `lppsf` `hs` `ps` `nl` `inv` `al` | percent change from levels, 2 dp, scale 100 |
+| point (3) | `s2l` `abv` `om2` | percentage-point difference from levels, scale 100 |
+| **difference (2)** | **`dom` `mos`** | **level difference in native units** — whole days (`dom_yoy_d`), months to 2 dp (`mos_yoy_m`) |
+| index (1) | `zhvi` | percent change from levels, 2 dp, scale 100 |
+
+Recomputing uniformly is what makes the displayed level and the displayed change describe the
+**same quantity**, which is the premise of this document. It also disposes of §1.5.10 Defect 1
+without a correction factor: the broken `MEDIAN DAYS ON MARKET YOY (%)` and `MONTHS OF SUPPLY
+YOY (%)` columns are simply **never read**, so there is no `/100` to remember and no trap left.
+
+The cost is confined to the newest period, where our recomputed count YoY runs ~1-7 pp below
+Redfin's published figure because theirs carries the curing uplift and ours does not (§1.5.10
+Defect 2). Prices and rates are unaffected — recomputed equals published at **100.0%**.
+
+**YoY is a percent change, not a log difference.** §6.4 currently defines
+`yoy = log(msp[t]) - log(msp[t-12])` and then asserts it reproduces Redfin's published column to
+`rtol=1e-6`. A log difference and a percent change are equal only at zero — at +25% the gap is
+2.686 pp — so that assertion can never pass, and per Defect 2 a blanket recomputed-equals-published
+contract hard-fails on every count metric regardless. The log form survives **only** inside §6.7's
+forecasting, where it never reaches the UI.
+
+**The surviving reconciliation CONTRACT**, price and rate columns only, periods older than the
+newest: `abs(recomputed - published) <= 0.02`. That is the feed's own 2 dp quantisation, and it
+is the check that would have caught a lag-4 error.
+
+**`zhvi_yoy` is the only painted YoY.** Redfin's ZIP-level median-price YoY exceeds ±25% for
+**29-41% of ZIPs in every year measured, 2012 through 2026** **[M]** — a diverging map of it is a
+saturated noise field. ZHVI is `sm_sa`, smoothed and seasonally adjusted, with ~0.12% month noise
+against Redfin's ~3.5% on a median ZIP sample of 14 sales, so it is the only change series stable
+enough to colour a national map. The two dispersions differ by an order of magnitude and the two
+series must never share a class scale — see §6.6, where the diverging bound is derived from
+`zhvi_yoy` and lands at **±20%**, not the ±25% an earlier draft justified against the *unpainted*
+`median_sale_price_yoy`.
+Every other YoY is detail-panel only.
+
+`zhvi_mom` ships and no Redfin `*_mom` does. That asymmetry is deliberate and is explained in
+§1.5.6 and §6.4; it must be stated on the methodology page or it reads as an oversight.
+
+#### `f` — 50 names, and the order is the contract
+
+```
+["st","ci","co","me","lat","lng","bw","bs","be","bn","cov",
+ "msp","ppsf","hs","al","dom","abv","mos","zhvi",
+ "mlp","lppsf","ps","nl","inv","s2l","om2",
+ "msp_yoy","ppsf_yoy","hs_yoy","al_yoy","dom_yoy_d","abv_yoy","mos_yoy_m","zhvi_yoy",
+ "mlp_yoy","lppsf_yoy","ps_yoy","nl_yoy","inv_yoy","s2l_yoy","om2_yoy",
+ "zhvi_mom",
+ "msp_rse","dom_rse","rel","msp_yoy_se","f_h12","f_sigma","f_tier","lisa"]
+```
+
+11 metadata + 8 painted metrics + 7 panel-only metrics + 8 painted YoY + 7 panel-only YoY +
+`zhvi_mom` + 8 statistics = **50**. Emitted from the single constant `SNAPSHOT_COLUMNS` in
+`pipeline/serialize.py`, never typed by hand.
 
 ```
 st ci co me            dictionary codes, uint16 (uint8 for st)
-lat lng                int, x1e5
-bw bs be bn            int, x1e4, OFFSETS from (lng, lat) — real polygon bbox, from zcta-geom.csv
+lat lng                int32, x1e5   (~1.1 m — the anchor the popup and dot layer use)
+bw bs be bn            INT32, x1e4   OFFSETS from (lng, lat) — real polygon bbox, from zcta-geom.csv
 cov                    uint8  0=none 1=zhvi_only 2=redfin_only 3=both
-msp mlp ppsf           int, whole dollars (ppsf x100)
-hs ps nl inv dom       int
-stl sal om2            int, ratio x1000
-zhvi                   int, whole dollars
-msp_rse dom_rse        int, x10000   (relative standard error as a fraction)
-rel                    uint8  0..3   reliability tier
-msp_yoy zhvi_yoy hs_yoy   int, x10000 (log change as a fraction)
-msp_yoy_se             int, x10000
-f_h12 f_sigma f_tier   forecast level (dollars), residual sd (x10000), tier uint8
+msp mlp ppsf lppsf     int32, dollars (ppsf and lppsf x100)
+hs ps nl inv al        int32, counts
+dom                    int32, days
+mos                    int32, months x100
+s2l abv om2            int32, percent x100
+zhvi                   int32, dollars
+*_yoy                  int32, percent or percentage points x100
+dom_yoy_d              int32, DAYS x100        -- not a percent. See 1.5.10 Defect 1.
+mos_yoy_m              int32, MONTHS x100      -- not a percent. See 1.5.10 Defect 1.
+zhvi_mom               int32, percent x100
+msp_rse dom_rse        int32, x1e4   (relative standard error as a fraction)
+rel                    uint8  0..3   reliability tier -- of the SALE SAMPLE, see 4.2
+msp_yoy_se             int32, x1e4
+f_h12 f_sigma f_tier   forecast level (dollars), residual sd (x1e4), tier uint8
 lisa                   uint8  0=ns 1=HH 2=LL 3=LH 4=HL
 ```
 
-Null is JSON `null`. All numbers are integers with a declared scale — no floats on the wire.
+**`bw bs be bn` are `int32`, not `int16`.** The widest ZCTA is 99503 (Anchorage) at **8.3966°**
+of longitude, which is **83,966** at the ×1e4 scale; the tallest is 3.3268° → 33,268 **[M]**. Both
+overflow `int16`'s 32,767. An `Int16Array` here wraps Alaska's bboxes silently.
 
-**Encoder assertions (CONTRACT tier):**
+**Precision, and why 4 dp is the right stopping point.** 0.0001° is ~11.1 m of latitude and ~8.5 m
+of longitude at 40°N. At z10 — the deepest zoom in the planned tileset — one CSS pixel is ~117 m at
+that latitude, so a 4 dp offset is about one fourteenth of a pixel, and the geometry is simplified
+at a 20 m tolerance upstream anyway (§5.2). More precision on the offsets would be unusable. The
+**anchor** `lat`/`lng` stays at 5 dp (~1.1 m) because it is what the popup and the tiny-ZIP dot
+layer position against, and the extra digit costs ~34 KB pre-gzip across 33,791 rows.
+
+**Null is JSON `null`, and it must survive the typed-array conversion.** `0` is a legal value for
+`hs`, `dom`, `abv`, `om2`, `cov`, `rel` and `lisa`, so a one-pass `Int32Array` conversion that maps
+`null → 0` destroys real zeros. Each numeric column carries a companion presence bitmap, or uses
+`INT32_MIN` as the sentinel — pick one in `pipeline/serialize.py`, declare it in the envelope as
+`"null_sentinel"`, and assert it round-trips.
+
+#### Encoder assertions (CONTRACT tier)
+
+- `f == SNAPSHOT_COLUMNS` exactly, and `len(f) == 50`.
 - `d.length === f.length`; every `d[j].length === z.length`.
+- **Every name in `f` has an entry in `scales`.** A missing scale is silent: the column decodes
+  unscaled and a 4.6% relative standard error reaches the popup as the number 46.
 - `z` is sorted, unique, every entry exactly 5 chars, zero-padded. *(The leftover
   `scratchpad/panel_allres.tsv` stores ZIP as an integer and silently destroys leading zeros —
   `00501` becomes `501`. That trap is why this is asserted.)*
 - Every dictionary code `< len(dict)`.
-- `len(breaks[m]) === classes - 1` for every metric.
+- `len(breaks[m]) === classes - 1` for each of the **9 painted columns** (8 metrics + `zhvi_yoy`),
+  and `breaks` has **no** entry for an unpainted column. `sum(class_counts) == non-null count` for
+  each — §12 item 12 exists because that assertion was missing.
+- Range assertions on the percent-scale columns, per §1.5.10 Defect 3: `s2l` in (50, 200),
+  `abv` in (0, 101).
 - **Round-trip:** reload the emitted JSON, reconstruct dicts and scales, assert exact equality
-  against the in-memory arrays for a 200-ZIP sample.
-- **Cross-artifact:** for every ZIP and every metric,
+  against the in-memory arrays for a 200-ZIP sample, including at least 20 ZIPs carrying a real
+  `0` and 20 carrying `null` in the same column.
+- **Cross-artifact:** for every painted metric and every ZIP,
   `(paint[metric][int(zip)] & 0x0F) - 1 === class_of(snapshot, metric, zip)` and
   `(paint[metric][int(zip)] >> 4) & 3 === snapshot.rel[zip]`. This is the fix for the
-  "two class authorities" flaw (§7.5).
+  "two class authorities" flaw (§7.5), and it is writable only because the reliability nibble is
+  metric-invariant (§4.2).
 
 ### 4.4 `history/<zip3>.json` — per-ZIP time series (Phase 7)
 
@@ -621,7 +1345,10 @@ data).
   "noise":  { "K_lag": [0.2315,0.3915,0.5395,0.5619,0.5823,0.5923,0.5897],
               "K": 0.5395, "K_lag_used": 3, "plateau_ratio": 1.0415,
               "refined": { "a": 0.51, "floor": 0.008 },
-              "tiers_pct": [3.8, 15.7, 23.2, 57.3], "rankable_n": 8544, "rankable_pct": 42.7 },
+              // Keyed, not positional: tier CODES run 0=low..3=high (§6.2) while this list reads
+              // high->low, so a bare array invites reading it in tier order and inverting it.
+              "tiers_pct": {"high": 3.8, "good": 15.7, "fair": 23.2, "low": 57.3},
+              "rankable_n": 8544, "rankable_pct": 42.7 },
   "forecast": { "model": "AR(1) on log growth, W=36, rho clip [0,0.98], shrink 0.5 to median",
                 "rho_median": 0.9065, "origins": 82, "eligible_zips": 11583,
                 "mae_log_x100": { "ar1": [0.255,1.090,2.437,4.961],
@@ -632,13 +1359,21 @@ data).
                 "published_band": "empirical" },
   "spatial": { "moran_i": { "k4":0.687, "k8":0.660, "k16":0.623, "k32":0.582 },
                "k": 8, "perms": 999, "fdr_q": 0.05, "gate_n": 30,
-               "bonferroni_threshold": 2.56e-6, "min_attainable_p": 1e-3,
+               "n_gated": 8544,
+               "bonferroni_threshold": 5.85e-6,     // 0.05 / n_gated, NOT 0.05 / 19,536
+               "min_attainable_p": 1e-3,
                "bonferroni_attainable": false,
                "lisa_counts": {"ns":..., "HH":..., "LL":..., "LH":..., "HL":...},
                "lisa_median_n_by_class": {"HH":..., "LL":..., "LH":..., "HL":...} },
   "gate": { "verdict": "pass", "failures": [], "overridden": false, "override_reason": "" },
+  // Every LEAF under `assets` is an object carrying both `file` and `sha256`. deploy.yml walks
+  // the tree for that pair (§8.2), so a bare filename string here would silently drop the
+  // asset out of the integrity check rather than failing.
   "assets": { "snapshot": {"file":"snapshot-a3f9c1d2.json","sha256":"...","bytes":...},
-              "paint": {"zhvi":"paint/zhvi-7d2e0844.u8", ...} },
+              "paint": {
+                "zhvi":              {"file":"paint/zhvi-7d2e0844.u8","sha256":"...","bytes":100000},
+                "median_sale_price": {"file":"paint/median_sale_price-1b9f30ac.u8","sha256":"...","bytes":100000}
+              } },
   "env": { "python":"3.14.1", "pandas":"2.3.3", "numpy":"2.3.4", "pyarrow":"22.0.0",
            "scipy":"1.16.2", "runner":"ubuntu-24.04" }
 }
@@ -672,6 +1407,12 @@ basemap streets. Judgement: acceptable, because in this app the polygon is a dat
 survey boundary. `ZCTA_SOURCE=tiger` is kept as a documented switch that adds one
 `-clip cb_2020_us_state_500k.shp` step. **Before shipping, run `mapshaper cb_2020_us_zcta520_500k.shp -info`
 and record median vertex spacing in `geometry.lock.json`; if it exceeds ~150 m, take the TIGER branch.**
+
+**There is no coarser CB option to fall back to.** Measured 2026-09-03: `cb_2020_us_zcta520_500k.zip`
+returns 200, and `cb_2020_us_zcta520_5m.zip` and `cb_2020_us_zcta520_20m.zip` both return **404** **[M]**.
+Census does not publish 1:5,000,000 or 1:20,000,000 cartographic boundaries for ZCTAs the way it does
+for states and counties. So the choice is exactly two-way — CB 500k or TIGER — and the `ZCTA_SOURCE`
+switch above is the only branch that exists.
 
 ### 5.2 Step 1 — mapshaper
 
@@ -719,7 +1460,7 @@ tippecanoe \
   -o build/us_zip_codes.pmtiles \
   -l us_zip_codes \
   -n "Domapus US ZCTA (2020 vintage, CB 1:500k)" \
-  -Z3 -z10 \
+  -Z2 -z10 \
   --no-tiny-polygon-reduction \
   --no-simplification-of-shared-nodes \
   --no-feature-limit \
@@ -734,7 +1475,7 @@ tippecanoe \
 
 | Flag | Why |
 |---|---|
-| `-Z3` | The app sets `minZoom: 3`. MapLibre vector sources **do not underzoom** — below the source minzoom nothing renders. z3 costs only 0.84 MB **[M]**, so keep it. |
+| `-Z2` | **Underzoom does not exist.** MapLibre vector sources render *nothing* below the source minzoom — unlike the maxzoom side, where overzoom is native. That asymmetry is the whole reason this is z2 and not z3. The app sets `minZoom: 3` for the main map, but the **export insets fit Alaska and Hawaii below z3** and today render blank, worked around by a hand-tightened bbox that cuts off the Aleutians (`PrintStage.tsx:28-34`). z3 costs 0.84 MB **[M]** and each level down is ~4x fewer tiles, so z2 adds ~0.2–0.3 MB **[E]** — the cheapest bug fix in this document. Do **not** extend the top end to compensate: see `-z10`. |
 | `-z10` | z11 + z12 are **58.3 MB = 63%** of the 92 MB archive **[M]** (z11 20.49 + z12 37.78). z10 quantization is 7.5 m against a 30 m pixel at the app's `maxZoom: 12`, so the display error is **0.25 px**. MapLibre overzooms past a source's maxzoom natively; feature-state, hover and click all keep working. **Leave a comment at `MapLibreMap.tsx:142` tying `maxZoom` to this number** — if anyone raises `maxZoom` past 14 the edges go visibly soft. |
 | `--no-tiny-polygon-reduction` | **Bug 2.** Stops the merged-representative-square misattribution. |
 | `--no-feature-limit --no-tile-size-limit` | Removes tippecanoe's drop paths entirely. Safe by construction at these zooms: max measured tile is 65.9 KB gz at z7 against a 500 KB *raw* cap **[M]**. Assertion A6 is what keeps this honest for a future vintage. |
@@ -784,8 +1525,11 @@ zcta,lon,lat,bw,bs,be,bn
 ```
 
 `bw/bs/be/bn` are **absolute** degrees in the CSV; the snapshot re-encodes them as int offsets
-from `(lng, lat)` at 1e-4 (~11 m) to compress. Assert every offset fits `int16` at 1e-4
-(±3.2767°) and clamp-with-warning the handful of Alaska ZCTAs that exceed it.
+from `(lng, lat)` at 1e-4 (~11 m) to compress. **No `int16` bound, and nothing is clamped.**
+The offsets travel as JSON integers (§4.3) and land in an `Int32Array` (§7.7), so a 16-bit
+range buys nothing — and clamping the handful of ZCTAs wider than ±3.2767°, all of them in
+Alaska, would shrink exactly the bboxes Bug 3 already got wrong. Assert instead that every
+offset is finite and within ±180° at 1e-4, with `be > bw` and `bn > bs`.
 
 **This one file fixes four separate things:** the auto-scale viewport sample (§7.6), `flyTo`
 (`fitBounds` on the real polygon instead of hardcoded zoom 10 on a centroid), `PrintStage`'s
@@ -804,7 +1548,7 @@ mapshaper public/data/zcta-geom.csv \
   -o public/data/zcta-tiny-points.geojson format=geojson precision=0.00001
 ```
 
-~1,000 features, ~40 KB **[E]**. Rendered as a `circle` layer *under* the fill, visible z3–z10,
+~1,000 features, ~40 KB **[E]**. Rendered as a `circle` layer *under* the fill, visible z2–z10,
 colored by the **same** constant `match` on the **same** feature id. Dense downtown ZIPs then show
 as 3 px dots instead of vanishing.
 
@@ -819,9 +1563,9 @@ is a deliberate, evidence-based cut and not an oversight.
 | A2 | Every `ZCTA5CE20` is exactly 5 characters and unique. |
 | A3 | No feature bbox wider than 180° (the trans-antimeridian signature). Verified absent today — the westernmost is Adak, 99546, near −176.6° — so this is a future-vintage tripwire. |
 | A4 | Overall bounds inside `[-180,-64] x [17,72]`. **Log the exact list of territory-filtered features and assert the count** against the lock file, so a silent change in the source cannot silently change the map. |
-| A5 | Every bbox offset fits `int16` at 1e-4°; clamp-and-warn, never clamp silently. |
+| A5 | Every bbox offset is finite and within ±180° at 1e-4°, with `be > bw` and `bn > bs`. **Never clamped** — see §5.5 for why an `int16` bound would re-create a small Bug 3. |
 | A6 | Max **raw** tile size < 500,000 B at every zoom. This is the only thing standing between a future vintage and a pathological tile now that the size limit is off. |
-| **A7** | **COVERAGE. `verify_coverage.mjs` decodes the finished `.pmtiles` and asserts `distinct ZCTA5CE20 count == source feature count` at EVERY zoom z3..z10.** The absence of this check is why a 6% coverage loss concentrated in Manhattan and DC shipped unnoticed. |
+| **A7** | **COVERAGE. `verify_coverage.mjs` decodes the finished `.pmtiles` and asserts `distinct ZCTA5CE20 count == source feature count` at EVERY zoom z2..z10.** The absence of this check is why a 6% coverage loss concentrated in Manhattan and DC shipped unnoticed. |
 | A8 | JOIN reconciliation. Every ZIP in `zcta-meta.csv` has a polygon or is on the documented 19-entry point-ZIP allow-list; every tile ZCTA has data or is on the 9-entry no-data list. **Print both lists.** |
 
 ### 5.8 `scripts/geometry/verify_coverage.mjs` — implementation notes
@@ -856,7 +1600,7 @@ is absent. A map with no polygons and a green check is the worst possible outcom
 |---|---|---|
 | What it is | Median **sale price of transactions that closed**, all residential incl. 2–4 unit, untrimmed | Typical **value of the housing stock**, 33rd–67th percentile tier, SFR + condo only |
 | Estimand | transaction **flow** — moves with compositional shift | **stock** index |
-| Window | 90 days trailing, overlapping | monthly, smoothed + seasonally adjusted upstream |
+| Window | rolling 3 calendar months, 89-92 days, overlapping | monthly, smoothed + seasonally adjusted upstream |
 | Month-level noise sd **[M]** | ~3.5% | ~0.12% (**28x** less) |
 | Coverage **[M]** | 20,010 ZIPs latest, 24,572 ever | 26,269 ZIPs |
 | History **[M]** | 171 overlapping windows | 319 months back to 2000-01 |
@@ -871,10 +1615,72 @@ noise.
   If Zillow's file naming changes, that fails loudly rather than silently substituting a different
   property universe.
 - The UI labels them distinctly and never interchangeably:
-  - Redfin: *"Median price of all residential sales closed in the 90 days ending May 31, 2026."*
+  - Redfin: *"Median price of all residential sales closed in the 3 months ending Jul 31, 2026."*
+    Never "90 days" — the window is 89-92 calendar-aligned days (§1.5.10 Defect 4).
   - Zillow: *"Typical value of mid-tier single-family and condo homes (Zillow ZHVI, seasonally adjusted)."*
 - The forecast is labelled *"12-month ZHVI forecast"* and **never** as a forecast of the displayed
   sale price.
+
+### 6.1a Realtor.com — DECIDED 2026-09-04: not shipped. Deferred to Phase 8.
+
+Added because it is a different **estimand**, not a third copy of the same number. The system then
+carries one source per side of the market:
+
+| | Redfin | Zillow ZHVI | **Realtor.com** |
+|---|---|---|---|
+| Side | sold | stock | **listed** |
+| Estimand | transaction flow | value index | **active supply** |
+| Grain | 90-day trailing | monthly, smoothed + SA | **calendar month** |
+| Unique columns | `sold_above_list`, `off_market_in_two_weeks` | 319-month history to 2000-01 | **`price_reduced_share`, `pending_ratio`, `active_listing_count`, `quality_flag`** |
+| Freshness **[M]** 2026-09-03 | **LM 2026-06-02, 93 days stale** | current | **LM 2026-09-03, same day** |
+
+```
+https://econdata.s3-us-west-2.amazonaws.com/Reports/Core/RDC_Inventory_Core_Metrics_Zip.csv
+    7,393,242 B   [M]   current month, 45 columns
+https://econdata.s3-us-west-2.amazonaws.com/Reports/Core/RDC_Inventory_Core_Metrics_Zip_History.csv
+  829,650,423 B   [M]   full history, only needed for the backtest
+```
+
+> **DECISION — 2026-09-04: Realtor.com does not ship.** This section is kept for its reasoning
+> and its estimand table, not as an approval. §12 items 17 and 20 close with it.
+>
+> The freshness argument died the same day it was written: §1.5 found the live Redfin replacement
+> (`Last-Modified` 2026-09-02), so Redfin is current again. Three of the four columns named below
+> as unique to Realtor now come from Redfin directly — `ACTIVE LISTINGS`, `MONTHS OF SUPPLY`, and
+> price cuts via `price_drops/monthly/all_zips.csv`.
+>
+> What genuinely remains unique is `median_listing_price` over **all active inventory** (Redfin's
+> `MEDIAN NEW LISTING PRICE` is new-listings-only, a different question), plus `pending_ratio` and
+> `quality_flag`. Real, but thin — and it costs a fourth estimand to explain on a methodology page
+> that already carries three.
+>
+> **The strongest argument for the losing side, stated honestly.** §1.5.10 Defect 2 is exactly the
+> situation where an independent listing-side source earns its keep: `months_of_supply` is one of
+> the eight painted metrics, is the least correlated metric in the panel, and is derived from the
+> two series carrying the largest newest-period uplift (`inventory` +7.09%, `homes_sold` +2.71%).
+> A cross-check is worth most precisely there. It still does not work: Realtor counts a different
+> listing universe over a **calendar month** against Redfin's rolling 89-92 days (§1.5.10 Defect 4),
+> with its own dedup, so a disagreement confounds the curing uplift with three other differences
+> and isolates nothing. The uplift is better measured directly — it already is, in §1.5.10 — and
+> recorded in `manifest.json`.
+>
+> **Reopen only if** Redfin stops publishing `ACTIVE LISTINGS` or `MONTHS OF SUPPLY` at ZIP level,
+> or a listing-side series enters the backtest. Not before. One implementer at ~8 h/week does not
+> add a fourth source while §§1-4 are unbuilt.
+>
+> Everything below this box is the retained analysis. **The Zillow Market Heat Index refusal at the
+> end of this section is independent of this decision and stands.**
+
+Same disclosure discipline as §6.1: Realtor's `median_listing_price` is a **list** price of active
+inventory and is never labelled interchangeably with Redfin's **sale** price. Its own `*_mm` / `*_yy`
+columns are subject to §6.4 — the `_mm` columns are not shipped, and `_yy` is asserted against a
+recomputed lag-12 the same way Redfin's is. `quality_flag` is carried through to the payload rather
+than silently filtered, so a suppressed cell is visible as suppressed.
+
+**Zillow's Market Heat Index is refused.** It is a 0–100 composite with no published recipe. Every
+other number in this system can state where it came from and what its error bar is; a closed index
+can do neither, and adding one unfalsifiable column would undercut the claim the rest of the
+document is built on. See §10.9.
 
 ### 6.2 `pipeline/noise.py` — the standard error of the median
 
@@ -907,9 +1713,13 @@ def calibrate(L, N):
 **Why lag 3 and not lag 1.** `PERIOD_DURATION == 90`, so consecutive rows share two of three
 months of transactions and their sampling noise is correlated (`rho1 ~= 0.70`, `rho2 ~= 0.33`).
 For `d = y_t - (y_{t-L} + y_{t+L})/2`, `Var(d) = sigma^2 * (1.5 + 0.5*rho2 - 2*rho1)`, while the
-standardisation assumes independence and divides by `sqrt(1.5/n)`. At lag 1 the estimator
-therefore recovers only `sqrt(0.333/1.5) = 0.471` of K. Lag 3 is the first lag with zero shared
-transactions; lag 4+ overstates because the local-linearity assumption degrades over a longer span.
+standardisation assumes independence and divides by `sqrt(1.5/n)`. At lag 1, with `rho1 ~= 0.70`
+and `rho2 ~= rho1/2`, that factor is `1.5 - 1.75*rho1 = 0.275`, so the estimator recovers only
+`sqrt(0.275/1.5) = 0.43` of K — and `0.5395 * 0.43 = 0.232` against the `0.2315` actually
+measured, which is the check that the attenuation story is the right one. *(An earlier draft
+wrote `sqrt(0.333/1.5) = 0.471` here; that figure does not reproduce the measured lag-1 value
+and is superseded by §1.1's.)* Lag 3 is the first lag with zero shared transactions; lag 4+
+overstates because the local-linearity assumption degrades over a longer span.
 
 **Validation is the stability of K across sample size, not a single number.** Bucketed at lag 3
 **[M]**:
@@ -949,7 +1759,9 @@ is the same number in all three so it can be explained once:
 2. Which ZIPs are eligible for LISA (§6.5).
 3. Which ZIPs count in the coverage headline "ZIPs whose median is rankable".
 
-**[M]** 8,544 of 20,010 reporting ZIPs qualify = **42.7%**.
+**[M]** 8,544 of 20,010 reporting ZIPs qualify = **42.7%**. *(Dead-feed figure. The new feed has
+26,148 ZIPs with `HOMES SOLD`, so both the count and the share are recomputed in §12 item 11
+before either is quoted.)*
 
 **Disclosure required in the legend** (this is a real selection effect and nobody quantified it
 before): the `n >= 30` break set has a median price of **$389,900** against **$305,000** for the
@@ -988,8 +1800,19 @@ not used to modify it.** That sidesteps the flaw entirely. The **596 reporting Z
 
 | Metric | Decision |
 |---|---|
-| **MoM** | **Not shipped. Ever.** Bug 9. Removes 12 of 43 columns. One-sentence interview answer. |
+| **MoM (Redfin)** | **Not shipped — and as of the new feed, not even available.** §1.5.6 **[M]**: `HOMES SOLD MOM (%)` and every sibling MoM column are non-null for **0 of 29,738** ZIPs. Redfin greys the MoM toggle out for Zip geography deliberately, because the ZIP series is a rolling 3-month NSA window. Deriving it from the adjacent period block is trivial and **wrong** — see §1.5.6 for the three reasons. This is now a stronger fact than Bug 9's argument: it is not a judgement call we are making, it is a series that does not exist. |
+| **MoM (ZHVI)** | **Shipped. Kept.** *(This reverses an earlier draft of this row, which said "not shipped".)* §1.5.6 is right and the earlier reasoning was wrong: ZHVI is `sm_sa` — smoothed and seasonally adjusted on **true calendar months** — so its MoM is the one place in this system where MoM means what a reader thinks it means. **State the asymmetry on the methodology page**, or shipping MoM for Zillow and not Redfin reads as an oversight rather than a decision. Stated limitation, not a reason to drop it: at ~0.12% month noise sd **[M]** on an already-smoothed series, much of what it reports is the smoother. |
+| **MoM (Realtor)** | Not shipped, if Realtor lands at all (§6.1a). Upstream `*_mm` columns; the source is a calendar month so the Redfin defect does not apply, but nothing yet needs them. |
 | **YoY** | **Lag 12.** `yoy = log(msp[t]) - log(msp[t-12])`. |
+
+Net effect on the payload is in §1.5.7: `KEY_ORDER` goes 43 -> 38 fields (drop 11 Redfin `*_mom`,
+add 6 for the three new metrics). `zhvi_mom` and `zhvi_yoy` both survive.
+
+**The interview answer is now the stronger version.** Not "I decided MoM was too noisy" — which
+invites "but you kept Zillow's" — but "Redfin does not publish MoM at ZIP level at all, because
+the ZIP series is a rolling 3-month NSA window; Zillow does, because theirs is a seasonally
+adjusted calendar-month index. The asymmetry in my output is the asymmetry in the sources."
+
 
 **CONTRACT assertion:** on the subset where Redfin's own `MEDIAN_SALE_PRICE_YOY` is non-null,
 the recomputed value must reproduce it to a relative tolerance of `1e-6`. This costs nothing and
@@ -1034,8 +1857,9 @@ def local_moran(v, lon, lat, k=8, nperm=999, q=0.05, seed=0):
 centroids), row-standardised; 999 conditional permutations; two-sided pseudo
 `p = (1 + #{|I_sim| >= |I_obs|}) / 1000`; Benjamini–Hochberg FDR at `q = 0.05`.
 
-**The fix the critique forced — gate on `n >= 30`.** Reproduced ungated **[M]**: `I = 0.6596`,
-n = 19,536, HH 2,467 / LL 2,120 / LH 38 / HL 133, raw p<0.05 = 7,290, BH = 4,758. Then the
+**The fix the critique forced — gate on `n >= 30`.** Reproduced **on the ungated set** **[M]**:
+`I = 0.6596`, n = 19,536, HH 2,467 / LL 2,120 / LH 38 / HL 133, raw p<0.05 = 7,290, BH = 4,758.
+Then the
 cross-tab nobody had run — **median `homes_sold` by class: HH 38, ns 22, LL 5, LH 6, HL 2**, and
 **79.7% of the 133 "price islands" have fewer than ten sales**. The spatial-outlier classes are a
 **low-sample detector**: sampling noise pushes a thin ZIP away from its neighbourhood mean, which
@@ -1045,6 +1869,16 @@ is precisely the definition of an HL/LH outlier. Proposal 1 justified shipping L
 So: **LISA is computed only over the `n >= 30` rankable set (8,544 ZIPs)**, and the manifest
 publishes `lisa_median_n_by_class`. If HL survives the gate at all, those survivors are genuinely
 interesting and the story gets stronger.
+
+> **Every LISA and Moran figure in this document is from the UNGATED run. They are diagnostics,
+> not publishable numbers.** Gating does not merely drop rows — it rebuilds the weights, because
+> the 8 nearest neighbours *among the 8,544 rankable ZIPs* are much further apart than the 8
+> nearest among 19,536 (the density-strata spacing below, 12.8 km vs 24.2 km, is the same effect
+> measured a different way). So `I` at every k, all five class counts, the BH-significant count,
+> the Bonferroni threshold (`0.05 / 8,544 = 5.85e-6`, needing ~170,900 permutations at ~33 min
+> per metric — not `2.56e-6` / ~390,700 / ~76 min) and `lisa_median_n_by_class` must all be
+> recomputed on the gated set in Phase 5. Nothing on the methodology page, in §7.9, or in §11.3
+> may quote the ungated figures. Tracked as open item 11 in §12.
 
 **Two further honesty requirements:**
 - Global Moran's I is **k-dependent**: `0.687 / 0.660 / 0.623 / 0.582` at k = 4/8/16/32 **[M]**.
@@ -1102,9 +1936,71 @@ regardless of the real distribution:
 
 **Anchors are mandatory and nobody specified them.** 7 log-equal classes over the observed
 min..max (`$1,500` .. `$22,437,500`) puts **95% of ZIPs in two colors** — measured counts
-`1 / 28 / 498 / 10,283 / 8,699 / 480 / 21` **[M]**. With p1..p99 anchors it becomes
-`384 / 1,419 / 4,481 / 6,964 / 4,220 / 1,558 / 586` **[M]**, which works. Values outside the
-anchors clamp to the end classes.
+`1 / 28 / 498 / 10,283 / 8,699 / 480 / 21` **[M]**, which sums to the 20,010 reporting ZIPs.
+With p1..p99 anchors it becomes `384 / 1,419 / 4,481 / 6,964 / 4,220 / 1,558 / 586` **[M]**,
+which works. Values outside the anchors clamp to the end classes, so no ZIP is dropped.
+
+> **[VERIFY in Phase 5] The anchored row sums to 19,612 — 398 short of 20,010.** Clamping cannot
+> lose a ZIP, so the two rows were computed on different populations; the likeliest cause is that
+> the anchored run was done over the `n >= 30` break set or dropped the ZIPs that define the
+> p1/p99 anchors. Recompute both on the same population, make the total an assertion
+> (`sum(class_counts) == count of non-null values for that metric`), and replace this note with
+> the corrected row. Quote neither row until then.
+
+**Anchors are RECOMPUTED every release, not frozen — and the breaks ship with the data.**
+
+This was argued the other way first, on the grounds that a frozen scale keeps colors comparable
+across months. That argument does not survive contact with the actual use case. **Nobody compares
+two releases by color; they compare by value**, and every artifact already carries its own legend.
+What a frozen scale actually produces is a *stale* one: as the price distribution drifts, fixed
+p1/p99 anchors swallow more and more ZIPs into the end classes, and the legend gradually stops
+describing the data it is painting. A legend that no longer fits its own map is the failure mode to
+avoid, and it is the one freezing causes.
+
+So, per release:
+
+1. `S9 CLASSIFY` recomputes p1/p99 on that release's own `n >= 30` population.
+2. The 8 boundary values ship in `snapshot.json` and are echoed into
+   `manifest.classing.<metric>.breaks`, so the on-screen legend, the export legend and the archived
+   snapshot are the same numbers by construction (this part was already specified).
+3. **Every release's breaks stay in the manifest history**, which is what makes cross-release
+   comparison possible *by value* — the thing a frozen color scale was only ever a proxy for.
+4. The diff gate (§8.5) reports break movement. A quiet month moves the anchors by ~1%; a 20% jump
+   means the upstream population changed and should be seen, not absorbed silently.
+
+**CONTRACT assertion:** `sum(class_counts) == count of non-null values for that metric`, which is
+also what closes the 398-ZIP discrepancy flagged above.
+
+**The `*_yoy` diverging scales are the exception: those are FIXED at ±20%, symmetric, with explicit
+clamping.** Different data, different failure mode. Prices drift slowly and in one direction, so a
+recomputed scale always fits them. Year-over-year *swings* — a p99 of +40% in a boom and +3% in a
+flat year — so a recomputed YoY scale renders both years equally dramatic and erases the regime
+difference that is the entire reason to show YoY. That is the same "every map looks equally hot"
+failure this section already rejects for universal quantile classing. A clamped fixed scale is not
+stale, because the clamp is stated: the end swatch reads **"≥ +20%"**, which is true in every
+regime.
+
+**±20% is derived, not chosen.** The rule, which must reproduce on the data every release:
+
+> **B = the smallest multiple of 5 percentage points not less than the p95 of `|yoy|`, pooled over
+> the whole panel of every metric painted on a diverging scale.**
+
+p95 targets ~5% saturation, the same order as the p1/p99 anchors this section already uses for the
+sequential ramps, and rounding to 5 pp buys a legend a human can read. Measured on the full ZHVI
+panel — 26,269 ZIPs × 319 months, 6,137,683 finite lag-12 cells **[M]** — pooled `|zhvi_yoy|`
+p95 = **18.85%**, p97.5 = 22.72%; the share above 20% is **4.07%** and above 25% is **1.65%**. The
+p95 is stable across start windows (2000+ 18.85 · 2012+ 18.02 · 2016+ 18.60) and every one rounds
+to **20**.
+
+> **The metric the bound is computed on is the correction.** An earlier draft justified ±25%
+> against the 29-41%/yr saturation of `MEDIAN SALE PRICE NSA YOY` **[M]**. That metric is
+> **detail-panel only** — the only YoY series painted are `zhvi_yoy` and `f_yoy` — so it never had
+> a clamp to be too tight for. On the series that *is* painted the old bound was too **loose**, not
+> too tight. ZHVI is `sm_sa`, a smoothed seasonally-adjusted stock index; Redfin's median sale
+> price is a raw NSA transaction-flow median over a median ZIP sample of 14 sales. Their YoY
+> dispersions differ by an order of magnitude and the two must never be classed on one scale.
+
+Record the share of ZIPs clamped in each release so the bound stays auditable.
 
 **Breaks are computed over `n >= 30` only** (§6.2) so that a 1-sale ZIP showing `$1,500` or
 `$10,380,000` **[M]** cannot move the national color scale for everyone else. Low-reliability ZIPs
@@ -1117,6 +2013,22 @@ and the archived snapshot agree by construction. Today they are three independen
 `NO_DATA_COLOR = "#E8E8E8"` with its own legend entry — today no-data ZIPs coalesce to 0 and the
 step expression paints 0 as `"transparent"`, making "no data" visually identical to "not a ZCTA"
 and to a genuine zero. **6,664 of 33,771 ZCTAs (19.7%) have data from neither source** **[M]**.
+
+**Three absence states, three visual channels. They must not be conflated.**
+
+| State | Meaning | Rendering |
+|---|---|---|
+| **No data** | The ZCTA exists and is drawn, but neither source reports it. 6,664 ZCTAs **[M]**. | Solid `NO_DATA_COLOR` `#E8E8E8`, **its own legend entry**. Never transparent. |
+| **No polygon** | Ocean, park, unpopulated land — there is no ZCTA here at all. | Paint nothing. Basemap shows through. This is the only legitimately blank state. |
+| **Below the reliability floor** | Data exists but `n` is thin. | The real class color at **0.38 opacity** (§7.9). It is data, so it keeps its value. |
+
+**Hatching and stripes are rejected for all three.** §7.9 already rejects a hatch for the
+reliability layer because a 4×4 pattern is illegible below ~8 px, which is most of the map at
+z2–z5; the same geometry argument applies to a no-data hatch. It is also structurally expensive
+here: a pattern fill needs `addImage` plus a raster sprite, which breaks the property the entire
+Phase 3 fix depends on — that the fill paint is **one constant expression** that never changes
+after style load (§7.4). A stripe would reintroduce a per-render paint mutation to solve a problem
+a flat grey already solves.
 
 ### 6.7 Forecasting
 
@@ -1181,7 +2093,18 @@ Plus the **drift-estimation term that all three omitted** and which is first-ord
 ```
 Var(mu_hat) ~= (sigma_g^2 / W) * (1 + rho) / (1 - rho)
 Var_total(e_h) = Var(e_h) + h^2 * Var(mu_hat)
+
+where sigma_g^2 is the MARGINAL variance of growth, sigma_g^2 = sigma^2 / (1 - rho^2),
+and sigma is the INNOVATION sd -- the `sig` that forecast_zhvi() returns.  In code:
+
+    var_mu = (sig**2 / (1.0 - rho**2)) / W * (1.0 + rho) / (1.0 - rho)
 ```
+
+**Do not plug the innovation sd straight into that formula.** `Var(mu_hat)` is the variance of
+the sample mean of an autocorrelated series, so it takes the **marginal** variance of growth,
+while `forecast_zhvi` returns the **innovation** sd. At the measured `rho = 0.9065` the two
+differ by `1/(1 - rho^2) = 5.7x`, on a term this section itself calls first-order at h = 12 —
+so confusing them is worse than omitting the term.
 
 Measured out-of-sample coverage against a **nominal 80%** band, 82-origin expanding-window
 walk-forward on 11,583 complete-history ZIPs, calibration origins and evaluation origins split in
@@ -1288,9 +2211,14 @@ numpy==2.3.4
 pyarrow==22.0.0
 scipy==1.16.2
 requests==2.32.5
-pytest==9.0.3
+pytest==8.4.2
 statsmodels==0.15.0   # TEST-ONLY: asserts the closed-form AR(1) matches ETS(A,Ad,N) to 4 dp.
 ```
+
+**Phase 0.1 has already landed `pandas`, `requests` and `pytest`** at exactly these versions.
+`numpy`, `pyarrow` and `scipy` are added in Phase 1 with the `pipeline/` package that needs
+them, and `statsmodels` in Phase 5 with the forecast tests — a pin for a library nothing
+imports yet is a dependency you maintain for free.
 
 Plus `.python-version` containing the same version both workflows consume via `python-version-file:`.
 
@@ -1418,26 +2346,48 @@ export class PaintTable {
 }
 ```
 
-`index.html` preload, replacing the lite-data block:
+`index.html` preload, replacing the lite-data block. **Both fetches must start in the same
+tick.** An earlier draft chained them — fetch `manifest.json`, read `assets.paint[metric]`,
+then fetch the table — which serialises **two round trips** in front of a 28 KB download. On
+slow 4G that is ~600 ms of pure latency, and because the paint filename carries a content hash
+it cannot be preloaded from the HTML either. "~32,000 bytes to first color" would be true
+while "< 3 ms" was measuring only the CPU.
+
+So the paint pointers are **inlined at build time** from the committed `manifest.json` that
+`deploy.yml` has already checked out, and the two fetches run in parallel:
+
+```ts
+// vite.config.ts -- the metric -> hashed-filename map, resolved at build, not at runtime.
+const mf = JSON.parse(readFileSync("public/data/manifest.json", "utf8"));
+const paint = Object.fromEntries(
+  Object.entries(mf.assets.paint).map(([m, a]) => [m, a.file]),
+);
+// exposed to index.html as %VITE_PAINT_MAP% and %VITE_PAINT_DEFAULT%
+```
 
 ```html
-<link rel="preload" href="%VITE_DATA_BASE%manifest.json" as="fetch" crossorigin />
+<link rel="preload" href="%VITE_DATA_BASE%manifest.json"  as="fetch" crossorigin />
+<link rel="preload" href="%VITE_PAINT_DEFAULT%"           as="fetch" crossorigin />
 <script>
   (function () {
     var base = new URL('%VITE_DATA_BASE%', document.baseURI).href;
+    var paint = JSON.parse('%VITE_PAINT_MAP%');
     var metric = new URLSearchParams(location.search).get('metric') || 'zhvi';
-    window.__domapusBoot = fetch(base + 'manifest.json')
-      .then(function (r) { return r.json(); })
-      .then(function (m) {
-        var f = m.assets.paint[metric] || m.assets.paint.zhvi;
-        return fetch(base + f)
-          .then(function (r) { return r.arrayBuffer(); })
-          .then(function (b) { return { manifest: m, paint: b, metric: metric }; });
-      })
+    var file = paint[metric] || paint.zhvi;
+    window.__domapusBoot = Promise.all([
+      fetch(base + 'manifest.json').then(function (r) { return r.json(); }),
+      fetch(base + file).then(function (r) { return r.arrayBuffer(); }),
+    ]).then(function (v) { return { manifest: v[0], paint: v[1], metric: metric }; })
       .catch(function () { return null; });
   })();
 </script>
 ```
+
+**The inlined map and the deployed release must agree, and three things already force that:**
+the build reads the same committed manifest `deploy.yml` verifies with `sha256sum -c` (§8.2),
+`PaintTable.from()` rejects a wrong `byteLength`, and the manifest changes exactly once a month
+in the same run that rebuilds the site. A stale inline therefore fails the deploy rather than
+shipping a 404 on the critical path.
 
 ### 7.4 `src/lib/choropleth-painter.ts` — the constant expression
 
@@ -1610,8 +2560,19 @@ implementations and **exactly one is live**:
 
 | Mode | Authority | Available |
 |---|---|---|
-| **Fixed scale** (default) | `PaintTable` — pipeline-computed national breaks over `n >= 30` | from first paint |
+| **Fixed scale** (default) | `PaintTable` — pipeline-computed national breaks over `n >= 30` | from first paint, **Phase 4 onward** |
+| **Fixed scale**, Phase 3 only | `LegacyClassSource` — same interface, classes computed in-process from today's row-major `zip-data.json` | Phase 3; deleted when `PaintTable` lands |
 | **Auto scale** (opt-in toggle) | `ViewportClassSource` — recomputes breaks from `ZipTable` over the visible set | **disabled until `snapshot.json` loads** |
+
+**Why `LegacyClassSource` has to exist.** Phase 3 ships the constant `match` over
+`["feature-state","k"]`, but the artifact that supplies `k` — the paint table — does not ship
+until Phase 4. With no stated interim authority, Phase 3 is a paint expression reading a
+feature-state key nothing writes, and **the entire map renders `NO_DATA_COLOR`**. It is ~40
+lines: take the already-loaded `Record<string, ZipData>`, compute the same 7 breaks the
+pipeline will later compute, answer `classOf`, and return `3` from `reliabilityOf` because
+`rse` does not exist until Phase 5. It is thrown away in Phase 4, which is the point —
+`ChoroplethPainter` never learns where classes come from, so swapping the authority is a
+one-line change and the Phase 3 benchmark is measured against the same painter that ships.
 
 Switching modes bumps the epoch and rewrites the full set. The two never overlap.
 
@@ -1619,8 +2580,9 @@ Consistency is guaranteed at **three** levels:
 1. **Build time (CONTRACT):** the encoder asserts
    `(paint[m][int(zip)] & 0x0F) - 1 === class_of(snapshot, m, zip)` for every ZIP and metric —
    both are produced from the same array by the same function in the same run.
-2. **Commit time:** a vitest decodes `tests/golden/paint_50.u8` and `tests/golden/snapshot_50.json`
-   with the TypeScript reader and asserts identical class indices.
+2. **Commit time:** a vitest decodes `tests/golden/paint_50.json` (the sparse fixture, §8.6)
+   and `tests/golden/snapshot_50.json` with the TypeScript readers and asserts identical
+   class indices.
 3. **Run time (dev only):** on the first 500 ZIPs after hydration, assert
    `PaintTable.classOf(zip) === ViewportClassSource.nationalClassOf(zip)` and `console.error` on
    mismatch.
@@ -1795,8 +2757,9 @@ only add bytes.
 | Surface | Spec |
 |---|---|
 | **No-data** | Explicit `#E8E8E8` fill with its own legend entry. 6,664 ZCTAs (19.7%) **[M]**. Never transparent. |
-| **Honest window label** | Every Redfin value reads **"90 days ending May 31, 2026"**, never "May 2026". `window_days` is carried in the payload so the UI cannot forget. **`formatPeriod()` in `src/lib/data-dates.ts` currently renders `"May 2026"` and must change.** |
+| **Honest window label** | Every Redfin value reads **"3 months ending Jul 31, 2026"**, never "Jul 2026" and never "90 days" — the window is 89-92 days (§1.5.10 Defect 4), so a day count is false for most periods. The UI renders it from `period_start`..`period_end` and labels it with `frequency`; **`window_days` is not emitted** (§4.3). **Already shipped, and not the way an earlier draft said.** `src/lib/data-dates.ts` gained `formatRedfinWindow()`, and `formatPeriod()` is **kept** for ZHVI — which genuinely is a monthly index, so changing `formatPeriod` itself would have mislabelled Zillow. `TopBar` picks per metric: `"3 months ending:"` for Redfin, `"Data through:"` for Zillow. **The shipped string still says "90 days ending:" and must change** — it is false for 85% of periods. |
 | **Reliability in the popup** | "Median sale price $407,500 ±4.6% (140 sales)". Reduced fill opacity (0.38) for tier 0, driven by the constant opacity expression on `feature-state.rel`. Legend swatch + plain-English caption. |
+| **Reliability fade is not a toggle** | The 0.38 opacity is **always on** and has no user control. It is the honesty layer — the one thing separating this from every other choropleth that paints a 2-sale ZIP identically to a 2,000-sale one — and an off switch is an invitation to turn it off for a screenshot. It would also become another piece of state that has to survive the URL, the export, and the archived snapshot, for no gain. Users who want to *understand* it get a before/after demo on the methodology page, not a switch on the map. (Note this is a different control from the §7.6 auto-scale toggle, which changes the class **authority**, not the reliability channel.) |
 | **Reliability texture** | **Not in v1.** A 4×4 hatch is illegible below ~8 px, which is most of the map at z3–z5, and the mobile chroma-reduction fallback reads as "lower value" to a naive viewer. Reduced opacity does the same job in one paint expression with no `addImage`. Revisit with measurement. |
 | **Sparkline** (Phase 7) | Hand-rolled inline SVG, two `<path>` elements, ~50 lines, **0 KB of bundle**, `<title>` for screen readers, path strings reusable as `Path2D` in the PNG export. The forecast **ribbon is drawn more prominently than the centre line** so the eye reads uncertainty first. Rejected: recharts ~110 KB gz, chart.js ~65 KB, visx ~45 KB, even d3-shape 4 KB, for a 200×44 px chart with no axes. |
 | **Confidence slider** | Band reconstructed client-side as `exp(log(f_h) + q[h][p] * sigma_i)` — 2 multiplies and an `exp`, no refetch. |
@@ -1861,11 +2824,24 @@ jobs:
     timeout-minutes: 30
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v6            # NOTE: no `lfs: true` -- see Phase 0.3
+      # `ref: main` is LOAD-BEARING. Under `workflow_call` this job inherits the CALLER's
+      # event, so actions/checkout defaults to `github.sha` -- the SHA as of when the cron
+      # fired, which is BEFORE the publish job's pointer commit. Without it, `jq
+      # .geometry_tag` reads LAST month's manifest and the `sha256sum -c` below verifies THIS
+      # month's release assets against last month's hashes: a guaranteed failure every month,
+      # with a symptom indistinguishable from Bug 6 itself.
+      - uses: actions/checkout@v6            # NOTE: no `lfs: true` -- see Phase 0.2
+        with: { ref: main }
       - id: refs
         run: |
+          set -euo pipefail
           DATA="${{ inputs.release_tag }}"
-          [ -n "$DATA" ] || DATA=$(jq -r .release_tag public/data/manifest.json)
+          HAVE=$(jq -r .release_tag public/data/manifest.json)
+          [ -n "$DATA" ] || DATA="$HAVE"
+          # If the checkout raced the pointer commit, every hash below is from the wrong
+          # month. Say so here rather than failing on an opaque checksum mismatch.
+          [ "$HAVE" = "$DATA" ] || {
+            echo "::error::checked-out manifest names $HAVE, deploying $DATA"; exit 1; }
           echo "data=$DATA"                                          >> "$GITHUB_OUTPUT"
           echo "geom=$(jq -r .geometry_tag public/data/manifest.json)" >> "$GITHUB_OUTPUT"
 
@@ -1886,7 +2862,12 @@ jobs:
           cp .cache/data/snapshot-*.json public/data/
           tar -xf .cache/data/paint-*.tar   -C public/data
           tar -xf .cache/data/history-*.tar -C public/data
-          sha256sum -c <(jq -r '.assets | to_entries[] | "\(.value.sha256)  public/data/\(.value.file)"' public/data/manifest.json)
+          # Walk the whole assets tree for {file, sha256} leaves. A flat `to_entries[]` breaks
+          # here: `assets.paint` is a MAP of per-metric entries, so `.value.sha256` is null and
+          # the check silently degrades to verifying "null  public/data/null".
+          sha256sum -c <(jq -r '.assets | .. | objects
+                                | select(has("file") and has("sha256"))
+                                | "\(.sha256)  public/data/\(.file)"' public/data/manifest.json)
         env: { GH_TOKEN: '${{ github.token }}' }
 
       - uses: actions/setup-node@v6
@@ -1931,7 +2912,7 @@ jobs:
 | Rollback = `git revert` the pointer + re-run deploy | No regeneration; every prior month is byte-identical in its release |
 | Bronze downloads live in `$RUNNER_TEMP` with a `finally` that removes the directory | `.gitignore` gains `*.tsv*.gz` as belt-and-braces |
 | Integrity: `Content-Length` vs HEAD, **Redfin only** MD5-vs-ETag | Zillow's ETag is `7eac997a64afb311a4e4ac5e455bcfd3-**12**` — a **multipart** upload, so it is an MD5-of-MD5s and **can never equal the body digest** **[M]**. Scoping this check to Redfin is mandatory; the generic version would ship a check that fails every run or a silently dead branch. Zillow gets Content-Length + structural assertions instead. |
-| Decompression bomb guard | `MAX_UNCOMPRESSED = 12 GiB` counter (2.5x the observed 4.48 GiB; observed ratio only 3.10:1) |
+| Decompression bomb guard | `MAX_UNCOMPRESSED = 12 GiB` counter. Observed: 1,548,403,907 B compressed at a 3.10:1 ratio = **~4.8 GB** uncompressed, so the cap is **~2.7x** headroom. *(An earlier draft paired "4.48 GiB", "3.10:1" and "2.5x"; those three do not close.)* |
 | Timeout | Total-elapsed watchdog + minimum-throughput floor. `requests(timeout=300)` caps time **between reads**, not total time. |
 | Transport | HTTPS with default cert verification (never disable). Final URL after redirects must match an allowlisted hostname constant. |
 | Unicode | `encoding="utf-8", errors="strict"` so bad bytes fail loudly rather than being replaced; strip control characters; cap string fields at 128 chars. **String fields (`CITY`, `PARENT_METRO_REGION`) flow from an untrusted file into the DOM — verify the frontend renders them as text nodes, never `innerHTML`.** |
@@ -2119,25 +3100,36 @@ artifact on failure so the shrunk counterexample survives the runner.
 6. **MASE of the naive forecast against itself is exactly 1.0** — true by definition, so a perfect
    oracle needing no external library.
 
-**Golden files — golden a *slice*, not the artifact.**
+**Golden files — golden a *slice*, not the artifact.** v1 ships **no binary container** (§4.1),
+so there is no `.bin` to encode and no header/offset table to golden. An earlier draft listed
+`snapshot_50.bin` and `header.json` ("magic, version, field order, offsets"); those are
+leftovers from the rejected DMPS design in §10.1 and nothing in the pipeline produces them.
 
 ```
-tests/golden/snapshot_50.json   50 ZIPs (one per state) in readable form,  ~15 KB
-tests/golden/snapshot_50.bin    the same, encoded                          ~4.8 KB
-tests/golden/paint_50.u8        the paint bytes for those 50 ZIPs          ~50 B
-tests/golden/header.json        magic, version, field order, offsets       ~1 KB
+tests/golden/snapshot_50.json   50 ZIPs (one per state), the real columnar shape   ~15 KB
+tests/golden/paint_50.json      { "<zip>": <byte> } for those same 50 ZIPs          ~1 KB
+tests/golden/paint_50.expect    the decoded (class, reliability) pair per ZIP        ~1 KB
 ```
 
-One test encodes the JSON and asserts byte equality with the `.bin`; another decodes the `.bin` and
-asserts equality with the JSON. **A CI check walks `tests/golden/` and fails on any file over
-64 KB.** Regeneration is `python -m pipeline golden --update --yes`, which prints a diff and demands
-the flag.
+`paint_50.json` is a **sparse fixture, not a paint table.** A real table is exactly 100,000
+bytes by contract (§4.2) and `PaintTable.from()` rejects anything else — while the CI check
+that fails on any golden over 64 KB would reject the real thing too. Both readers therefore
+materialize a 100,000-byte `Uint8Array`, write the fixture's bytes in at `int(zip)`, and read
+it back through the **production** decoder, so the 100,000-byte assertion is exercised rather
+than bypassed.
 
-**Cross-language round-trip — the highest-value test in the suite.** A vitest reads the same
-`snapshot_50.bin` and `paint_50.u8` through the **TypeScript** reader and asserts identical
-numbers and identical class indices. It is the only thing that catches Python/TS disagreement on
-endianness, alignment, and null sentinels — the exact class of bug that renders a silently wrong
-map with no error anywhere.
+One test round-trips `snapshot_50.json` through the Python encoder and decoder and asserts
+exact equality against the in-memory arrays. **A CI check walks `tests/golden/` and fails on
+any file over 64 KB.** Regeneration is `python -m pipeline golden --update --yes`, which prints
+a diff and demands the flag.
+
+**Cross-language round-trip — the highest-value test in the suite.** A vitest reads
+`snapshot_50.json` and `paint_50.json` through the **TypeScript** readers (`ZipTable`,
+`PaintTable`) and asserts the same values and the same `(class, reliability)` pairs as
+`paint_50.expect`. It is the only thing that catches Python/TS disagreement on the null
+sentinel, on **scale application** (§4.3 — the failure that turns 0.0046 into 46), and on
+leading-zero ZIP handling: the exact class of bug that renders a silently wrong map with no
+error anywhere.
 
 **Forecast-accuracy regression gate.** `tests/sample/panel_400.npz` — 400 real ZIPs × 171 periods
 × 4 metrics, int16, fixed seed, **source release tag recorded inside the file** — is 547,200 B
@@ -2175,6 +3167,22 @@ choropleth rewrite lands first, the before/after comparison is unrecoverable.
 **Protocol per phase:** run `node bench/run.mjs` on the built `dist/`, at the pinned view, before
 and after, and record the result in `bench/results/` and in `docs/todos.md`.
 
+**What `deploy.yml` records on every run — and what it must not.** Do **not** run the browser
+benchmark in CI; §10.4 gives the reasons and they still hold. But that rejection is about *sampled*
+measurements, and it was over-applied: **deterministic build facts are exact, not sampled, and are
+worth recording every deploy.** Append one JSON line per deploy to `bench/history.jsonl` on
+`gh-pages`:
+
+```json
+{"ts":"2026-09-03T00:00:00Z","sha":"…","dist_bytes":30412288,"gz_by_chunk":{"index":142310,…},
+ "tiles_bytes":20971520,"pipeline_peak_rss_mb":2810,"rows_read":9725026,"rows_kept":3298202,
+ "redfin_etag":"…","upstream_stale_days":93}
+```
+
+Rendered as a small line chart on the methodology page. Zero flake, because none of those numbers
+depend on runner CPU: the same commit produces the same values every time. That is the honest half
+of "graph the benchmark" — a size and memory trend line, not a timing one.
+
 **Pipeline benchmarks.** Wrap each stage in `/usr/bin/time -v`, record `Maximum resident set size`
 and elapsed wall clock plus bytes downloaded, rows read, rows kept and the source ETag into
 `build/bench.json`, which is copied into the manifest. **Hard limit: peak RSS above 4 GiB fails the
@@ -2204,33 +3212,101 @@ better**. No big-bang.
 | 0.2 | Delete `lfs: true` from `deploy.yml` and `preview.yml`; `git rm -r --cached public/data/archive`; delete the LFS rule from `.gitattributes` | LFS bandwidth usage → 0. `prune-dist.mjs` already deletes `data/archive` from `dist`, so nothing changes visually. |
 | 0.3 | Move the temp download to `tempfile.mkdtemp(dir=os.environ["RUNNER_TEMP"])` with a `finally` that removes the directory; add `*.tsv*.gz` to `.gitignore` | A killed run leaves nothing stageable by `git add -A`. |
 | 0.4 | Delete the `zip-data-lite.json` preload in `index.html` and Phase 1 of `HousingDashboard.tsx`; delete `scripts/generate_lite_data.py` | `bench/run.mjs`: transfer drops by ~745 KB; site renders identically. |
-| 0.5 | Fix `formatPeriod()` to render `"90 days ending May 31, 2026"` | Visual check in the header. |
+| 0.5 | **DONE, but the string is now wrong.** Added `formatRedfinWindow()`; **kept** `formatPeriod()` for ZHVI (a genuine monthly index); `TopBar` selects per metric | Shipped as "90 days ending May 31, 2026"; **must become "3 months ending Jul 31, 2026"** — the window is 89-92 days (§1.5.10 Defect 4). Zillow reads "Data through: Jul 2026". |
 
 **Ships:** identical site, smaller, safer, and no longer one cron away from a pandas major bump.
 
-### Phase 1 — The correctness fix · ~14 h
+### Phase 1 — The feed migration and the correctness fix · ~22 h
+
+> **This phase was rewritten on 2026-09-04.** The previous version targeted
+> `zip_code_market_tracker.tsv000.gz`, filtered `PROPERTY_TYPE_ID == -1`, parsed `Zip Code:\s*(\d{5})`
+> out of `REGION`, and promised "output shape unchanged, so the frontend does not move". Every one
+> of those is now wrong: the feed is a plain CSV with no property-type dimension, `REGION NAME` is a
+> bare ZIP, and the column set changes, so the frontend **does** move. Read §1.5 in full first.
+
+**Run the benchmark before you touch anything.** `node bench/run.mjs` on the current `dist/` at the
+pinned view, result into `bench/results/`. See the gate at the end of this phase for why this one
+cannot be skipped or deferred.
 
 Create `pipeline/` as an importable package replacing `scripts/update_market_data.py`:
 
 ```
 pipeline/__init__.py      pipeline/__main__.py     pipeline/contracts.py
 pipeline/sources.py       pipeline/redfin.py       pipeline/zhvi.py
-pipeline/dim.py           pipeline/serialize.py
+pipeline/dim.py           pipeline/panel.py        pipeline/serialize.py
 ```
 
-- pyarrow streaming ingest (`block_size = 8 << 20`, `include_columns` 58 → 18, `null_values=['NA','']`).
-- `assert_unique_key` on `(PERIOD_END, REGION, PROPERTY_TYPE_ID)` **before** any reduction.
-- `assert_constants`, `assert_property_type_map`, `assert_filter_is_total`.
-- Filter `PROPERTY_TYPE_ID == -1` as an **integer**, never the string.
-- Vectorised `pc.extract_regex(REGION, r'Zip Code:\s*(?P<z>\d{5})')` — not a per-row `.apply`.
-- Global period filter; coverage codes; `orphans.json`.
-- **Output shape unchanged** (`zip-data.json`, same `{f, z, d}`), so the frontend does not move.
-- CI grep banning `drop_duplicates`.
-- The five regression tests from §8.6 against `tests/fixtures/redfin_sample.tsv`.
+**Ingest.**
 
-**Verify:** `test_30309_reports_all_residential_truth` passes; `assert_unique_key` finds 0
-duplicates on the real file; the site renders the **correct** numbers with no frontend change.
-Publish the before/after for 30309, 10001, 90210, 60614, 78701 in the PR description.
+- pyarrow CSV streaming ingest of `housing_market/monthly/all_zips.csv` — plain CSV, not gzip,
+  `block_size = 8 << 20`, `null_values=['NA','']`, `include_columns` 50 → 32 (8 identifiers +
+  14 metrics + 14 YoY; the 14 MoM columns are never read).
+- `assert_unique_key` on **`(PERIOD END, REGION NAME)`** before any reduction. There is no
+  `PROPERTY_TYPE_ID`. Measured: 0 duplicates in 4,930,000 rows (§1.5.9).
+- `assert_constants`: `FREQUENCY == 'Rolling 3 Months'`, `REGION TYPE == 'Zip'`, and the
+  **absence** of `PROPERTY TYPE` and `IS SEASONALLY ADJUSTED`. Their reappearance means Redfin
+  re-introduced a breakout dimension and the PK assertion is the only thing standing in the way.
+- `REGION NAME` is read directly and asserted `^\d{5}$`. **Delete `extract_zip_code()`** — its
+  `Zip Code:\s*(\d{5})` regex matches nothing in this feed and would silently produce an
+  all-null ZIP column.
+- **Do not port** the All-Residential filter, the five `(PROPERTY_TYPE, PROPERTY_TYPE_ID)` pairs,
+  `assert_filter_is_total`, or `assert_property_type_map`. The file *is* the aggregate (§1.5.5).
+
+**Units — the part that silently corrupts if rushed.**
+
+- Delete the `* 100` in `_coerce_value()` for every ratio, share and YoY column (§1.5.4).
+- **Divide** `MEDIAN DAYS ON MARKET YOY` and `MONTHS OF SUPPLY YOY` by 100 and ship them as a
+  change in days and in months (§1.5.10 Defect 1). `_coerce_value()` already skips the `* 100`
+  for any key containing `dom`, so the blanket rule above is a no-op there — this is a division
+  that has to be added, not a multiplication to remove.
+- `RANGES` moves to the percent scale: `avg_sale_to_list (50, 200)`, `sold_above_list (0, 101)`
+  (§1.5.10 Defect 3). On the fraction scale it rejects every row of the new feed.
+
+**The panel — this is the new work, and it is what unblocks Phase 5 and Phase 7.**
+
+`update_market_data.py:134` keeps one row per ZIP at the latest `PERIOD END` and discards the
+other 172 periods. Every Phase 5 deliverable (the K lag sweep, YoY at lag 12, LISA, the AR(1) fit,
+the 82-origin backtest) and all of Phase 7 need the full history, and none of them can be built
+around that loss. `pipeline/panel.py` writes `build/panel.parquet` holding all `P x Z` cells.
+
+- `P` and `Z` are **measured, never recalled** — `P = |distinct PERIOD END|`,
+  `Z = |distinct REGION NAME|`, both over the whole file, both written to
+  `manifest.panel = {periods, zips}` and asserted equal to the array shape.
+- On the 2026-08-03 vintage that is `173 x 33,952` **[M]**. Do not hardcode it.
+- Assert `PERIOD END` is strictly descending on read, which is what makes the range-GET path
+  in §1.5.7 sound.
+
+**Output.**
+
+- The columnar envelope `{last_updated_utc, f, z, d}` keeps its shape; `f` does not. `KEY_ORDER`
+  goes 43 → 38 (§1.5.7). `compare_against_existing()` will see a field-list mismatch on the first
+  run and report every ZIP as changed. That is the change *report*, not the diff gate — the gate
+  never looks at the field list (§8.5).
+- **The frontend moves in this PR, not a later one.** `src/lib/metrics.ts` is the single source
+  for the dropdown, legend, sidebar, comparison and export; all 12 of its entries carry a
+  `momKey` that no longer exists. Ship the new metric registry and its call sites together with
+  the pipeline change, or the site renders undefined for every metric.
+
+**Verify.**
+
+- `assert_unique_key` finds 0 duplicates on the real 4,930,000-row file.
+- `test_30309_reports_all_residential_truth` passes — 30309 reports $407,500 across 140 sales,
+  not $575,000 across 9.
+- No column ships at 100x: assert `avg_sale_to_list` lands in (50, 200) and `sold_above_list` in
+  (0, 101), and that `median_dom_yoy` has no value below −3,650 or above 3,650.
+- Publish the before/after for 30309, 10001, 90210, 60614, 78701 in the PR description.
+
+> **BENCHMARK GATE — do not skip, and do not defer it to Phase 3.**
+> This phase changes the *size* of the payload, not just its correctness: the latest period goes
+> from 20,010 reporting ZIPs to **29,738**, a **+48.6%** increase, and the metric count changes.
+> `transfer` and `heap` will therefore move for reasons that have nothing to do with any
+> optimisation work. Re-run `node bench/run.mjs` at the same pinned conditions
+> (slow4g / 4x CPU / 1440x900 / 5 runs / pinned view) **immediately after this phase lands**, and
+> record it in `bench/results/` as a **second, separately labelled baseline**.
+> The 2026-08-29 baseline — `LCP 7016 ms · TBT 4178 ms · transfer 5,531,204 B · heap 73.8 MB ·
+> metric switch 2650 ms` — measures the *old feed's* payload and stops being a valid comparand the
+> moment this phase merges. Every performance claim made after this point must name which baseline
+> it is against. Skipping this gate silently confounds the entire §11.4 claims table.
 
 ### Phase 2 — Atomic publish, diff gate, and the deploy fix · ~14 h
 
@@ -2253,7 +3329,11 @@ Deploy job in the same run graph**. A deliberately corrupted build is refused by
 - `src/lib/perf.ts` **lands first, alone, in its own commit**, changing no behavior. Run
   `bench/run.mjs` and capture the instrumented baseline.
 - Constant `match` + constant opacity expression at `addLayer`.
-- `ChoroplethPainter` with full-set chunked epoch writes; delete effect 5 at `MapLibreMap.tsx:498-575`.
+- `LegacyClassSource` (§7.6) — the interim `ClassSource` over today's `zip-data.json`.
+  **Without it the new paint expression reads a `feature-state` key nothing writes and the
+  whole map renders as no-data.**
+- `ChoroplethPainter` with full-set chunked epoch writes; delete effect 5 at
+  `MapLibreMap.tsx:499-578` (the `useEffect` opens at :499; `setPaintProperty` at :564 and :573).
 - `map:sourceReload` counter wrapping `setPaintProperty`.
 - 7-class ramp from `scripts/palette/derive_ramp.mjs` + `NO_DATA_COLOR`.
 - Code-split the `jsPDF`/`html2canvas` export path.
@@ -2290,7 +3370,9 @@ cross-language test passes.
 - Delete all 12 MoM columns.
 - AR(1) forecast + 82-origin backtest + **all three interval baselines** + the drift term.
 - LISA **gated on `n >= 30`**, BH-FDR, Moran's I at k = 4/8/16/32, hysteresis.
-- Per-metric classing with p1/p99 anchors; breaks over `n >= 30` only.
+- Per-metric classing, **anchors recomputed each release and shipped** (§6.6); breaks over
+  `n >= 30` only; `*_yoy` on the fixed symmetric ±20% diverging scale; `sum(class_counts)`
+  assertion.
 - Reliability opacity in the map; `±x% (n sales)` in the popup; forecast disclaimer.
 
 **Verify:** `test_K_lag_sweep_plateaus` passes; `test_yoy_matches_redfin_shipped_column` passes;
@@ -2301,7 +3383,15 @@ the shortfall; `manifest.spatial.lisa_median_n_by_class` shows the gated classes
 
 `scripts/geometry/build_geometry.sh`, `verify_coverage.mjs`, `geometry.yml`, `geometry.lock.json`.
 
-**Verify:** A7 asserts 100% ZCTA coverage at every zoom z3–z10; `us_zip_codes.pmtiles`
+**Do the export-inset half of this in Phase 3, not here — it needs no tileset rebuild.** The
+offscreen inset map is `w-56 h-36` = 224×144 px (`PrintStage.tsx:654,664`) but is drawn into a
+400×260 slot. Rendering it at 400×260 fits ~70° of longitude and ~23° of latitude at z3, which
+already covers 51–71°N — enough to restore most of what `ALASKA_DEFAULT_BOUNDS` currently cuts off,
+for a two-token change. `-Z2` (§5.3) is the durable version and lands here.
+
+**Verify:** A7 asserts 100% ZCTA coverage at every zoom z2–z10; the Alaska export inset renders
+choropleth fill at its natural fit-bounds zoom with `ALASKA_DEFAULT_BOUNDS` widened back to the
+full state; `us_zip_codes.pmtiles`
 92.6 MB → ~20 MB; Manhattan renders as distinct polygons at z8 where it currently renders as merged
 squares; `dist` drops to ~29 MB; re-measure the sub-pixel share with **true bboxes** and update §1.1.
 
@@ -2406,7 +3496,9 @@ network emulation in CI, n=9 runs, Mann-Whitney U, sticky PR comments. `bench/` 
 locally with a captured baseline. Mann-Whitney on 9 repeated measurements of a near-deterministic
 pipeline is testing a difference visible to the naked eye (2650 ms → ~100 ms) and adds a statistics
 vocabulary that must be defended for zero informational gain. It is a second product with its own
-flakiness that will break and stay broken. **`perf.ts` + the existing harness gives 90% of the
+flakiness that will break and stay broken. **What is rejected is timing in CI, not recording in
+CI** — the deterministic size/RSS trend line in §8.7 is cheap, exact and does belong on every
+deploy. **`perf.ts` + the existing harness gives 90% of the
 value for 40 lines and zero maintenance.**
 
 ### 10.5 Anomaly detection and Getis-Ord Gi\*
@@ -2488,6 +3580,7 @@ mirror backup.
 | Baking metric values into the tiles | Full re-tile every month; pins one metric and one classing forever; kills auto-scale; conflates a decennial dimension with a monthly measure. |
 | Dense 0..33779 feature id with a mapping table | Needs a table kept in lockstep with the tiles forever; `parseInt(ZCTA5CE20)` is already collision-free. |
 | AK/HI insets in the tiles | A print-cartography device; belongs in the Canvas/jsPDF export if anywhere. |
+| Zillow Market Heat Index | A 0–100 composite with no published recipe, so it cannot be given an error bar — the one property every other number here has. Adding one unfalsifiable column would undercut the claim the rest of the document rests on (§6.1a). |
 | HUD ZIP–ZCTA crosswalk | A third source on a quarterly vintage; allocating a median across ZCTAs is not statistically meaningful; 474 ZIPs is 2.4%. |
 | Formal hierarchical reconciliation (MinT) | Medians are not additive, so the coherence constraint MinT requires does not exist. The measured optimum for growth (w=0 on the ZIP) **is** the top-down case — implement that in two lines and say so. |
 | Queen contiguity weights | ZCTA islands and disjoint parts produce zero-neighbour units where Moran's I is undefined. *(Not for the "no cp314 wheels" reason — that premise is false **[M]**.)* |
@@ -2549,7 +3642,7 @@ mirror backup.
 **Beat 3 — he checked a premise he was handed, and it was false.**
 
 > "I was told my tiles dropped 99% of ZIP codes at national zoom with a rural bias. I wrote an MVT
-> decoder and counted: **31,828 of 33,780 are present at zoom 3 — 94%.** The '99' in the metadata is
+> decoder and counted: **31,828 of 33,771 are present at zoom 3 — 94%.** The '99' in the metadata is
 > a *count of drop events*, not a percentage. And the bias runs the other way: the ZIPs actually
 > missing were New York, Washington DC and Boston — urban, not rural. The real bug was different and
 > worse: tippecanoe's tiny-polygon reduction doesn't leave holes, it merges a cluster into one square
@@ -2563,7 +3656,7 @@ mirror backup.
 | "Your windows overlap — doesn't that break your month-over-month?" | Yes, which is why I **don't ship it**. Differencing a three-month window puts `+m_t` and `−m_{t−3}` in the difference, giving a theoretical ACF(3) of −0.5; I measure −0.28. The variance ratio falls to 0.122 by h=24, so ~88% of one-period variance is transitory. YoY windows don't overlap, so YoY is what I use. |
 | "Why not shrink small-sample ZIPs toward their metro?" | I tried it. **6.3% worse overall, 20.4% worse for 1–3-sale ZIPs.** Within-metro price dispersion is enormous — metro-only MAE 32% vs raw 10% — so the shrinkage target is badly biased. I shrink toward the ZIP's own history instead. |
 | "How did you validate the denoiser?" | Carefully, because the obvious test is rigged: judging against `t+1` falsely rewards the raw value, since the two windows share two thirds of their transactions. Judged against `t+3`, the first non-overlapping window, precision weighting beats raw by 13.7% at 1–3 sales and 1.6% at 50+ — it helps where sampling noise dominates and does nothing where it doesn't. |
-| "You're running 19,536 hypothesis tests." | Benjamini-Hochberg FDR at q=0.05: 4,758 significant instead of 7,290 uncorrected. **Bonferroni isn't conservative here, it's unreachable** — the threshold is 2.56e-6 and 999 permutations can't produce a p below 1e-3. I'd need about 390,000 permutations, 76 minutes per metric. |
+| "You're running thousands of hypothesis tests." | Benjamini-Hochberg FDR at q=0.05, over the 8,544 ZIPs that clear the `n >= 30` gate. **Bonferroni isn't conservative here, it's unreachable** — the threshold is `0.05/8,544 = 5.85e-6` and 999 permutations can't produce a p below 1e-3, so I'd need about 170,900 permutations, ~33 minutes per metric. *(Significant counts to be filled from the gated Phase 5 run. The 19,536 / 7,290 / 4,758 figures in §6.5 are the ungated diagnostic and must not be quoted — see §12 item 11.)* |
 | "Your KNN weights are asymmetric, so Moran's analytical variance is invalid." | Correct — which is why I use permutation inference for both the global and local statistics and never quote an analytical z. And I report global I at k = 4, 8, 16, 32 (0.687 / 0.660 / 0.623 / 0.582) because it's k-dependent, so quoting one number would be meaningless. |
 | "Why not just scale your one-step error by √h for prediction intervals?" | Because **√h is the correct variance for a random walk and I fitted an AR(1)**. Under √h a nominal 80% band covers 22% at twelve months; under my model's own closed-form h-step variance it covers 79%; empirical quantiles get 87%. So ~90% of the gap is a model mismatch, not calibration — the empirical table is buying non-normality, and I also add the drift-estimation term `h²·Var(μ̂)` that everyone omits. |
 | "Isn't this really a forecast of Zillow's smoothing algorithm?" | Partly, yes. ZHVI arrives smoothed and seasonally adjusted, so some of the 0.91 growth autocorrelation is their filter, and they revise history retroactively so my backtest is optimistic by an unknown amount. Forecasting ZHVI is still right because ZHVI is what I display — but it's a mid-tier single-family-and-condo **stock index**, and the number next to it is an untrimmed all-residential **transaction-flow** median. Different estimands. I label them differently and I never call the forecast a forecast of the displayed sale price. |
@@ -2617,15 +3710,81 @@ mirror backup.
 
 1. **Push the gh-pages cleanup commit** `a2e8476913cbeb9f479f4d622ffb133fd8b0a2ce`. 800.70 / 1024 MiB. **[BLOCKED ON USER]**
 2. **Close the 5 open Renovate PRs.** **[BLOCKED ON USER]**
-3. Re-measure the **sub-pixel ZCTA share** from true bboxes once `zcta-geom.csv` exists (§1.1). The
-   40% and 89.5% figures come from different methods and only one can be quoted.
+3. ~~Re-measure the **sub-pixel ZCTA share** from true bboxes.~~ **CLOSED 2026-09-04.** Measured
+   directly from the `cb_2020_us_zcta520_500k` per-feature bboxes, one method throughout (bbox
+   under 1 CSS px in *both* axes, 256 px tiles, lon scaled by cos(lat), dPR 1): **z2 91.7% · z3
+   62.1% · z4 31.4% · z5 15.7% · z6 7.4% · z7 3.2% · z8 1.1% · z9 0.4% · z10 0.1%** **[M]**.
+   Neither 40% nor 89.5% survives. Quote 62.1% (z3) and 31.4% (z4, the default view).
 4. Measure and correct every **[E]** in §3: snapshot raw/gz, paint-table gz, rebuilt tileset,
    history bucket size.
 5. Run `mapshaper cb_2020_us_zcta520_500k.shp -info`; record median vertex spacing in
    `geometry.lock.json`; take the TIGER branch if > ~150 m (§5.1).
-6. Record the **actual** 2020 ZCTA feature count on the first geometry run. Do not trust 33,791.
+6. ~~Record the **actual** 2020 ZCTA feature count on the first geometry run.~~ **CLOSED
+   2026-09-04: it is 33,791** — confirmed three ways from `cb_2020_us_zcta520_500k` (`.shx` file
+   size, `.shx` header length word, `.dbf` record count) **[M]**. The 33,771 used elsewhere is
+   `zcta-meta.csv`'s row count, a *derived* file, and it is 20 short. **33,791 is the denominator**;
+   recompute any percentage taken against 33,771. Assertion A1 (§5.7) still runs, but it now
+   confirms a known value rather than discovering one.
 7. Fit **per-metric K** for `MEDIAN_DOM` and `AVG_SALE_TO_LIST` (§6.2).
 8. **Leave-one-out refit** of the metro-vs-own growth weight before any metro shrinkage ships (§6.3).
 9. Start **archiving each monthly ZHVI vintage** as a release asset now, so a point-in-time
    backtest becomes possible in two years (§6.9).
 10. Pre-write the **diff-gate override reason** for Phase 2's first real run (§8.5).
+11. **Recompute every LISA and Moran number on the gated (`n >= 30`, 8,544-ZIP) set** — `I` at
+    k = 4/8/16/32, all five class counts, the BH count, `lisa_median_n_by_class`. Gating
+    rebuilds the KNN weights, so none of the ungated figures in §6.5 carry over, and none of
+    them may be published or quoted in an interview until this is done (§6.5).
+12. **Reconcile the two classing rows in §6.6.** The unanchored counts sum to 20,010; the
+    p1..p99 anchored counts sum to 19,612. Recompute both on one population and add the
+    `sum(class_counts) == non-null count` assertion. *(The anchor **policy** is now settled —
+    recompute per release and ship the breaks, §6.6 — but the arithmetic still has to close.)*
+13. **Verify Phase 0.2 is finished.** `lfs: true` is gone from both workflows, but
+    `.gitattributes` still carries `public/data/archive/** filter=lfs` and all six archive
+    files are still tracked, so the 14.45 MiB LFS pull per checkout has not actually stopped.
+14. **Confirm the `$RUNNER_TEMP` move (Phase 0.3).** `*.tsv*.gz` is gitignored, but the
+    `tempfile.mkdtemp` + `finally` rewrite in the download path is not verified as landed.
+15. Re-cost `build/publish/**` (the ~45 MB **[E]** in §2.5) once Phase 2 emits it — the
+    read-only-parse split is justified by that number being much smaller than 180 MB.
+16. **Measure the real z2 tile cost** on the first geometry run and replace the ~0.2–0.3 MB **[E]**
+    in §5.3. Then widen `ALASKA_DEFAULT_BOUNDS` back to the full state and delete the
+    "we don't want to rebuild the tileset" comment at `PrintStage.tsx:28-34`, which will no longer
+    be true.
+17. ~~**Decide the Realtor.com ingest grain (§6.1a).**~~ **CLOSED 2026-09-04 — moot.** Realtor.com
+    does not ship at all; folded into item 20.
+18. ~~**Pick and justify the ±25% YoY clamp empirically (§6.6).**~~ **CLOSED 2026-09-04 by §6.6.**
+    The 29-41%/yr saturation was measured on `median_sale_price_yoy`, which is detail-panel only
+    and never painted, so no clamp ever applied to it. On the painted series — pooled `|zhvi_yoy|`
+    over 6,137,683 finite lag-12 cells — p95 = **18.85%** and only 1.65% of cells exceed 25%: the
+    bound was too **loose**. Moved once to **±20%**, derived from a stated p95 rule, and frozen. **[M]**
+19. ~~**Confirm Redfin is still stale on the next run.**~~ **CLOSED 2026-09-03 by §1.5** — the
+    old feed is not coming back; it was replaced, not paused. The staleness banner still ships
+    for a real outage of the *new* feed, but its threshold moves to a 45-day CONTRACT (§1.5.1).
+20. ~~**Decide whether Realtor.com still earns its place (§6.1a).**~~ **CLOSED 2026-09-04: it does
+    not.** Realtor.com is cut. Three of its four unique columns now come from Redfin, and the
+    cross-check argument — the only survivor — does not work: Realtor counts a different listing
+    universe over a calendar month against Redfin's rolling 89-92 days, so a disagreement confounds
+    the curing uplift with three other differences and isolates nothing. §6.1a is retained as a
+    deferred Phase 8 note with the reopen condition stated. The Zillow Market Heat Index refusal is
+    independent and stands.
+
+21. **Rewrite §2, §4 and §6 against the new feed.** §1.5 is authoritative but bolted on; those
+    three sections still describe the dead TSV. Highest-risk single item in this document,
+    because every stale `PROPERTY_TYPE` / `PERIOD_DURATION` reference now reads as instructions
+    for a file that no longer updates. Until this lands, §1.5 must stay first-read.
+22. ~~**Re-measure every coverage number against the new file.**~~ **CLOSED 2026-09-04 by §1.5.9**,
+    on the full 1.33 GB file and the full ZCTA shapefile. Redfin **33,952** ZIPs ever / **29,738**
+    latest / 26,148 with `HOMES SOLD`; **28,920** latest-period ZIPs are ZCTAs; orphans **818**
+    latest / **1,869** ever; ZCTAs with no Redfin data **1,708** ever and **4,871 (14.4%)** in the
+    latest period, against the old 6,664 (19.7%) **[M]**. The panel is **173 x 33,952**, not
+    171 x 24,619. *Still open and tracked separately:* the reliability tier percentages and the
+    LISA gated set size, which are recomputed in item 11, not here.
+23. **Handle the two broken series in the panel (§1.5.5).** `sold_above_list` (now vs *original*
+    list) and `median_list_price` (now *new listings only*) are not backward-comparable. Either
+    start them at 2026-06 or mark the discontinuity on the axis. Do not silently splice.
+24. **Delete the `* 100` in `_coerce_value()` for every ratio, share and trend column (§1.5.4).**
+    The new feed ships percent already. This is a silent 100x error the all-null column guard
+    will not catch, in the exact class of bug this document exists to prevent.
+
+25. **Verify the staleness banner is manifest-driven, not hardcoded.** `upstream_stale_days`
+    must clear itself when a feed publishes. Still worth checking against the *new* feed even
+    though item 19 is closed.

@@ -124,18 +124,20 @@ function makeZip(overrides: Partial<ZipData> = {}): ZipData {
     period_end: "2024-01-31",
     zhvi: 1_500_000,
     zhvi_mom: null, zhvi_yoy: null,
-    median_sale_price: 1_200_000,
-    median_sale_price_mom: null, median_sale_price_yoy: null,
-    median_list_price: null, median_list_price_mom: null, median_list_price_yoy: null,
-    median_ppsf: null, median_ppsf_mom: null, median_ppsf_yoy: null,
-    homes_sold: null, homes_sold_mom: null, homes_sold_yoy: null,
-    pending_sales: null, pending_sales_mom: null, pending_sales_yoy: null,
-    new_listings: null, new_listings_mom: null, new_listings_yoy: null,
-    inventory: null, inventory_mom: null, inventory_yoy: null,
-    median_dom: null, median_dom_mom: null, median_dom_yoy: null,
-    avg_sale_to_list_ratio: null, avg_sale_to_list_mom: null, avg_sale_to_list_ratio_yoy: null,
-    sold_above_list: null, sold_above_list_mom: null, sold_above_list_yoy: null,
-    off_market_in_two_weeks: null, off_market_in_two_weeks_mom: null, off_market_in_two_weeks_yoy: null,
+    median_sale_price: 1_200_000, median_sale_price_yoy: null,
+    median_list_price: null, median_list_price_yoy: null,
+    median_ppsf: null, median_ppsf_yoy: null,
+    median_list_ppsf: null, median_list_ppsf_yoy: null,
+    homes_sold: null, homes_sold_yoy: null,
+    pending_sales: null, pending_sales_yoy: null,
+    new_listings: null, new_listings_yoy: null,
+    active_listings: null, active_listings_yoy: null,
+    inventory: null, inventory_yoy: null,
+    median_dom: null, median_dom_yoy: null,
+    months_of_supply: null, months_of_supply_yoy: null,
+    avg_sale_to_list_ratio: null, avg_sale_to_list_ratio_yoy: null,
+    sold_above_list: null, sold_above_list_yoy: null,
+    off_market_in_two_weeks: null, off_market_in_two_weeks_yoy: null,
     ...overrides,
   };
 }
@@ -313,10 +315,13 @@ describe("PrintStage", () => {
 
   it("dates the subtitle from the data, not from today's clock", () => {
     // A Redfin metric takes its period from the records themselves. The fixture
-    // is period_end 2024-01-31, so the subtitle must read January 2024 no matter
-    // when the test runs. This previously printed `today minus one month`.
+    // is period_end 2024-01-31, and every Redfin row is a rolling 3-month window,
+    // so the subtitle must name that window no matter when the test runs. This
+    // previously printed `today minus one month`.
     render(<PrintStage {...defaultProps} selectedMetric="median_sale_price" />);
-    expect(screen.getByText(/United States • January 2024/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/United States • 3 months ending Jan 31, 2024/)
+    ).toBeInTheDocument();
 
     // The exact string the old clock-based implementation would have produced.
     const clockDerived = new Date(new Date().setMonth(new Date().getMonth() - 1))

@@ -11,7 +11,7 @@ import bbox from "@turf/bbox";
 import { featureCollection, point } from "@turf/helpers";
 import { dataUrl } from "@/lib/data-url";
 import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS } from "@/lib/choropleth";
-import { fetchDataDates, formatPeriod } from "@/lib/data-dates";
+import { fetchDataDates, formatPeriod, formatRedfinWindow } from "@/lib/data-dates";
 
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 900;
@@ -151,7 +151,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       const pe = zip.period_end;
       if (pe && (newest === null || pe > newest)) newest = pe;
     }
-    return newest ? formatPeriod(newest) : "";
+    return newest ? formatRedfinWindow(newest) : "";
   }, [filteredData, selectedMetric, zhviPeriod]);
 
   const { alaskaZips, hawaiiZips, mainlandZips, alaskaBounds, hawaiiBounds, mainlandBounds } = useMemo(() => {

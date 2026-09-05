@@ -1,0 +1,253 @@
+{
+  "label": "02-uncompressed-data",
+  "url": "http://localhost:4319/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi",
+  "valid": true,
+  "invalidReason": null,
+  "conditions": {
+    "net": "slow4g",
+    "cpu": 4,
+    "viewport": "1440x900",
+    "runs": 4,
+    "pinned": true
+  },
+  "warnings": [
+    "no performance.measure marks — build is uninstrumented (expected for historical builds)"
+  ],
+  "summary": {
+    "lcp": {
+      "median": 36124,
+      "p95": 36124,
+      "min": 36112,
+      "max": 36124,
+      "n": 4
+    },
+    "tbt": {
+      "median": 18724,
+      "p95": 18800,
+      "min": 18699,
+      "max": 18970,
+      "n": 4
+    },
+    "maxLongTask": {
+      "median": 3420,
+      "p95": 3427,
+      "min": 3341,
+      "max": 3477,
+      "n": 4
+    },
+    "longTaskCount": {
+      "median": 45,
+      "p95": 45,
+      "min": 44,
+      "max": 46,
+      "n": 4
+    },
+    "domContentLoaded": {
+      "median": 5797.100000143051,
+      "p95": 5798,
+      "min": 5796.100000143051,
+      "max": 5805.299999952316,
+      "n": 4
+    },
+    "loadEvent": {
+      "median": 6290.300000190735,
+      "p95": 6293.200000047684,
+      "min": 6289.200000047684,
+      "max": 6321.100000143051,
+      "n": 4
+    },
+    "transferTotal": {
+      "median": 32855336,
+      "p95": 32855474,
+      "min": 32855218,
+      "max": 32855978,
+      "n": 4
+    },
+    "requestCount": {
+      "median": 37,
+      "p95": 37,
+      "min": 37,
+      "max": 37,
+      "n": 4
+    },
+    "heapBytes": {
+      "median": 211327492,
+      "p95": 212305812,
+      "min": 211315204,
+      "max": 238831008,
+      "n": 4
+    },
+    "metricSwitchMs": {
+      "median": 1734,
+      "p95": 1777,
+      "min": 1692,
+      "max": 1863,
+      "n": 4
+    },
+    "cls": {
+      "median": 0.005477151451581788,
+      "p95": 0.005568955560378084,
+      "min": 0.005390683875064298,
+      "max": 0.005568955560378084,
+      "n": 4
+    },
+    "wallMs": {
+      "median": 166988,
+      "p95": 167056,
+      "min": 166930,
+      "max": 167314,
+      "n": 4
+    },
+    "byKind": {
+      "other": {
+        "median": 479997,
+        "p95": 479997,
+        "min": 479988,
+        "max": 480383,
+        "n": 4
+      },
+      "css": {
+        "median": 21510,
+        "p95": 21510,
+        "min": 21510,
+        "max": 21510,
+        "n": 4
+      },
+      "js": {
+        "median": 593528,
+        "p95": 593528,
+        "min": 593528,
+        "max": 593528,
+        "n": 4
+      },
+      "basemap": {
+        "median": 667038,
+        "p95": 667185,
+        "min": 666920,
+        "max": 667294,
+        "n": 4
+      },
+      "data-json": {
+        "median": 2706145,
+        "p95": 2706145,
+        "min": 2706145,
+        "max": 2706145,
+        "n": 4
+      },
+      "data-geojson": {
+        "median": 28387118,
+        "p95": 28387118,
+        "min": 28387118,
+        "max": 28387118,
+        "n": 4
+      }
+    },
+    "marks": {}
+  },
+  "samples": [
+    {
+      "lcp": 36124,
+      "cls": 0.005477151451581788,
+      "tbt": 18724,
+      "maxLongTask": 3341,
+      "longTaskCount": 46,
+      "domContentLoaded": 5796.100000143051,
+      "loadEvent": 6293.200000047684,
+      "mainThreadResourceCount": 23,
+      "marks": {},
+      "pinnedViewApplied": true,
+      "transferTotal": 32855218,
+      "byKind": {
+        "other": 479997,
+        "css": 21510,
+        "js": 593528,
+        "basemap": 666920,
+        "data-json": 2706145,
+        "data-geojson": 28387118
+      },
+      "requestCount": 37,
+      "heapBytes": 211327492,
+      "metricSwitchMs": 1734,
+      "wallMs": 167056,
+      "painted": true
+    },
+    {
+      "lcp": 36124,
+      "cls": 0.005568955560378084,
+      "tbt": 18970,
+      "maxLongTask": 3427,
+      "longTaskCount": 44,
+      "domContentLoaded": 5798,
+      "loadEvent": 6290.300000190735,
+      "mainThreadResourceCount": 23,
+      "marks": {},
+      "pinnedViewApplied": true,
+      "transferTotal": 32855336,
+      "byKind": {
+        "other": 479997,
+        "css": 21510,
+        "js": 593528,
+        "basemap": 667038,
+        "data-json": 2706145,
+        "data-geojson": 28387118
+      },
+      "requestCount": 37,
+      "heapBytes": 212305812,
+      "metricSwitchMs": 1692,
+      "wallMs": 167314,
+      "painted": true
+    },
+    {
+      "lcp": 36112,
+      "cls": 0.005568955560378084,
+      "tbt": 18800,
+      "maxLongTask": 3477,
+      "longTaskCount": 45,
+      "domContentLoaded": 5797.100000143051,
+      "loadEvent": 6289.200000047684,
+      "mainThreadResourceCount": 23,
+      "marks": {},
+      "pinnedViewApplied": true,
+      "transferTotal": 32855978,
+      "byKind": {
+        "other": 480383,
+        "css": 21510,
+        "js": 593528,
+        "basemap": 667294,
+        "data-json": 2706145,
+        "data-geojson": 28387118
+      },
+      "requestCount": 37,
+      "heapBytes": 238831008,
+      "metricSwitchMs": 1863,
+      "wallMs": 166930,
+      "painted": true
+    },
+    {
+      "lcp": 36124,
+      "cls": 0.005390683875064298,
+      "tbt": 18699,
+      "maxLongTask": 3420,
+      "longTaskCount": 45,
+      "domContentLoaded": 5805.299999952316,
+      "loadEvent": 6321.100000143051,
+      "mainThreadResourceCount": 23,
+      "marks": {},
+      "pinnedViewApplied": true,
+      "transferTotal": 32855474,
+      "byKind": {
+        "other": 479988,
+        "css": 21510,
+        "js": 593528,
+        "basemap": 667185,
+        "data-json": 2706145,
+        "data-geojson": 28387118
+      },
+      "requestCount": 37,
+      "heapBytes": 211315204,
+      "metricSwitchMs": 1777,
+      "wallMs": 166988,
+      "painted": true
+    }
+  ]
+}

@@ -54,7 +54,6 @@ export function HousingDashboard() {
   const [customBuckets, setCustomBuckets] = useState<number[] | null>(null);
   const [autoScale, setAutoScale] = useState(false);
   const [isIndexReady, setIsIndexReady] = useState(false);
-  const [isFullDataLoaded, setIsFullDataLoaded] = useState(false);
   const lastBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
   const initialLoadRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
@@ -69,27 +68,28 @@ export function HousingDashboard() {
       if (hasRun) return;
       hasRun = true;
 
-      // --- Phase 1: Load lite data for fast initial render ---
-      const liteUrl = dataUrl("zip-data-lite.json");
-      const earlyBuffer: ArrayBuffer | null = await ((window as unknown as Record<string, unknown>).__zipDataLitePromise as Promise<ArrayBuffer | null> | undefined ?? Promise.resolve(null));
+      // index.html starts this fetch in <head>, before the bundle parses, so the
+      // buffer is usually already in flight by the time we get here.
+      const url = dataUrl("zip-data.json");
+      const earlyBuffer: ArrayBuffer | null = await ((window as unknown as Record<string, unknown>).__zipDataPromise as Promise<ArrayBuffer | null> | undefined ?? Promise.resolve(null));
 
       try {
         setLoadError(null);
 
         const transfer: Transferable[] = earlyBuffer ? [earlyBuffer] : [];
-        const liteResult = await processData({
+        const result = await processData({
           type: 'LOAD_AND_PROCESS_DATA',
-          data: { url: liteUrl, selectedMetric: 'zhvi', prefetchedBuffer: earlyBuffer ?? undefined }
+          data: { url, selectedMetric: 'zhvi', prefetchedBuffer: earlyBuffer ?? undefined }
         }, { transfer }) as DataPayload;
 
         if (!isMounted) return;
 
-        if (liteResult) {
-          setZipData(liteResult.zip_codes);
-          
+        if (result) {
+          setZipData(result.zip_codes);
+
           // Build spatial index during idle time
           const scheduleIndexBuild = () => {
-            buildSpatialIndex(liteResult.zip_codes);
+            buildSpatialIndex(result.zip_codes);
             setIsIndexReady(true);
           };
 
@@ -100,7 +100,7 @@ export function HousingDashboard() {
           }
         }
       } catch (error: unknown) {
-        console.error("[HousingDashboard] Failed to load lite data:", error);
+        console.error("[HousingDashboard] Failed to load housing data:", error);
         if (isMounted) {
           setLoadError(
             error instanceof Error && error.message
@@ -108,47 +108,6 @@ export function HousingDashboard() {
               : "Could not load housing data. Check your connection and try again."
           );
         }
-      }
-
-      // --- Phase 2: Load full data in background when idle ---
-      const loadFullData = async () => {
-        if (!isMounted) return;
-        try {
-          const fullUrl = dataUrl("zip-data.json");
-          const fullResult = await processData({
-            type: 'LOAD_AND_PROCESS_DATA',
-            data: { url: fullUrl, selectedMetric: 'zhvi' }
-          }) as DataPayload;
-
-          if (!isMounted) return;
-
-          if (fullResult) {
-            console.log('[HousingDashboard] Full data loaded in background');
-            setZipData(fullResult.zip_codes);
-            setIsFullDataLoaded(true);
-
-            // Rebuild spatial index with full data
-            const rebuildIndex = () => {
-              buildSpatialIndex(fullResult.zip_codes);
-              setIsIndexReady(true);
-            };
-
-            if (typeof window.requestIdleCallback === 'function') {
-              window.requestIdleCallback(rebuildIndex, { timeout: 3000 });
-            } else {
-              setTimeout(rebuildIndex, 200);
-            }
-          }
-        } catch (error: unknown) {
-          console.error("[HousingDashboard] Failed to load full data in background:", error);
-          // Non-fatal: lite data is still usable
-        }
-      };
-
-      if (typeof window.requestIdleCallback === 'function') {
-        window.requestIdleCallback(() => loadFullData(), { timeout: 5000 });
-      } else {
-        setTimeout(loadFullData, 1000);
       }
     };
     loadInitialData();
@@ -338,7 +297,6 @@ export function HousingDashboard() {
         onMetricChange={handleMetricChange}
         onSearch={handleSearch}
         hideMobileControls={isMobile && (sidebarOpen || isExportMode)}
-        isFullDataLoaded={isFullDataLoaded}
       >
         <MapExport
           allZipData={zipData}

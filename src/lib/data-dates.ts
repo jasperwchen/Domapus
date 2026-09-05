@@ -45,12 +45,50 @@ export function fetchDataDates(): Promise<DataDates> {
   return cached;
 }
 
-/** "2026-05-31" -> "May 2026". Periods are month-ends, so the day adds nothing. */
-export function formatPeriod(period: string | null | undefined): string {
-  if (!period) return "N/A";
+function parsePeriod(period: string | null | undefined): Date | null {
+  if (!period) return null;
   const parsed = new Date(`${period}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return "N/A";
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * "2026-05-31" -> "May 2026". Correct for ZHVI, which is a smoothed monthly
+ * index. Do NOT use it for Redfin — see formatRedfinWindow.
+ */
+export function formatPeriod(period: string | null | undefined): string {
+  const parsed = parsePeriod(period);
+  if (!parsed) return "N/A";
   return parsed.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+/** "2026-05-31" -> "May 31, 2026". */
+export function formatPeriodDay(period: string | null | undefined): string {
+  const parsed = parsePeriod(period);
+  if (!parsed) return "N/A";
+  return parsed.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+}
+
+/**
+ * "2026-07-31" -> "3 months ending Jul 31, 2026".
+ *
+ * Redfin's ZIP-level rows are a rolling three-month window, not a snapshot of
+ * that month. Rendering "July 2026" claims a monthly figure the feed never
+ * publishes.
+ *
+ * It says "3 months", NOT "90 days". The window is calendar-aligned, so its
+ * inclusive length takes four values across the file: 92 days x 2,857,977 rows,
+ * 91 x 1,026,380, 90 x 733,207, 89 x 312,436. The old feed's uniform
+ * PERIOD_DURATION == 90 has no successor here, and `FREQUENCY == 'Rolling 3
+ * Months'` is the contract the pipeline asserts instead. No UI copy may say
+ * "90 days".
+ */
+export function formatRedfinWindow(period: string | null | undefined): string {
+  const parsed = parsePeriod(period);
+  if (!parsed) return "N/A";
+  const day = parsed.toLocaleDateString("en-US", {
+    year: "numeric", month: "short", day: "numeric",
+  });
+  return `3 months ending ${day}`;
 }
 
 export { EMPTY as EMPTY_DATA_DATES };

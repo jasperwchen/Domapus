@@ -94,6 +94,9 @@ agenthub/agents/youtube/db
 
 # Archive files and large assets
 **/*.zip
+# Raw upstream feeds. The pipeline downloads these to a temp dir, but a killed
+# run must never leave a 1.5 GB blob that `git add -A` would stage.
+*.tsv*.gz
 **/*.tar.gz
 **/*.tar
 **/*.tgz
@@ -113,11 +116,16 @@ android-sdk/
 /blob-report/
 /playwright/.cache/
 
-datap/
-
 # Local bare-repo mirror
 domapus-mirror.git/
 
 # Benchmark run logs and superseded results; committed baselines are kept.
 bench/results/*.log
 bench/results/superseded/
+
+# Large upstream downloads staged for local runs. These MUST stay out of the
+# working tree's stageable set: a run killed between download and cleanup used
+# to leave a 1.33 GB file that `git add -A` would happily commit.
+temp-redfin/
+temp-data/
+public/data/temp-geo/

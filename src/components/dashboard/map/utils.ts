@@ -1,11 +1,17 @@
 import { ZipData } from "./types";
-import { METRICS, getMetricLabel, type FormatType, type MetricInfo } from "@/lib/metrics";
+import {
+  METRICS, PAINTED_METRICS, getMetricLabel,
+  type ChangeFormat, type FormatType, type MetricInfo,
+} from "@/lib/metrics";
 import { getMetricValue } from "@/lib/metric-value";
 import { computeQuantileBuckets } from "@/lib/quantiles";
 
 // Re-exports so existing call sites continue to work without churn.
-export { METRICS as METRIC_DEFINITIONS, getMetricLabel, getMetricValue, computeQuantileBuckets };
-export type { FormatType, MetricInfo };
+export {
+  METRICS as METRIC_DEFINITIONS, PAINTED_METRICS,
+  getMetricLabel, getMetricValue, computeQuantileBuckets,
+};
+export type { ChangeFormat, FormatType, MetricInfo };
 
 // State code → full name
 const STATE_MAP: Record<string, string> = {
@@ -29,35 +35,63 @@ export function getStateName(stateCode: string | null | undefined): string {
   return STATE_MAP[code] || stateCode;
 }
 
-// Format any numeric value based on format type
+// Format a level for display.
 export function formatMetricValue(value: number | null | undefined, format: FormatType): string {
   if (value === null || value === undefined || isNaN(value)) return "N/A";
 
   switch (format) {
-    case 'currency':
-    case 'price':
+    case "price":
       return `$${value.toLocaleString()}`;
-    case 'percent':
-    case 'percentage':
+    case "percent":
       return `${value.toFixed(1)}%`;
-    case 'ratio':
-      return `${value.toFixed(1)}%`;
-    case 'days':
-      return `${value} days`;
-    case 'number':
+    case "days":
+      return `${Math.round(value).toLocaleString()} days`;
+    case "months":
+      return `${value.toFixed(1)} months`;
+    case "number":
     default:
       return value.toLocaleString();
   }
 }
 
-// Format change values (MoM, YoY) with sign indicator
-export function formatChange(value: number | null | undefined): { formatted: string; isPositive: boolean; isZero: boolean } {
-  if (value === null || value === undefined) return { formatted: "N/A", isPositive: false, isZero: true };
-  const numValue = Number(value);
-  if (isNaN(numValue)) return { formatted: "N/A", isPositive: false, isZero: true };
-  const isPositive = numValue > 0;
-  const isZero = numValue === 0;
-  return { formatted: `${isPositive ? "+" : ""}${numValue.toFixed(1)}%`, isPositive, isZero };
+/**
+ * Format a change. NOT every change is a percent.
+ *
+ * `median_dom_yoy` and `months_of_supply_yoy` are level differences in days and
+ * months. Redfin ships them as (now - year_ago) x 100 under a "(%)" suffix that
+ * is a lie; the pipeline divides by 100 and ships the honest unit. Rendering
+ * either with a "%" here would put the lie back.
+ *
+ * `ppt` is for changes on an already-percent level: a share going 48.5% -> 50.8%
+ * moved 2.3 percentage POINTS, not 2.3 percent.
+ */
+export function formatChange(
+  value: number | null | undefined,
+  format: ChangeFormat = "percent",
+): { formatted: string; isPositive: boolean; isZero: boolean } {
+  const n = Number(value);
+  if (value === null || value === undefined || isNaN(n)) {
+    return { formatted: "N/A", isPositive: false, isZero: true };
+  }
+  const sign = n > 0 ? "+" : "";
+  let formatted: string;
+  switch (format) {
+    case "days": {
+      const d = Math.round(n);
+      formatted = `${d > 0 ? "+" : ""}${d.toLocaleString()} ${Math.abs(d) === 1 ? "day" : "days"}`;
+      break;
+    }
+    case "months":
+      formatted = `${sign}${n.toFixed(1)} ${Math.abs(n) === 1 ? "month" : "months"}`;
+      break;
+    case "ppt":
+      formatted = `${sign}${n.toFixed(1)} pts`;
+      break;
+    case "percent":
+    default:
+      formatted = `${sign}${n.toFixed(1)}%`;
+  }
+  return { formatted, isPositive: n > 0, isZero: n === 0 };
 }
 
 // Compare two values for comparison views
