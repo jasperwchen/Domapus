@@ -773,3 +773,132 @@ which the old in-place write did not.
 
 This also still blocks, in the order todos.md already records: the archive untrack, the
 `.gitattributes` LFS rule removal, and the ZHVI vintage archive.
+
+---
+
+## 2026-09-05 — PHASE 3: the choropleth fix
+
+### The bug is gone, and it is now measured rather than argued
+
+`bench/verify-choropleth.mjs` is the committed acceptance check. Against the production
+build at 4x CPU throttle:
+
+```
+tileRequestsCausedBySwitch: 0
+sourceReloadCounter: { before: 0, after: 0 }
+```
+
+Both conditions the spec names. Before Phase 3, every metric change called
+`setPaintProperty("zips-fill", "fill-color", <step expression>)`; maplibre-gl's
+`style_layer.ts` returns `isDataDriven || wasDataDriven` as `requiresRelayout`, so `style.ts`
+marked the source `'reload'` and every loaded tile was re-sent to the worker, re-parsed from
+cached PBF, its fill bucket rebuilt and its GPU buffers re-uploaded. In auto-scale mode this
+fired on every `moveend`.
+
+Now both `fill-color` and `fill-opacity` are CONSTANT expressions set once at `addLayer`, and
+only feature-state changes. `setFeatureState` does not trigger a relayout.
+
+### Benchmarks — slow4g / 4x CPU / 1440x900 / 5 runs / pinned view
+
+| | phase0-baseline | phase1-after | phase3-after |
+|---|---|---|---|
+| LCP | 7352 ms | 7228 ms | **7012 ms** |
+| TBT | 5120 ms | 4053 ms | **2934 ms** |
+| long task count | 40 | 38 | **22** |
+| transfer | 4,793,964 B | 5,247,137 B | 5,247,137 B |
+| JS heap | 62.4 MB | 64.1 MB | **55.9 MB** |
+| **metric switch** | **3375 ms** | 3190 ms | **1491 ms** |
+
+phase0 and phase1 carry the harness warning "no performance.measure marks"; phase3 does not,
+because `src/lib/perf.ts` landed. Transfer is unchanged from phase1 — Phase 3 touches no payload.
+
+### What the remaining 1491 ms actually is, measured rather than assumed
+
+The harness's "metric switch" times a Playwright dropdown interaction, not choropleth work.
+Decomposed at the same 4x throttle (`bench/verify-choropleth.mjs` marks, plus a control run
+that re-selects the ALREADY-selected option so no metric change happens):
+
+| | ms @ 4x |
+|---|---|
+| dropdown open + click, **no metric change at all** | **580** |
+| `class:breaks` — quantile breaks over 33,771 values | 69 |
+| `class:assign` — build the 33,771-entry class map | 32 |
+| `map:applyChoropleth` — write 17,053 feature states | **38** |
+| `map:metricSwitch` — React effect to two frames later | 416 |
+
+So ~580 ms is the Radix Select UI and ~416 ms is React re-rendering a tree that carries 33,771
+ZIPs in props. **The choropleth work itself is 139 ms.** The spec's "< 150 ms" target is met by
+the choropleth; it was never scoped to the dropdown or to React.
+
+`class:breaks` + `class:assign` are `LegacyClassSource`, the interim authority. Phase 4's
+`PaintTable` is an O(1) array read and deletes both, which is the remaining 101 ms.
+
+### Two measurements that contradicted the spec, and one of them mattered a lot
+
+**1. `setFeatureState` costs 0.14 us, not ~30 us.** Micro-benchmarked in-page: 10,000 calls in
+1.4 ms. The full 33,771-ZIP set is therefore ~5 ms of work, a third of one frame.
+
+**This made `CHUNK = 8_000` actively harmful.** Chunking at 8,000 spread the set over five
+animation frames — and that did not cost five frames of writing, it cost five frames of
+WAITING, because each chunk dirties the source and MapLibre does a full map render between
+them. Raising `CHUNK` to 50,000 so the set lands in one frame took `map:applyChoropleth` on a
+metric switch from **579 ms to 9 ms** unthrottled (38 ms at 4x). Nothing else changed.
+
+The chunking mechanism is kept as a safety valve above ~100k ZIPs, with the measurement in the
+comment so nobody re-tunes it downward on the old assumption.
+
+**2. Skipping no-op writes halves the work on a switch.** The painter caches the last class
+written per ZIP; a metric change leaves 16,718 of 33,771 ZIPs in the same class, so only 17,053
+writes are needed. This does NOT weaken the full-set guarantee — every ZIP is still visited
+every epoch, and MapLibre's own feature-state store already holds the value that would have
+been re-written, so a skipped write and a redundant write leave the map identical. The
+invariant it depends on (nothing else clears feature state) is documented at the field.
+
+### The palette is derived, not asserted
+
+`scripts/palette/derive_ramp.mjs` resamples the 12-hex source at equal CIELAB arc length and
+runs the Machado-2009 CVD simulation in LINEAR RGB (applying those matrices to gamma-encoded
+values, a common shortcut, overstates the remaining contrast). It refuses to write a ramp whose
+L* is not monotone or whose minimum adjacent dE76 under simulated CVD falls below 10.
+
+Measured, 12 colours -> 7:
+
+| | source | derived |
+|---|---|---|
+| adjacent dE76 coefficient of variation | 0.2364 | **0.0524** |
+| min adjacent dE76, protanopia | 9.01 | **19.34** |
+| min adjacent dE76, deuteranopia | 8.43 | **12.68** |
+| min adjacent dE76, tritanopia | 7.93 | **12.04** |
+| L* | 96.9 -> 12.9, monotone | 96.9 -> 12.9, monotone |
+
+This independently reproduces the spec's ramp exactly except `#EB5D5E` where the spec wrote
+`#EB5E5E` — one unit in one channel, i.e. rounding. The spec's CVD figures (7.4 -> 11.9) differ
+from mine; mine are computed in linear RGB at severity 1.0 and the script is the record.
+
+### One class authority at a time
+
+`LegacyClassSource` exists because Phase 3 ships a paint expression reading
+`["feature-state","k"]` while the artifact that supplies `k` does not ship until Phase 4.
+Without it the whole map renders `NO_DATA_COLOR`. `ChoroplethPainter` never learns where
+classes come from, so Phase 4 swaps the authority in one line.
+
+The Legend now renders the SAME break values the map is painting, straight from the live
+`ClassSource`, plus a no-data swatch. It previously computed its own quantiles from its own
+sample, so it could describe a scale the map was not using. Its value formatter also stopped
+sniffing substrings of the metric key — that read `months_of_supply` as neither price nor ratio
+and would have read any future `*_price_ratio` as a price.
+
+### Already done, so not redone
+
+Phase 3 lists "code-split the jsPDF/html2canvas export path". It is already split:
+`ExportSidebar` is `React.lazy`, and `pdf-export` (403 KB) and `html2canvas` (199 KB) are
+separate chunks. `grep -c "jsPDF\\|html2canvas" dist/assets/index-*.js` returns 0.
+
+### Tests
+
+`src/lib/__tests__/choropleth-painter.test.ts`, 12 cases, including the two the spec calls
+mandatory: switch -> pan away -> pan back shows the correct class, and an aborted metric change
+never applies stale feature state. The rAF stub queues callbacks and drains on demand rather
+than running them synchronously — a stub that registers a frame it never runs wedges the
+painter in a way a real browser never does, and the first version of the test failed for
+exactly that reason rather than for a real defect.

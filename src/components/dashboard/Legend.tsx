@@ -3,28 +3,44 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
 import { HelpCircle, Loader2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { getMetricLabel } from "@/lib/metrics";
+import { METRICS, getMetricLabel } from "@/lib/metrics";
 import { computeQuantiles } from "@/lib/quantiles";
-import { CHOROPLETH_GRADIENT_STOPS } from "@/lib/choropleth";
+import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS, NO_DATA_COLOR } from "@/lib/choropleth";
 
 interface LegendProps {
   selectedMetric: string;
   metricValues: number[];
+  /** The SAME break values the map is painting, straight from the live
+   *  ClassSource. The legend used to compute its own quantiles from its own
+   *  sample, so it could describe a scale the map was not using. */
+  breaks?: readonly number[] | null;
   autoScale?: boolean;
   onAutoScaleChange?: (value: boolean) => void;
   isIndexReady?: boolean;
 }
 
-// Number formatting helper
+// Formatted from the metric registry rather than by sniffing the key name. The
+// old substring test read "months_of_supply" as neither price nor ratio and fell
+// through to a raw number, and would have read any future "*_price_ratio" as a
+// price because "price" matched first.
 function formatLegendValue(value: number, metric: string): string {
-  const m = metric.toLowerCase();
-  if (m.includes("price") || m.includes("zhvi")) return `$${(value / 1000).toFixed(0)}k`;
-  if (m.includes("ratio")) return `${value.toFixed(1)}%`;
-  if (m.includes("mom") || m.includes("yoy")) return `${value.toFixed(1)}%`;
-  return value.toLocaleString();
+  switch (METRICS[metric]?.format) {
+    case "price":
+      return value >= 1000 ? `$${(value / 1000).toFixed(0)}k` : `$${value.toFixed(0)}`;
+    case "percent":
+      return `${value.toFixed(1)}%`;
+    case "months":
+      return value.toFixed(1);
+    case "days":
+      return `${Math.round(value)}d`;
+    default:
+      return value.toLocaleString();
+  }
 }
 
-export function Legend({ selectedMetric, metricValues, autoScale, onAutoScaleChange, isIndexReady = true }: LegendProps) {
+export function Legend({
+  selectedMetric, metricValues, breaks, autoScale, onAutoScaleChange, isIndexReady = true,
+}: LegendProps) {
   const isMobile = useIsMobile();
 
   const legendDisplay = useMemo(() => {
@@ -44,6 +60,13 @@ export function Legend({ selectedMetric, metricValues, autoScale, onAutoScaleCha
 
   const gradient = `linear-gradient(to right, ${CHOROPLETH_GRADIENT_STOPS})`;
   const verticalGradient = `linear-gradient(to top, ${CHOROPLETH_GRADIENT_STOPS})`;
+
+  // Discrete swatches, one per painted class, labelled with the map's own break
+  // values. A continuous gradient implies a continuum the map does not paint.
+  const hasBreaks = !!breaks && breaks.length === CHOROPLETH_COLORS.length - 1;
+  const classLabels = hasBreaks
+    ? breaks.map((b) => formatLegendValue(b, selectedMetric))
+    : null;
 
   // Mobile
   if (isMobile) {
@@ -137,16 +160,53 @@ export function Legend({ selectedMetric, metricValues, autoScale, onAutoScaleCha
       )}
 
       <div className="space-y-2">
-        <div
-          className="h-4 rounded-md border border-border"
-          style={{ background: gradient }}
-          aria-hidden="true"
-        />
+        {hasBreaks ? (
+          <>
+            <div className="flex" aria-hidden="true">
+              {CHOROPLETH_COLORS.map((c, i) => (
+                <div
+                  key={c + i}
+                  className="h-4 flex-1 border-y border-border first:rounded-l-md first:border-l last:rounded-r-md last:border-r"
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+            <div className="flex text-[10px] text-muted-foreground font-semibold tabular-nums">
+              {classLabels!.map((label, i) => (
+                <span key={i} className="flex-1 text-right -mr-2 last:mr-0">
+                  {label}
+                </span>
+              ))}
+              <span className="flex-1" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div
+              className="h-4 rounded-md border border-border"
+              style={{ background: gradient }}
+              aria-hidden="true"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground font-semibold">
+              <span>{legendDisplay.min}</span>
+              <span>{legendDisplay.mid}</span>
+              <span>{legendDisplay.max}</span>
+            </div>
+          </>
+        )}
 
-        <div className="flex justify-between text-xs text-muted-foreground font-semibold">
-          <span>{legendDisplay.min}</span>
-          <span>{legendDisplay.mid}</span>
-          <span>{legendDisplay.max}</span>
+        {/* Three absence states, three channels, and they must not be conflated.
+            "No data" is a ZCTA that IS drawn but that neither source reports —
+            it gets a solid grey and this entry. "No polygon" (ocean, park) is
+            the only legitimately blank state. Painting no-data transparent made
+            it identical to both an absent polygon and a genuine zero. */}
+        <div className="flex items-center gap-2 pt-1 text-[10px] text-muted-foreground">
+          <span
+            className="inline-block h-3 w-3 rounded-sm border border-border"
+            style={{ background: NO_DATA_COLOR }}
+            aria-hidden="true"
+          />
+          <span>No data reported</span>
         </div>
       </div>
 

@@ -4,7 +4,8 @@ import { ZipData } from "./map/types";
 import { MapExport } from "@/components/MapExport";
 import { dataUrl } from "@/lib/data-url";
 import { buildSpatialIndex, queryZipsInBounds } from "@/lib/spatial-index";
-import { computeQuantileBuckets, getMetricValue } from "./map/utils";
+import { getMetricValue } from "./map/utils";
+import { LegacyClassSource, ViewportClassSource, type ClassSource } from "@/lib/class-source";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { TopBar } from "./TopBar";
 import { MapLibreMap } from "./MapLibreMap";
@@ -51,7 +52,6 @@ export function HousingDashboard() {
   const [isExportMode, setIsExportMode] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [visibleZipCodes, setVisibleZipCodes] = useState<string[] | null>(null);
-  const [customBuckets, setCustomBuckets] = useState<number[] | null>(null);
   const [autoScale, setAutoScale] = useState(false);
   const [isIndexReady, setIsIndexReady] = useState(false);
   const lastBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
@@ -163,32 +163,24 @@ export function HousingDashboard() {
     }
   }, [zipData]);
 
+  // Only the visible SET is tracked here now. Classing moved into ClassSource,
+  // so there is one authority for "which class is this ZIP in" rather than two
+  // that could disagree — the map used to compute its own buckets while the
+  // Legend computed different ones from a different sample.
   const updateColors = useCallback((bounds: [[number, number], [number, number]] | null) => {
     if (!autoScaleRef.current) {
-      setCustomBuckets(null);
       setVisibleZipCodes(null);
       return;
     }
-
     if (!bounds) return;
 
-    const west = bounds[0][0];
-    const south = bounds[0][1];
-    const east = bounds[1][0];
-    const north = bounds[1][1];
-
-    const visibleZips = queryZipsInBounds({ west, south, east, north });
-    setVisibleZipCodes(visibleZips);
-
-    const values = visibleZips
-      .map(zip => zipData[zip])
-      .filter(Boolean)
-      .map(d => getMetricValue(d, selectedMetric))
-      .filter(v => v > 0);
-
-    const buckets = computeQuantileBuckets(values, 12);
-    setCustomBuckets(buckets.length > 0 ? buckets : null);
-  }, [zipData, selectedMetric]);
+    // Still the centroid-box index. It under-counts large ZCTAs (its 0.01-degree
+    // box is ~1.1 km against a measured median ZCTA span of 7.45 km); Phase 4
+    // replaces it with real polygon bounds from zcta-geom.csv.
+    setVisibleZipCodes(queryZipsInBounds({
+      west: bounds[0][0], south: bounds[0][1], east: bounds[1][0], north: bounds[1][1],
+    }));
+  }, []);
 
   const handleMapMove = useCallback((
     bounds: [[number, number], [number, number]],
@@ -222,13 +214,11 @@ export function HousingDashboard() {
     if (autoScale && lastBoundsRef.current && isIndexReady) {
       updateColors(lastBoundsRef.current);
     } else if (!autoScale) {
-      setCustomBuckets(null);
       setVisibleZipCodes(null);
     }
   }, [autoScale, isIndexReady, updateColors]);
 
   useEffect(() => {
-    setCustomBuckets(null);
     setVisibleZipCodes(null);
 
     if (autoScale && lastBoundsRef.current) {
@@ -254,6 +244,20 @@ export function HousingDashboard() {
     document.addEventListener('visibilitychange', handleFocus);
     return () => document.removeEventListener('visibilitychange', handleFocus);
   }, [autoScale, updateColors]);
+
+  // EXACTLY ONE class authority is live at a time. Constructing a source bumps
+  // its epoch; the painter sees a new epoch and rewrites the full ZIP set, so
+  // the two modes can never overlap or leave stale colours behind.
+  //
+  // In Phase 4 the fixed-scale branch becomes `PaintTable`, which is one line
+  // here — the painter never learns where classes come from.
+  const classSource: ClassSource | null = useMemo(() => {
+    if (Object.keys(zipData).length === 0) return null;
+    if (autoScale && visibleZipCodes && visibleZipCodes.length > 0) {
+      return new ViewportClassSource(zipData, selectedMetric, visibleZipCodes);
+    }
+    return new LegacyClassSource(zipData, selectedMetric);
+  }, [zipData, selectedMetric, autoScale, visibleZipCodes]);
 
   const legendValues = useMemo(() => {
     const source = (visibleZipCodes && visibleZipCodes.length > 0)
@@ -339,7 +343,7 @@ export function HousingDashboard() {
               zipData={zipData}
               isLoading={isLoading}
               loadingProgress={progress}
-              customBuckets={customBuckets}
+              classSource={classSource}
               onMapMove={handleMapMove}
               onUserInteraction={handleUserInteraction}
               initialCenter={initialUrlStateRef.current.lng !== undefined && initialUrlStateRef.current.lat !== undefined ? [initialUrlStateRef.current.lng, initialUrlStateRef.current.lat] : undefined}
@@ -351,6 +355,7 @@ export function HousingDashboard() {
               <Legend
                 selectedMetric={selectedMetric}
                 metricValues={legendValues}
+                breaks={classSource?.breaks ?? null}
                 autoScale={autoScale}
                 onAutoScaleChange={setAutoScale}
                 isIndexReady={isIndexReady}

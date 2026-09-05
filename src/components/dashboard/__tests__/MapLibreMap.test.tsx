@@ -134,7 +134,7 @@ describe("MapLibreMap", () => {
         onZipSelect={() => undefined}
         zipData={{}}
         isLoading={false}
-        customBuckets={null}
+        classSource={null}
         onMapMove={() => undefined}
       />
     );
@@ -159,7 +159,7 @@ describe("MapLibreMap", () => {
         onZipSelect={() => undefined}
         zipData={{}}
         isLoading={false}
-        customBuckets={null}
+        classSource={null}
         onMapMove={() => undefined}
       />
     );

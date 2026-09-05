@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import maplibregl, { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
-import { createMetricPopupContent, getMetricValue, computeQuantileBuckets } from "./map/utils";
+import { createMetricPopupContent } from "./map/utils";
 import { ZipData } from "./map/types";
 import { dataUrl } from "@/lib/data-url";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";
 import { Fullscreen } from "lucide-react";
-import { CHOROPLETH_COLORS } from "@/lib/choropleth";
+import {
+  ChoroplethPainter, classOpacityExpression, classPaintExpression,
+} from "@/lib/choropleth-painter";
+import type { ClassSource } from "@/lib/class-source";
+import { mark, measure } from "@/lib/perf";
 import type { ProgressData } from "@/workers/worker-types";
 
 
@@ -19,7 +23,9 @@ interface MapProps {
   zipData: Record<string, ZipData>;
   isLoading: boolean;
   loadingProgress?: ProgressData;
-  customBuckets: number[] | null;
+  /** The one live class authority. Swapping it bumps an epoch; the painter
+   *  rewrites the full ZIP set and the paint expression never changes. */
+  classSource: ClassSource | null;
   onMapMove: (
     bounds: [[number, number], [number, number]],
     view?: { lat: number; lng: number; zoom: number }
@@ -41,7 +47,7 @@ export function MapLibreMap({
   zipData,
   isLoading,
   loadingProgress,
-  customBuckets,
+  classSource,
   onMapMove,
   onUserInteraction,
   initialCenter,
@@ -56,14 +62,11 @@ export function MapLibreMap({
   const mousemoveRafRef = useRef<number | null>(null);
   const lastMouseEventRef = useRef<MapMouseEvent | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
-  const lastProcessedMetric = useRef<string>("");
-  const lastProcessedDataRef = useRef<Record<string, ZipData> | null>(null);
-  const lastBucketsRef = useRef<string>("");
+  const painterRef = useRef<ChoroplethPainter | null>(null);
   const highlightedZipRef = useRef<string | null>(null);
   const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const batchIdRef = useRef(0);
   const userInteractionNotifiedRef = useRef(false);
   const initialViewRef = useRef({ center: initialCenter, zoom: initialZoom });
 
@@ -169,7 +172,7 @@ export function MapLibreMap({
     });
 
     map.once("load", () => {
-      console.log("[Map] Map initialized");
+      mark("map:styleLoad");
       sessionStorage.removeItem(RELOAD_ATTEMPTS_KEY);
       applyLabelContrast(map);
       setIsMapReady(true);
@@ -257,6 +260,8 @@ export function MapLibreMap({
         popupRef.current.remove();
         popupRef.current = null;
       }
+      painterRef.current?.dispose();
+      painterRef.current = null;
       if (mapRef.current) {
         try {
           mapRef.current.remove();
@@ -411,17 +416,25 @@ export function MapLibreMap({
       const labelLayer = layers.find((l: LayerSpecification) => l.id === "watername_ocean");
       const beforeId = stateBoundaryLayer?.id || labelLayer?.id;
 
-      // Fill layer
+      // Fill layer. BOTH paint values are CONSTANT and are never rewritten:
+      // that is the entire choropleth fix. The class index lives in
+      // feature-state, which setFeatureState updates without a source reload.
       map.addLayer({
         id: "zips-fill",
         type: "fill",
         source: "zips",
         "source-layer": "us_zip_codes",
         paint: {
-          "fill-color": "#cccccc",
-          "fill-opacity": 0.75,
+          "fill-color": classPaintExpression() as never,
+          "fill-opacity": classOpacityExpression() as never,
         }
       }, beforeId);
+
+      painterRef.current = new ChoroplethPainter(map);
+      // Debug handle. bench/verify-choropleth.mjs and any console session need
+      // a way to reach the map; without one the acceptance check cannot be run
+      // against a production build, which is the only build worth checking.
+      (window as unknown as Record<string, unknown>).__map = map;
 
       // Border layer
       map.addLayer({
@@ -480,7 +493,7 @@ export function MapLibreMap({
 
 
       map.once("idle", () => {
-        console.log("[MapLibreMap] Map idle");
+        mark("map:firstTiles");
       });
 
       // Proactively set loaded when source is added
@@ -495,86 +508,42 @@ export function MapLibreMap({
     }
   }, [isMapReady, setupMapInteractions]);
 
-  // 5. Update Choropleth Colors
+  // 5. Paint the choropleth.
+  //
+  // This effect used to call `map.setPaintProperty("zips-fill", "fill-color",
+  // <step expression>)` on every metric change and, in auto-scale mode, on every
+  // moveend. In maplibre-gl that marks the source 'reload': every loaded tile is
+  // re-sent to the worker, re-parsed from its cached PBF, its fill bucket
+  // rebuilt and its GPU buffers re-uploaded. Measured cost of one metric switch:
+  // 3375 ms at 4x CPU on slow 4G.
+  //
+  // Now the paint expression is a CONSTANT set once at addLayer, and only
+  // feature-state changes. setFeatureState does not trigger a relayout.
   useEffect(() => {
-    if (!isMapReady || !mapRef.current || !pmtilesLoaded || !hasData) return;
-    const map = mapRef.current;
+    if (!isMapReady || !pmtilesLoaded || !classSource) return;
+    const painter = painterRef.current;
+    if (!painter) return;
+    painter.schedule(classSource);
+  }, [isMapReady, pmtilesLoaded, classSource]);
 
-    // Ensure layer exists
-    if (!map.getLayer("zips-fill")) return;
-
-    const currentBucketsStr = JSON.stringify(customBuckets);
-    const bucketsUpdated = currentBucketsStr !== lastBucketsRef.current;
-    const metricChanged = lastProcessedMetric.current !== selectedMetric;
-    const dataChanged = lastProcessedDataRef.current !== zipData;
-
-    if (!metricChanged && !dataChanged && !bucketsUpdated && customBuckets === null) {
+  // Metric-switch timing, end to end, so the headline number is measured by the
+  // page rather than asserted.
+  const firstMetricRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (firstMetricRef.current === null) {
+      firstMetricRef.current = selectedMetric;
       return;
     }
-
-    lastProcessedMetric.current = selectedMetric;
-    lastProcessedDataRef.current = zipData;
-    lastBucketsRef.current = currentBucketsStr;
-
-    const currentBatchId = ++batchIdRef.current;
-
-    let buckets: number[] = [];
-    if (customBuckets && customBuckets.length > 0) {
-      buckets = customBuckets;
-    } else {
-      const values = Object.values(zipData).map(d => getMetricValue(d, selectedMetric));
-      buckets = computeQuantileBuckets(values, CHOROPLETH_COLORS.length);
-    }
-
-    if (buckets.length === 0) {
-      return;
-    }
-
-    const stepExpression = [
-      "step",
-      ["coalesce", ["feature-state", "metricValue"], 0],
-      "transparent",
-      0.001,
-      CHOROPLETH_COLORS[0],
-      ...buckets.flatMap((threshold, i) => [threshold, CHOROPLETH_COLORS[Math.min(i + 1, CHOROPLETH_COLORS.length - 1)]])
-    ];
-
-    const shouldUpdateStates = customBuckets === null || metricChanged || dataChanged;
-
-    if (shouldUpdateStates) {
-      const entries = Object.entries(zipData);
-
-      const applyAllFeatureStates = () => {
-        if (currentBatchId !== batchIdRef.current) return;
-        if (!map.isStyleLoaded() || !map.getSource("zips") || !map.getLayer("zips-fill")) {
-          requestAnimationFrame(applyAllFeatureStates);
-          return;
-        }
-
-        for (let i = 0; i < entries.length; i++) {
-          const [zipCode, data] = entries[i];
-          const metricValue = getMetricValue(data, selectedMetric);
-          map.setFeatureState(
-            { source: "zips", sourceLayer: "us_zip_codes", id: zipCode },
-            { metricValue }
-          );
-        }
-
-        if (mapRef.current) {
-          map.setPaintProperty("zips-fill", "fill-color", stepExpression);
-        }
-
-        console.log(`[Map] Finished updating colors for ${entries.length} ZIPs`);
-      };
-
-      applyAllFeatureStates();
-    } else {
-      if (mapRef.current) {
-        map.setPaintProperty("zips-fill", "fill-color", stepExpression);
-      }
-    }
-
-  }, [isMapReady, pmtilesLoaded, zipData, selectedMetric, hasData, customBuckets]);
+    if (firstMetricRef.current === selectedMetric) return;
+    firstMetricRef.current = selectedMetric;
+    mark("map:metricSwitch:start");
+    const id = requestAnimationFrame(() =>
+      requestAnimationFrame(() => measure("map:metricSwitch", "map:metricSwitch:start", {
+        metric: selectedMetric,
+      })),
+    );
+    return () => cancelAnimationFrame(id);
+  }, [selectedMetric]);
 
   // 6. Fly to Search and Highlight ZIP
   useEffect(() => {
