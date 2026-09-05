@@ -138,3 +138,4 @@ public/data/temp-geo/
 # `git add -A` carried it into 1249f88. Untracked again on 2026-09-05, and this
 # time the rule is actually here.
 docs/FINAL-SPEC*.md
+docs/ENGINEERING-LOG.md

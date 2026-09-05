@@ -28,6 +28,9 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
   `1249f88..d5b662f` carried the file. Use `git show 1249f88:docs/FINAL-SPEC-08-2026.md` if the
   working copy is ever lost.)
 - `docs/AGENT-LOG.md` and `docs/todos.md` **are** tracked. Keep them that way.
+- `docs/ENGINEERING-LOG.md` is **not** tracked (untracked 2026-09-05, same reasoning as the
+  spec: a local working document that churns too fast to review in diffs). Its history up to
+  `50cc65b` is in git if an earlier version is ever wanted.
 - datap/ renamed to temp-data/
 ---
 

@@ -980,3 +980,61 @@ Untracked again on request: `git rm --cached`, and the `.gitignore` rule that al
 it now does its job. The last tracked copy is at `1249f88..d5b662f` if it is ever needed, which
 is more recovery than the convention promised — it said explicitly "no git history and no
 recovery".
+
+---
+
+## 2026-09-05 — react-router 6 -> 7, and why the advisories were not the reason
+
+`npm audit` reported two moderate advisories against `react-router@6.30.6`.
+
+**Neither is reachable in this codebase**, checked rather than assumed:
+
+| advisory | why it does not apply here |
+|---|---|
+| GHSA-337j-9hxr-rhxg — arbitrary constructor injection via `deserializeErrors()` in **SSR hydration** | This is a static SPA on GitHub Pages. No `createBrowserRouter`, no `RouterProvider`, no `HydratedRouter`, no `hydrateRoot`. The hydration path does not exist. |
+| GHSA-wrjc-x8rr-h8h6 — open redirect via backslash in `<Link>` / `useNavigate` | `useNavigate` appears **nowhere**. There is exactly one `<Link>`, `to="/"`, a hardcoded literal. No user input reaches a navigation target. |
+
+So the upgrade was not a fix for an exploitable hole. It was taken anyway, for a
+different reason: **an audit that always reports something is an audit nobody reads.**
+Same argument as a contract that fires every month.
+
+**It cost nothing, and that was verified rather than hoped.** Zero source changes —
+`BrowserRouter`, `Routes`, `Route`, `Link`, `useLocation` and `useSearchParams` are the
+entire surface and all keep their v6 API in v7. `tsc`, lint, 75 vitest, 34 pytest and
+the production build all pass untouched.
+
+**Runtime-checked on both versions, same script, same three surfaces** — because
+`useSearchParams` carries the app's whole URL state (zip, metric, lat, lng, zoom) and a
+silent regression there would look like a map bug, not a router bug:
+
+| check | v6.30.6 | v7.18.3 |
+|---|---|---|
+| deep link `?metric=median_dom` read back into the UI | "Median Days on Market" | identical |
+| metric change written back to the URL | `...&metric=median_sale_price` | identical |
+| catch-all route renders NotFound with a working link | `404`, href `/Domapus` | identical |
+
+**One thing the comparison caught and cleared.** The URL after a metric change is
+`/Domapus?...` with no trailing slash, which looked like a v7 basename regression.
+Running the identical script against a v6 build produced the same string, so it is
+pre-existing behaviour and not something the upgrade introduced. Worth knowing anyway:
+GitHub Pages 301s `/Domapus` to `/Domapus/`, so a copied URL costs one redirect hop.
+
+**Cost:** the main bundle grows 402,753 -> 419,240 bytes, +16 KB uncompressed, ~+4%.
+Accepted; it is a fraction of the 5.0 MB the page already transfers, and it does not
+touch the critical path the phase-3 work was measured on. The choropleth acceptance
+check still reports 0 tile requests and `map:sourceReload` = 0 on the v7 build.
+
+Also dropped `d3-array` and `@types/d3-array` from `package.json`. Nothing in `src/`,
+`scripts/` or `bench/` imports it; it stays installed as a transitive dependency of
+`d3-scale`, so this removes a declaration, not a package.
+
+---
+
+## 2026-09-05 — `docs/ENGINEERING-LOG.md` untracked
+
+Same reasoning as the spec: a local working document that churns far too fast to be
+worth reviewing in diffs. `git rm --cached`, rule added to `.gitignore`, file stays on
+disk. History up to `50cc65b` remains in git if an earlier version is ever wanted.
+
+`docs/AGENT-LOG.md` and `docs/todos.md` stay tracked — they are the handoff surface
+between sessions, and a handoff nobody else can read is not a handoff.
