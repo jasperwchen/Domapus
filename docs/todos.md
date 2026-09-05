@@ -16,12 +16,17 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
   that older name, worked in it from a stale base, and silently reverted ~12 fixes before the
   fork was caught and merged (see AGENT-LOG). If you find a second spec file, you are looking
   at a fork — merge it, do not adopt it.
-- **Untracked on purpose.** `.gitignore:129` is `docs/FINAL-SPEC*.md`, which covers every
-  variant of the name. It is a local working document, not a shipped artifact, and it churns
-  far too fast to be worth reviewing in diffs.
-- Because it is untracked there is **no git history and no recovery**. Back it up to the
-  session scratchpad before any bulk edit. Every edit should assert a unique anchor match
-  before applying — that is what caught the fork.
+- **Untracked on purpose**, and as of 2026-09-05 that is finally true. This bullet used to
+  claim `.gitignore:129` was `docs/FINAL-SPEC*.md`. **There was no such rule.**
+  `docs/FINAL-SPEC.md` was tracked, a previous session staged a `git mv` to the dated name, and
+  Phase 1's `git add -A` committed it in `1249f88`. Now untracked (`git rm --cached`) and the
+  rule genuinely exists at the end of `.gitignore`. It is a local working document, not a
+  shipped artifact, and it churns far too fast to be worth reviewing in diffs.
+- Because it is untracked there is **no git history and no recovery** going forward. Back it up
+  to the session scratchpad before any bulk edit. Every edit should assert a unique anchor match
+  before applying — that is what caught the fork. (One snapshot does exist by accident:
+  `1249f88..d5b662f` carried the file. Use `git show 1249f88:docs/FINAL-SPEC-08-2026.md` if the
+  working copy is ever lost.)
 - `docs/AGENT-LOG.md` and `docs/todos.md` **are** tracked. Keep them that way.
 - datap/ renamed to temp-data/
 ---
@@ -53,7 +58,16 @@ optimisation. Name the baseline in every claim.
 - [ ] **Acceptance-test the `workflow_call` deploy for real.** A miswired one has a symptom
       identical to the bug it fixes. Confirm a Deploy job appears in the SAME run graph as a
       publish; parsing YAML proves nothing.
+      **How:** push, then `gh workflow run update_data.yml`, then
+      `gh run list --workflow=update_data.yml --limit 1` and
+      `gh run view <id>` — the job list must show `update-data`, `deploy` AND the
+      called workflow's `deploy` job. If `deploy` is skipped, check
+      `needs.update-data.outputs.changed`; if it runs but publishes the wrong month, the
+      `ref` input is not reaching `actions/checkout`.
 - [ ] Run `bench/verify-choropleth.mjs` against the deployed site, not only a local build.
+      **How:** `BENCH_URL='https://jasperwchen.github.io/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi' node bench/verify-choropleth.mjs --cpu 4`
+      It exits non-zero if a metric switch causes any tile request or if
+      `map:sourceReload` is not 0.
 - [ ] Methodology copy still owed from Phase 1: the `sold_above_list` and `median_list_price`
       series breaks, and why ZHVI has MoM but no Redfin metric does.
 

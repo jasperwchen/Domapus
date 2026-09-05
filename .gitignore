@@ -129,3 +129,12 @@ bench/results/superseded/
 temp-redfin/
 temp-data/
 public/data/temp-geo/
+
+# The working spec. Deliberately untracked: it is a local design document, not a
+# shipped artifact, and it churns far too fast to be worth reviewing in diffs.
+#
+# docs/todos.md has claimed this rule existed since 2026-09-03. It did not —
+# docs/FINAL-SPEC.md was tracked, a `git mv` to the dated name was staged, and
+# `git add -A` carried it into 1249f88. Untracked again on 2026-09-05, and this
+# time the rule is actually here.
+docs/FINAL-SPEC*.md

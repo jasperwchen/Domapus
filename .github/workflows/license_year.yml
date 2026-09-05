@@ -1,0 +1,58 @@
+name: Roll the copyright year
+
+# The start year (2025) is a statement of fact about when the work was first
+# published and never moves. The END year is the last year the work was modified,
+# so it has to advance, and nobody remembers to do it by hand.
+#
+# Runs a few minutes past midnight on 1 January rather than exactly at midnight:
+# the whole fleet's cron jobs land on :00, and this one does not care about a
+# seven-minute delay.
+on:
+  schedule:
+    - cron: '7 0 1 1 *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: license-year
+  cancel-in-progress: false
+
+jobs:
+  roll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Update the copyright end year
+        id: roll
+        run: |
+          node scripts/update_license_year.mjs
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff
+          fi
+
+      - name: Commit
+        if: steps.roll.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add LICENSE.md
+          git commit -m "chore: roll the copyright end year to $(date -u +%Y)"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Deliberately NOT calling deploy.yml here, unlike update_data.yml. A push
+      # made with GITHUB_TOKEN does not trigger workflows, but deploy.yml also
+      # carries `paths-ignore: ['**.md', 'docs/**']`, so a LICENSE.md-only commit
+      # would not deploy even from a human push. Nothing in dist/ reads the year.

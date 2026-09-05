@@ -11,7 +11,7 @@ const DIST = args.find((a) => !a.startsWith("--")) ?? "dist";
 
 const ALWAYS = [
   "data/archive",       // monthly snapshots; no code path reads them
-  "data/zcta-meta.csv", // pipeline input consumed by update_market_data.py
+  "data/zcta-meta.csv", // pipeline input, read by pipeline/dim.py; the site never fetches it
 ];
 
 // Linked only from the production URL, so a preview copy is dead weight.

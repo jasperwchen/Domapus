@@ -208,6 +208,113 @@ performing it.
 
 ---
 
+### 2.10 — "The diff gate would have caught the bug about six times over"
+
+**Believed:** a threshold near **0.05** on "share of ZIPs whose price moved more than
+25% since last month", against roughly **0.30** for the buggy pipeline — a ~6x trip.
+
+**Actually:** a ZIP median is computed over a median of ~14 sales, and that is noisy
+enough on its own that **14.1%** of ZIPs move more than 25% in a completely normal
+month. Measured over the panel's own 172 month-over-month transitions:
+
+| metric | observed median | observed p99 | threshold (p99 x 1.5) |
+|---|---|---|---|
+| `median_sale_price` | 0.141 | 0.187 | **0.281** |
+| `median_list_price` | 0.140 | 0.197 | 0.296 |
+| `median_ppsf` | 0.104 | 0.144 | 0.216 |
+
+A threshold near 0.05 would fire every single month, and a gate that fires every
+month is a gate somebody switches off.
+
+**Caught by:** calibrating from the real panel instead of estimating, then running the
+finished gate against the last snapshot the broken pipeline actually published.
+
+**The gate still catches it — at 1.2x, not 6x.**
+
+| metric | moved >25% | limit | |
+|---|---|---|---|
+| `median_sale_price` | **33.9%** of 19,901 | 28.1% | trips |
+| `median_list_price` | **30.3%** of 18,885 | 29.6% | trips |
+| `median_ppsf` | **22.9%** of 19,753 | 21.6% | trips |
+| `zhvi` | 0.0% of 26,262 | 1.0% | passes |
+
+ZHVI passing is the useful part: the defect was Redfin-side, so the gate localises
+the fault to a source rather than only saying "something moved".
+
+**And a threshold rule can degenerate.** `zhvi` moved >25% for **zero** ZIPs in all
+318 monthly transitions — it is smoothed and seasonally adjusted — so p99 x 1.5 sets
+its threshold to **0.0**, a gate that fires on one outlier ZIP. The rule needed a
+floor. A calibration rule is itself a claim that has to be checked against the data
+it is calibrated on.
+
+### 2.11 — "The chunked feature-state write costs ~15-25 ms across four frames"
+
+**Believed:** `setFeatureState` is expensive enough that writing 33,771 of them must
+be spread over animation frames, 8,000 at a time, to stay responsive.
+
+**Actually:** `setFeatureState` costs **0.14 us** — 10,000 calls in 1.4 ms, measured
+in-page. The whole ZIP set is about **5 ms**, a third of one frame.
+
+So the chunking was not buying responsiveness, it was **spending four extra frames
+waiting**: each chunk dirties the source and MapLibre does a full map render between
+frames. Writing the set in one pass took the choropleth apply from **579 ms to 9 ms**
+with no other change.
+
+**Caught by:** micro-benchmarking the call in the running page after the
+instrumented number refused to match the estimate. The instrumentation was added to
+prove the fix worked; it caught a second, smaller mistake inside the fix.
+
+**The general shape:** an optimisation sized against an unmeasured cost can be the
+cost. This is the same failure as the property-type bug in a different register — a
+plausible number nobody checked against the thing itself.
+
+### 2.12 — "The published wrong value for 30309 is $575,000 across 9 sales"
+
+**Believed:** the live site showed a Townhouse median of $575,000 over 9 sales where
+the truth was $407,500 over 140.
+
+**Actually:** the last snapshot the broken pipeline published shows **$360,000 over
+105 sales**, and the all-residential truth at that period is **$402,500 over 146**.
+Neither number matches the earlier observation.
+
+**And that is a confirmation, not a discrepancy.** `drop_duplicates` on an unproven
+key hands the choice to quicksort's pivot, and the pivot depends on the values inside
+each 100,000-row chunk. The defect **re-randomizes on every run**, so the wrong value
+is a different wrong value each time.
+
+**Consequence for the test suite:** a regression test written against any one
+observed wrong value would be testing the coin, not the code. The committed test
+asserts the aggregate and asserts the published figure is unreachable from that row.
+
+**The real before/after is worse than the example anyway.** Sales counts are the tell:
+
+| ZIP | published | truth | |
+|---|---|---|---|
+| 90210 | $1,840,000 / **7** sales | $6,400,000 / **75** sales | median over 7 transactions when 75 existed |
+| 60614 | $1,240,000 / **5** sales | $849,500 / **368** sales | median over 5 when 368 existed |
+| 30309 | $360,000 / 105 | $402,500 / 146 | |
+| 78701 | $541,000 / 72 | $537,000 / 75 | |
+| 10001 | $2,637,500 / 30 | $2,637,500 / 30 | the coin landed on the aggregate row |
+
+### 2.13 — "The inherited column bounds describe the data"
+
+**Believed:** the contract ranges carried over from the old feed would hold, give or
+take the two scale changes already known about.
+
+**Actually:** they rejected real rows on **six** columns. `median_dom` was bounded at
+3,650 days — a 10-year cap — and the feed reaches **18,504**. `median_sale_price` had
+a $1,000 floor and the file contains a real **$1.00** sale. `avg_sale_to_list` turned
+out to be clamped by Redfin at exactly **[50, 200]**, which is a better contract than
+anything that could have been guessed.
+
+**Caught by:** the contract firing on the first smoke run, then scanning all 4,930,000
+rows rather than widening the bound until it stopped complaining.
+
+**The bounds are now measured and the measurement is in the comment**, so the next
+person to see one fire can tell a units change from a bound that was always wrong.
+
+---
+
 ## Part 3 — What the systematic review found
 
 ### 3.1 — The most expensive thing in the app
@@ -381,6 +488,154 @@ Leaflet-era builds.
 comparing an output against an independent source of truth, never from reading
 the code that produced it.
 
+
+---
+
+## Part 7 — Building it: phases 1-3
+
+Three commits, in the order the plan required, each leaving the site working.
+
+### Phase 1 — the feed migration and the correctness fix
+
+The old feed did not 404; it **froze**. Still 200 OK, `Last-Modified` pinned at
+2026-06-02, newest period 2026-05-31. So the pipeline downloaded 1.5 GB, parsed it
+cleanly, and republished three-month-old numbers as a success. A silent failure is
+worse than a loud one, and this one had a stale-data check that would not trip until
+September.
+
+`pipeline/` replaces `scripts/update_market_data.py`. The structural fix is one
+sentence: **declare the grain, assert it before any reduction, and ban the reduction
+that hid the assumption.** `(PERIOD END, REGION NAME)` is asserted on every run — 0
+duplicates in 4,930,000 rows — and CI greps `drop_duplicates` and `groupby().last()`
+out of `pipeline/` so a third one cannot appear.
+
+Adding `kind='stable'` would have made the wrong answer *deterministic*, not correct.
+That distinction is the whole point.
+
+Two things came out of the migration that were not renames:
+
+**The panel.** The old code kept one row per ZIP and discarded 172 of 173 periods.
+`build/panel.parquet` now holds all of it — 173 x 33,952, 4,930,000 rows, 274 MB —
+which is what makes any of the statistics or history work possible at all.
+
+**Two columns do not mean what their headers say.** `MEDIAN DAYS ON MARKET YOY (%)`
+and `MONTHS OF SUPPLY YOY (%)` are `(now - year_ago) x 100` under a `(%)` suffix that
+is a lie. Proof it cannot be a percent change: 43.2% of the values are below −100, and
+`(new − old)/old` cannot be. Verified against real lag-12 levels — ZIP 65262's
+`median_dom` went 55 to 13, published YoY −4199.07, and −4199.07/100 = −41.99 against
+an actual difference of −42.
+
+The trap is that the general rule for this feed is "delete the `* 100`", and the old
+code already skipped that multiplication for `dom`. Following the general rule is a
+no-op there and ships the column 100x too large. It needs a **division**.
+
+**And a bug of my own, in the same area.** `coerce` ran in two places, so the division
+happened twice and `median_dom_yoy` shipped as 0.17 days instead of 16.55. Caught by
+checking the output against real lag-12 levels, not by re-reading the code — the same
+move that found the original bug.
+
+### Phase 2 — the diff gate and the deploy that never fired
+
+`update_data.yml` pushed its data commit with the default `GITHUB_TOKEN`. GitHub's
+loop prevention means a push made with that token **does not trigger workflows**, so
+`deploy.yml`'s `on: push` never fired for the data commit and new data sat on `main`
+unpublished until an unrelated human push happened to redeploy it.
+
+`deploy.yml` is now callable and `update_data.yml` calls it in the same run graph.
+One detail is load-bearing: under `workflow_call` the job inherits the *caller's*
+event, so `actions/checkout` defaults to the SHA from when the cron fired — before
+the data commit. Deploying that SHA republishes last month's data, and **that symptom
+is indistinguishable from the bug being fixed**. The `ref` input exists for exactly
+that, and the deploy job prints the SHA and period it is publishing.
+
+The gate itself, and the two corrections it produced, are in 2.8.
+
+### Phase 3 — the choropleth
+
+`setPaintProperty` on a data-driven value makes maplibre-gl mark the source
+`'reload'`: every loaded tile is re-sent to the worker, re-parsed from cached PBF,
+its fill bucket rebuilt, its GPU buffers re-uploaded. That fired on every metric
+change and, in auto-scale mode, on every `moveend`. Nothing in the code said so.
+
+Both paint properties are now constant expressions set once at `addLayer`. The only
+thing that varies — which class a ZIP is in — lives in feature-state, which does not
+relayout.
+
+**Verified rather than asserted.** `bench/verify-choropleth.mjs` reports 0 tile
+requests caused by a metric switch and `map:sourceReload` = 0, and exits non-zero
+otherwise.
+
+Writing the **full** ZIP set per epoch rather than only what is on screen is a
+correctness decision, not a performance one. MapLibre re-applies accumulated
+feature-state to tiles revived from its out-of-view cache, so scoped writes leave
+stale state for off-screen ZIPs and **panning back silently shows the previous
+metric's colours**. Full-set writes make that impossible instead of mitigating it.
+The measured cost of the "optimisation" that was rejected: `querySourceFeatures` at
+z3 returns 38,077 feature instances against 33,771 ZIPs, because ZCTAs repeat across
+tile boundaries. It is more work, not less, at the zoom it was meant to help.
+
+### Measured, same instrument, same pinned conditions
+
+slow4g / 4x CPU / 1440x900 / 5 runs / pinned view:
+
+| | pre-phase-1 | after phase 1 | after phase 3 |
+|---|---|---|---|
+| LCP | 7,352 ms | 7,228 ms | **7,012 ms** |
+| Total Blocking Time | 5,120 ms | 4,053 ms | **2,934 ms** |
+| Long task count | 40 | 38 | **22** |
+| Transfer | 4,793,964 B | 5,247,137 B | 5,247,137 B |
+| JS heap | 62.4 MB | 64.1 MB | **55.9 MB** |
+| **Metric switch** | **3,375 ms** | 3,190 ms | **1,491 ms** |
+
+**The two baselines are not comparable and the phase boundary is why.** Phase 1 took
+the latest period from 20,010 reporting ZIPs to **29,738 (+48.6%)**, so transfer moved
+for reasons that have nothing to do with any optimisation. Every claim after this
+point has to name which baseline it means. The 2026-08-29 figure in Part 6 measures
+the *old feed's* payload and stopped being a valid comparand the moment Phase 1
+merged.
+
+**And the headline number needs decomposing, because most of it is not the map.**
+At the same 4x throttle, with a control run that re-selects the already-selected
+option so no metric change happens at all:
+
+| | ms |
+|---|---|
+| dropdown open + click, **no metric change** | **580** |
+| compute the 7 quantile breaks over 33,771 values | 69 |
+| build the class map | 32 |
+| write 17,053 feature states | **38** |
+| React re-render to two frames later | 416 |
+
+The choropleth work is **139 ms**. The rest is a Radix Select under 4x CPU throttle
+and React re-rendering a tree that carries 33,771 ZIPs in props. Quoting 1,491 ms as
+"the choropleth cost" would be as unexamined as the numbers this project exists to
+correct.
+
+### The palette, because a claim you cannot re-derive is a claim you cannot defend
+
+`scripts/palette/derive_ramp.mjs` resamples the 12-hex ramp to 7 classes at equal arc
+length in CIELAB, simulates all three colour-vision deficiencies (Machado 2009, in
+**linear** RGB — applying those matrices to gamma-encoded values overstates the
+remaining contrast), and refuses to emit a ramp whose L* is not monotone or whose
+minimum adjacent dE76 under CVD is below 10.
+
+| | 12-hex source | derived 7 |
+|---|---|---|
+| adjacent dE76 coefficient of variation | 0.2364 | **0.0524** |
+| min adjacent dE76, protanopia | 9.01 | **19.34** |
+| min adjacent dE76, deuteranopia | 8.43 | **12.68** |
+| min adjacent dE76, tritanopia | 7.93 | **12.04** |
+
+### Superseded by these phases
+
+Part 4's decision table lists "Filter to `All Residential`" as the fix. On the new
+feed that filter is **dead code** — the file *is* the aggregate, and the
+`PROPERTY TYPE` column does not exist. It is not ported. What survives, and matters
+more, is the assertion underneath it: the primary key is now the only thing standing
+between us and Redfin re-introducing a breakout dimension, so `contracts.py` asserts
+those columns stay **absent**.
+
+---
 
 ---
 

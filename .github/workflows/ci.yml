@@ -35,6 +35,12 @@ jobs:
       - name: Test
         run: npm test -- --run
 
+      - name: Copyright year is current
+        # Backstop for the Jan-1 cron in license_year.yml. If that job fails or
+        # is disabled, this is what makes the drift visible instead of leaving a
+        # stale year on a public repo for a year.
+        run: node scripts/update_license_year.mjs --check
+
   pipeline:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -54,9 +60,15 @@ jobs:
         # algorithm's internals. That is exactly how an arbitrary property type
         # per ZIP shipped for months. Use an explicit named reducer instead, so
         # the choice is written down in source.
+        #
+        # The pattern requires a leading `.` and only scans *.py, so the prose in
+        # this repo that EXPLAINS the ban does not trip it. The first version had
+        # no leading dot and matched its own docstrings plus stale .pyc files, so
+        # it would have failed every CI run — a check that fails always is a check
+        # that gets deleted.
         run: |
-          if grep -rnE 'drop_duplicates|groupby\([^)]*\)\.(last|first)\(' pipeline/; then
-            echo "::error::drop_duplicates/groupby().last() are banned in pipeline/."
+          if grep -rnE --include='*.py'                '^[^#]*(\.drop_duplicates\(|\.groupby\([^)]*\)\.(last|first)\()' pipeline/; then
+            echo "::error::drop_duplicates/groupby().last()/.first() are banned in pipeline/."
             exit 1
           fi
 

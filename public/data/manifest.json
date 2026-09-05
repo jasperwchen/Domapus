@@ -1,0 +1,74 @@
+{
+  "generated_utc": "2026-09-05T14:57:11.143084+00:00",
+  "redfin": {
+    "period_end": "2026-07-31",
+    "period_begin": "2026-05-01",
+    "vintage": "2026-08-03",
+    "rows": 4930000
+  },
+  "zhvi": {
+    "period_end": "2026-07-31",
+    "zips": 26269
+  },
+  "fingerprints": {},
+  "upstream": {},
+  "panel": {
+    "periods": 173,
+    "zips": 33952,
+    "rows": 4930000
+  },
+  "coverage": {
+    "both": 25604,
+    "redfin_only": 3315,
+    "zhvi_only": 658,
+    "no_data": 4194
+  },
+  "orphans": 819,
+  "changed": {
+    "zips": 0,
+    "data_points": 0
+  },
+  "validation": {
+    "period_age_days": {
+      "redfin": 36,
+      "zhvi": 36
+    },
+    "columns": 38,
+    "zips": 33771
+  },
+  "gate": {
+    "failures": [],
+    "observed": {
+      "median_sale_price": {
+        "moved_gt_25pct": 0.0,
+        "comparable": 25602,
+        "national_median_shift": 0.0
+      },
+      "median_list_price": {
+        "moved_gt_25pct": 0.0,
+        "comparable": 26858,
+        "national_median_shift": 0.0
+      },
+      "median_ppsf": {
+        "moved_gt_25pct": 0.0,
+        "comparable": 25549,
+        "national_median_shift": 0.0
+      },
+      "zhvi": {
+        "moved_gt_25pct": 0.0,
+        "comparable": 26262,
+        "national_median_shift": 0.0
+      },
+      "homes_sold": {
+        "national_total_shift": 0.0
+      }
+    },
+    "overridden": false,
+    "reason": ""
+  },
+  "snapshot": {
+    "zips": 33771,
+    "columns": 38,
+    "bytes": 8216155
+  }
+}

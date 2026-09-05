@@ -81,7 +81,8 @@ jobs:
       run: |
         jq -e '.status == "ok"' build/s4_gate_report.json > /dev/null
         jq -e '.status == "ok"' build/s3_assemble_report.json > /dev/null
-        cp build/zip-data.json build/last_updated.json build/manifest.json public/data/
+        cp build/zip-data.json build/last_updated.json build/manifest.json \
+           build/orphans.json public/data/
 
     - name: Create Archive Copy
       id: archive_logic
@@ -130,7 +131,8 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add public/data/zip-data.json public/data/last_updated.json \
-                public/data/manifest.json public/data/archive/
+                public/data/manifest.json public/data/orphans.json \
+                public/data/archive/
         git commit -m "Update market data - $(date +'%Y-%m-%d %H:%M:%S' --utc)"
         git push
         echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT

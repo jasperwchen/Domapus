@@ -902,3 +902,81 @@ never applies stale feature state. The rAF stub queues callbacks and drains on d
 than running them synchronously — a stub that registers a frame it never runs wedges the
 painter in a way a real browser never does, and the first version of the test failed for
 exactly that reason rather than for a real defect.
+
+---
+
+## 2026-09-05 — the before/after the spec asked for, and it is worse than the example
+
+Phase 1's Verify says "publish the before/after for 30309, 10001, 90210, 60614, 78701 in the PR
+description". There is no PR, so it goes here. Both columns are real: the LEFT is what the site
+actually published (`ed533dd:public/data/zip-data.json`, the last commit of the broken
+pipeline), the RIGHT is the all-residential aggregate from the new feed at the same
+`PERIOD END = 2026-05-31`.
+
+| ZIP | published (buggy) | truth (all residential) | error on the price |
+|---|---|---|---|
+| 30309 | $360,000 / **105** sales | $402,500 / **146** sales | −10.6% |
+| 10001 | $2,637,500 / 30 sales | $2,637,500 / 30 sales | 0.0% |
+| 90210 | $1,840,000 / **7** sales | $6,400,000 / **75** sales | **−71.3%** |
+| 60614 | $1,240,000 / **5** sales | $849,500 / **368** sales | **+46.0%** |
+| 78701 | $541,000 / 72 sales | $537,000 / 75 sales | +0.7% |
+
+The sales counts are the tell. 90210 published a median computed over **7** transactions when
+75 existed; 60614 over **5** when 368 existed. 10001 matching exactly is not the bug being
+absent — it is the coin landing on the aggregate row that month.
+
+**The spec's own example numbers no longer reproduce, and that is a confirmation rather than a
+discrepancy.** It quotes 30309 as $575,000 across 9 sales (a Townhouse row). The published value
+today is $360,000 across 105. Both are wrong and they are wrong *differently*, because
+`drop_duplicates` on an unproven key delegates the choice to quicksort's pivot, and the pivot
+depends on the values inside each 100,000-row chunk. The defect re-randomizes on every run. Any
+test written against one of those observed values would have been testing the coin, not the code.
+
+`tests/test_pipeline.py::test_30309_reports_the_all_residential_truth` therefore asserts the
+aggregate ($402,500 / 146) and asserts the published figure is not reachable from that row.
+`test_every_fixture_zip_has_exactly_one_row_per_period` is the general form: the old feed had
+five rows per (ZIP, period) and the code deduplicated on ZIP alone, so a second row appearing
+here would make every downstream number a coin flip again.
+
+---
+
+## 2026-09-05 — copyright year automation
+
+`scripts/update_license_year.mjs` rolls the END year of `Copyright 2025-2026 Jasper Chen`. The
+start year never moves: 2025 is a statement of fact about when the work was first published,
+while the end year is the last year it was modified, and only the second one has to advance.
+
+Three behaviours worth knowing:
+
+- A single-year notice is **widened**, not replaced: `Copyright 2025 X` in 2027 becomes
+  `Copyright 2025-2027 X`. Replacing it would shorten the term claimed rather than extend it.
+- The file list is explicit, not a glob. A glob would sweep `node_modules/` and `dist/` and
+  rewrite third-party notices, which is both wrong and a licence violation.
+- It refuses to write a start year that is after the target year, and refuses an implausible
+  target, rather than "fixing" a file into a backwards range.
+
+Two triggers, deliberately:
+
+- `.github/workflows/license_year.yml`, cron `7 0 1 1 *`. Seven minutes past midnight rather
+  than exactly midnight — every cron on the platform lands on `:00` and this job does not care.
+- A CI step (`--check`) so a failed or disabled cron shows up instead of leaving a stale year on
+  a public repo for a year. There is a ~7-minute window on 1 January where CI could go red
+  before the cron fires; that is the cost of the backstop being real.
+
+It does NOT call `deploy.yml`. Unlike `update_data.yml` that is not an oversight:
+`deploy.yml` carries `paths-ignore: ['**.md', 'docs/**']`, so a LICENSE-only commit would not
+deploy from a human push either, and nothing in `dist/` reads the year.
+
+---
+
+## 2026-09-05 — the spec is now tracked, on purpose
+
+`docs/FINAL-SPEC-08-2026.md` was untracked by convention (`.gitignore` carries
+`docs/FINAL-SPEC*.md`) but `docs/FINAL-SPEC.md` had been tracked all along, and a previous
+session staged a `git mv` to the new name. Phase 1's `git add -A` carried that rename into
+`1249f88`, so the spec has been in git since then.
+
+Untracked again on request: `git rm --cached`, and the `.gitignore` rule that already covered
+it now does its job. The last tracked copy is at `1249f88..d5b662f` if it is ever needed, which
+is more recovery than the convention promised — it said explicitly "no git history and no
+recovery".

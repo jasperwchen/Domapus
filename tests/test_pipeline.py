@@ -258,3 +258,53 @@ def test_zhvi_percent_scale():
     assert out["30309"]["zhvi"] == 110
     assert out["30309"]["zhvi_yoy"] == 10.0
     assert out["30309"]["zhvi_mom"] == 10.0
+
+
+# --- The headline bug's regression test ------------------------------------
+
+def test_30309_reports_the_all_residential_truth(ingested):
+    """The ZIP the property-type bug was first caught on.
+
+    At PERIOD END 2026-05-31 the live site published **$360,000 across 105 sales**
+    for 30309. The all-residential truth is **$402,500 across 146 sales**. The
+    published figure was whichever property type an unstable quicksort happened to
+    leave last in its chunk, so it was not merely wrong, it was a DIFFERENT wrong
+    number on every run — which is why the value here does not match the one the
+    spec quotes ($575,000 across 9 sales, a Townhouse row observed on some earlier
+    run of the same broken code).
+
+    This test does not re-check the arithmetic; it checks that the pipeline reads
+    the aggregate row and reduces nothing. There is exactly one row per
+    (period, ZIP) in this feed and `assert_unique_key` proves it, so there is no
+    selection left to get wrong.
+    """
+    import csv
+    rows = [r for r in csv.DictReader(SAMPLE.open(encoding="utf-8"))
+            if r["REGION NAME"] == "30309" and r["PERIOD END"] == "2026-05-31"]
+    assert len(rows) == 1, (
+        f"{len(rows)} rows for (30309, 2026-05-31) — a breakout dimension has "
+        f"returned and every reduction in this pipeline is now picking arbitrarily"
+    )
+    row = rows[0]
+    assert coerce("median_sale_price", row["MEDIAN SALE PRICE NSA ($)"]) == 402_500
+    assert coerce("homes_sold", row["HOMES SOLD"]) == 146
+
+    # And the number the broken pipeline published is not reachable from this row.
+    assert coerce("median_sale_price", row["MEDIAN SALE PRICE NSA ($)"]) != 360_000
+
+
+def test_every_fixture_zip_has_exactly_one_row_per_period():
+    """The property-type bug in one assertion, across the whole fixture.
+
+    The old feed carried five rows per (ZIP, period) and the code deduplicated on
+    ZIP alone. If this feed ever grows a second row for any (ZIP, period), every
+    downstream number becomes a coin flip again.
+    """
+    import csv
+    from collections import Counter
+    counts = Counter(
+        (r["REGION NAME"], r["PERIOD END"])
+        for r in csv.DictReader(SAMPLE.open(encoding="utf-8"))
+    )
+    dupes = {k: v for k, v in counts.items() if v > 1}
+    assert not dupes, f"duplicate (ZIP, period) keys: {dupes}"
