@@ -26,46 +26,52 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
 - datap/ renamed to temp-data/
 ---
 
-## ACTIVE — Phases 1-3 implementation (started 2026-09-04)
+## Phases 1-3 — LANDED 2026-09-05. Rationale and measurements in AGENT-LOG.
 
-Working order below. Update this block before each batch; delete finished lines.
+Three commits on `main`, not pushed:
 
-### Phase 1 — feed migration + correctness
-- [~] `pipeline/` package replacing `scripts/update_market_data.py`
-  - [ ] contracts.py  — GRAINS, CONSTANTS, RANGES (percent scale), assert_unique_key
-  - [ ] sources.py    — HEAD probe, md5-vs-ETag (Redfin only), allowlisted hosts
-  - [ ] redfin.py     — pyarrow CSV streaming, 32 of 50 cols, bare-ZIP REGION NAME
-  - [ ] zhvi.py       — unchanged semantics, MoM retained
-  - [ ] dim.py        — zcta-meta join
-  - [ ] panel.py      — build/panel.parquet, P x Z measured not recalled
-  - [ ] serialize.py  — KEY_ORDER 38, columnar envelope
-  - [ ] __main__.py   — stage driver, build/ only
-- [ ] tests/ fixtures + the 5 named verifications (30309 etc.)
-- [ ] frontend: metrics.ts registry (14 Redfin + zhvi), types.ts, Sidebar, utils.formatChange
-- [ ] data-dates: "3 months ending <date>"
-- [ ] workflow points at `python -m pipeline`
-- [ ] BENCH AFTER phase 1 -> bench/results/phase1-after.json
+- `1249f88` feat(pipeline): migrate to the new Redfin feed and assert the grain
+- `f1542ed` feat(pipeline): add the diff gate and fix the deploy that never fired
+- `b57dbee` perf(map): stop reloading every tile on a metric change
 
-### Phase 2 — atomic publish + gate + deploy fix
-- [ ] gate.py + tests/baselines/diff_gate.json + calibrate_diff_gate.py
-- [ ] deploy.yml -> workflow_call; update_data.yml invokes it
-- [ ] S0 probe job, fingerprint, staleness warns (never hard-fails)
+Benchmarks, slow4g / 4x CPU / 1440x900 / 5 runs / pinned view:
 
-### Phase 3 — choropleth fix
-- [ ] perf.ts alone first
-- [ ] derive_ramp.mjs -> choropleth.generated.ts (7 classes) + NO_DATA_COLOR
-- [ ] class-source.ts (LegacyClassSource) + choropleth-painter.ts
-- [ ] MapLibreMap: constant match/opacity at addLayer, delete effect 5
-- [ ] Legend 7 classes + no-data entry
-- [ ] code-split jsPDF/html2canvas
-- [ ] epoch/pan-back regression test
-- [ ] BENCH AFTER phase 3
+| | phase0-baseline | phase1-after | phase3-after |
+|---|---|---|---|
+| LCP | 7352 ms | 7228 ms | 7012 ms |
+| TBT | 5120 ms | 4053 ms | 2934 ms |
+| transfer | 4,793,964 B | 5,247,137 B | 5,247,137 B |
+| heap | 62.4 MB | 64.1 MB | 55.9 MB |
+| metric switch | 3375 ms | 3190 ms | 1491 ms |
 
-### Deviations from spec, decided during implementation
-- Phase 1 ships Redfin's PUBLISHED YoY (with the /100 fix for dom+mos per
-  §1.5.10 Defect 1), NOT the recomputed-from-levels YoY of §4.3. Reason: Phase 1's
-  own Verify criteria test the divided-published path, and §9 assigns "YoY at lag
-  12" to Phase 5. The panel Phase 1 builds is what makes the Phase 5 swap cheap.
+**phase0 and phase1 are not comparable.** Phase 1 took the latest period from 20,010
+reporting ZIPs to 29,738 (+48.6%), so transfer moved for reasons unrelated to any
+optimisation. Name the baseline in every claim.
+
+### Still owed on these phases
+
+- [ ] **Acceptance-test the `workflow_call` deploy for real.** A miswired one has a symptom
+      identical to the bug it fixes. Confirm a Deploy job appears in the SAME run graph as a
+      publish; parsing YAML proves nothing.
+- [ ] Run `bench/verify-choropleth.mjs` against the deployed site, not only a local build.
+- [ ] Methodology copy still owed from Phase 1: the `sold_above_list` and `median_list_price`
+      series breaks, and why ZHVI has MoM but no Redfin metric does.
+
+### Deviations from the spec, decided during implementation
+
+- **Phase 1 ships Redfin's PUBLISHED YoY**, with the `/100` correction for `median_dom` and
+  `months_of_supply`. It does NOT recompute YoY from levels (spec section 4.3's rule).
+  Phase 1's own Verify criteria test the divided-published path and section 9 assigns "YoY at
+  lag 12" to Phase 5. The panel is what makes that swap cheap.
+- **The spec's `RANGES` rejected real rows on six columns.** Bounds are now measured against
+  the full 4,930,000-row file and commented with the measurement.
+- **The diff-gate threshold is 0.281, not the spec's "near 0.05".** A normal month moves 14.1%
+  of ZIPs by more than 25%. The gate still catches the property-type bug, at a 1.2x margin
+  rather than the 6x the spec predicted.
+- **`CHUNK` is 50,000, not 8,000.** `setFeatureState` costs 0.14 us, so the full ZIP set is
+  ~5 ms; chunking at 8,000 spent five frames waiting rather than working.
+- **Staleness warns, never hard-fails**, because a hard fail refuses to publish and the
+  manifest carrying the outage banner would never be written.
 
 ---
 
@@ -77,33 +83,14 @@ Working order below. Update this block before each batch; delete finished lines.
 
 ---
 
-## Redfin feed migration — BLOCKING, do before any other pipeline work
+## Redfin feed migration — DONE 2026-09-05
 
-Old feed froze 2026-06-02: still returns **200 OK**, never updates. So the failure is silent —
-the pipeline parses 1.5 GB cleanly and republishes three-month-old numbers as a success. New
-dataset resolved and independently verified 2026-09-03.
+`pipeline/` replaces `scripts/update_market_data.py`. Verified on the real 1.33 GB file:
+4,930,000 rows, 173 periods, 33,952 ZIPs, 0 duplicate `(PERIOD END, REGION NAME)`.
+Full record in AGENT-LOG. One item did not ship with it:
 
-**Full findings are spec §1.5** — dataset identity, 50-column structure, the 14 metrics,
-Redfin's own legacy column map, continuity measurements, and the 8 void contracts in §2.2.
-Do not duplicate that here.
-
-New source: `redfin_data_center/housing_market/monthly/all_zips.csv`, 1.33 GB **plain CSV**.
-
-- [ ] Rewrite `process_redfin_data()`: plain CSV, `na_values=['NA']`, bare-ZIP `REGION NAME`,
-      range-GET the head (rows are period-descending) instead of the full 1.33 GB
-- [ ] Rewrite `get_full_column_mapping()` + `_coerce_value()` — **drop the `* 100`** on every
-      ratio, share and YoY column. The new feed already ships percent. Silent 100x otherwise,
-      and the all-null column guard will not catch it. (Spec §12 item 24.)
-- [ ] `KEY_ORDER` 43 -> 38: drop 11 Redfin `*_mom`, add `active_listings`,
-      `months_of_supply`, `median_list_ppsf`. `zhvi_mom` and `zhvi_yoy` both stay.
-- [ ] `MAX_DATA_AGE_DAYS` 120 -> 45, and make it a hard fail, not a warning
-- [ ] Delete the All-Residential filter and the 5-pair `PROPERTY_TYPE` contract — **dead code**,
-      the new file *is* the aggregate. Do not port them.
-- [ ] Frontend metric list + `src/lib/metrics.ts` against the renamed columns
 - [ ] Methodology copy: the `sold_above_list` and `median_list_price` series breaks, and why
       ZHVI has MoM but no Redfin metric does
-
----
 
 ## Phase 0 — finish it
 
@@ -111,9 +98,10 @@ New source: `redfin_data_center/housing_market/monthly/all_zips.csv`, 1.33 GB **
       carries `public/data/archive/** filter=lfs` and all six archive files are still tracked,
       so the 14.45 MiB LFS pull per checkout has not actually stopped.
       **Do not untrack until the releases exist — see the archive ordering below.**
-- [ ] **0.3 unverified.** `*.tsv*.gz` is gitignored, but the `tempfile.mkdtemp` + `finally`
-      rewrite in the download path has not been confirmed as landed. Note `temp-redfin/` is
-      currently sitting in the working tree, which is exactly what 0.3 forbids.
+- [x] **0.3 DONE.** `pipeline/__main__.py` downloads into `tempfile.mkdtemp(dir=RUNNER_TEMP)`
+      inside a `try/finally` that removes it. `temp-redfin/`, `temp-data/` and
+      `public/data/temp-geo/` are now gitignored, so a killed run leaves nothing `git add -A`
+      would stage.
 
 ## Archive — blocking order, do NOT reorder
 
@@ -136,12 +124,16 @@ destroys the only copy of six monthly snapshots.
 - [ ] **Create the first release at all.** Three things already assume releases exist: the
       archive untrack, `geometry-vN`, and `deploy.yml`'s `gh release download`.
 
-### P1 · The real Phase 5 blocker: there is no panel
+### P1 · The panel EXISTS now
 
-`update_market_data.py:134` keeps one row per ZIP, the latest `PERIOD_END`, discarding 170 of
-171 periods. **Every Phase 5 deliverable needs the full panel** — K lag sweep, YoY lag 12, LISA,
-the AR(1) fit, the 82-origin backtest — and so does Phase 7's history. Scoped into Phase 1;
-the point is that nothing in Phase 5 can begin around it.
+`build/panel.parquet`, written by `pipeline/redfin.py` on every run. Measured
+**173 x 33,952 = 4,930,000 rows, 83.9% filled, 274.1 MB** (the spec estimated ~262 MB). It is
+gitignored and rebuilt from the full file every month, never appended to — Redfin restates
+history continuously and every row carries the same `LAST UPDATED`, so an appended panel would
+silently serve numbers Redfin has since revised.
+
+Everything in Phase 5 and Phase 7 can now be built. `P` and `Z` are measured at S3 every run
+and written to `manifest.panel`; do not carry a period count forward from any document.
 
 ### P2 · Close 3 of the 4 open numbers — offline, from `datap/`
 
@@ -156,9 +148,9 @@ Needs a scratch script, not shipped code. Gates *quoting* any statistic; gates n
 
 ### P3 · Environment
 
-- [ ] Add stats deps, exact-pinned. Currently only `pandas==2.3.3 · requests==2.32.5 ·
-      pytest==8.4.2`. Need **numpy · pyarrow · scipy · statsmodels**, plus **libpysal + esda**
-      for LISA. All ship cp314 manylinux wheels — the old "no cp314" concern is a false premise.
+- [ ] Stats deps: `numpy==2.2.4` and `pyarrow==19.0.1` are pinned and in use. Still needed for
+      Phase 5: **scipy · statsmodels**, plus **libpysal + esda** for LISA. All ship cp314
+      manylinux wheels — the old "no cp314" concern is a false premise.
 - [ ] Reconcile `pytest==8.4.2` (repo) vs `pytest==9.0.3` (spec §6.11)
 - [ ] Local Python is 3.13.5, CI pins 3.14. Do not let a 3.13-only result become a committed
       constant without re-running it in CI.
