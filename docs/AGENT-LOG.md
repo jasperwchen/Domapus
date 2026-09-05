@@ -1038,3 +1038,75 @@ disk. History up to `50cc65b` remains in git if an earlier version is ever wante
 
 `docs/AGENT-LOG.md` and `docs/todos.md` stay tracked — they are the handoff surface
 between sessions, and a handoff nobody else can read is not a handoff.
+
+---
+
+## 2026-09-05 — CI failed on a pin I chose badly, and the fix is a guard not a bump
+
+**What broke.** `pip install -r requirements.txt` spent four minutes compiling and died on:
+
+    Could not find a package configuration file provided by "Arrow"
+    error: command 'cmake' failed with exit code 1
+    ERROR: Failed building wheel for pyarrow
+
+**Cause, and it was mine.** I pinned `pyarrow==19.0.1` because that is what `python -c "import
+pyarrow"` reported locally. `.python-version` is **3.14**, and pyarrow 19 has no cp314 wheel, so
+pip fell back to a source build. The log gives it away: `build/lib.linux-x86_64-cpython-314`.
+`numpy==2.2.4` was doing the same thing directly underneath.
+
+The trap is a two-interpreter local machine: bare `python` is **3.13.5**, bare `pip` targets
+**3.14.5**. So `pip install` produced cp314 wheels while `python -c "import pyarrow"` reported
+the 3.13 environment's version. Pinning what `python` reported pinned the wrong environment's
+answer. `py -3.14` reaches the interpreter CI actually uses; todos.md now says so.
+
+**Measured wheel availability** (PyPI, cp314 manylinux x86_64):
+
+| package | first release with a cp314 wheel |
+|---|---|
+| `pyarrow` | **22.0.0** (19.0.1 is three majors short) |
+| `numpy` | **2.3.2** (2.2.4 is short) |
+| `pandas` | 2.3.3 — the existing comment was right |
+
+**Fixes, in order of how much they matter.**
+
+1. **`pip install --only-binary=:all:` in both workflows.** This is the real fix. It converts
+   "no wheel for this Python" from a four-minute CMake error that names Arrow rather than the
+   cause into an immediate one-liner that *lists the versions that would work*:
+
+       ERROR: Could not find a version that satisfies the requirement pyarrow==19.0.1
+       (from versions: 22.0.0, 23.0.0, 23.0.1, 24.0.0, 25.0.0, 25.0.1)
+
+   Verified both ways: it rejects the old pin instantly and accepts the new file.
+
+2. **`pyarrow==25.0.1`.** Latest, not the 22.0.0 minimum, because the version had to be
+   re-verified against the real file either way and there is no reason to verify an older one.
+   **The whole 1.33 GB pipeline was re-run under Python 3.14 with pyarrow 25 and
+   `zip-data.json` is byte-identical** — sha256 `bd796dfe351a9b15fc4400279b0c49e12a3e267d4ed3c2f86fa6f328370198d8`
+   before and after, with panel shape, coverage and orphan count all unchanged. The bump moves
+   no published number. 34 pytest pass on 3.14.
+
+3. **`numpy` removed, not bumped.** Nothing in `pipeline/`, `tests/` or `scripts/` imports it —
+   `gate.py` computes its own median precisely so the gate carries no numeric dependency — and
+   it arrives transitively via pandas anyway (2.5.2 on the 3.14 env). Declaring a package
+   nothing imports is how you end up maintaining a pin for a dependency you do not have. Phase 5
+   adds it explicitly with scipy and statsmodels.
+
+**The general shape, again.** A constant was carried into source from whatever the local
+environment happened to report, without checking it against the environment that would actually
+consume it. That is the same failure as the choropleth chunk size and the inherited column
+bounds: a plausible number nobody checked against the thing itself.
+
+### Deploy acceptance test — partial result from run 33974615713
+
+The failed run is still informative, because two of the three jobs behaved correctly:
+
+| job | result | reading |
+|---|---|---|
+| `update-data` | failure | the pip build, above |
+| `deploy` | **skipped** | correct — `needs.update-data.outputs.changed` is empty when update-data fails |
+| `notify` | **success** | opened **#90 "Market data pipeline failure"** with the `pipeline-failure` label |
+
+So the notify rewiring is **verified working**: one labelled issue, not one issue per run.
+`deploy` skipping on a failed build is also the right behaviour, but it means the actual Bug 6
+acceptance test — a Deploy job in the same run graph as a *successful* publish — is still owed
+and needs a green `update-data`.

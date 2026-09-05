@@ -165,12 +165,21 @@ Needs a scratch script, not shipped code. Gates *quoting* any statistic; gates n
 
 ### P3 · Environment
 
-- [ ] Stats deps: `numpy==2.2.4` and `pyarrow==19.0.1` are pinned and in use. Still needed for
-      Phase 5: **scipy · statsmodels**, plus **libpysal + esda** for LISA. All ship cp314
-      manylinux wheels — the old "no cp314" concern is a false premise.
+- [ ] Stats deps: `pyarrow==25.0.1` is pinned and in use. `numpy` is deliberately NOT declared
+      — nothing imports it and it arrives transitively via pandas. Still needed for Phase 5:
+      **numpy · scipy · statsmodels**, plus **libpysal + esda** for LISA, added when something
+      actually imports them.
+      **Every pin must have a cp314 wheel.** `pyarrow==19.0.1` was committed on 2026-09-05
+      because it was what happened to be installed locally on 3.13; CI spent four minutes
+      compiling Arrow C++ and failed on a CMake error. `pyarrow` cp314 starts at **22.0.0**,
+      `numpy` at **2.3.2**. CI now installs with `--only-binary=:all:` so a wheel-less pin fails
+      immediately and prints the versions that would work.
 - [ ] Reconcile `pytest==8.4.2` (repo) vs `pytest==9.0.3` (spec §6.11)
-- [ ] Local Python is 3.13.5, CI pins 3.14. Do not let a 3.13-only result become a committed
-      constant without re-running it in CI.
+- [x] **Python 3.14 IS available locally** as `py -3.14` (3.14.5); bare `python` is 3.13.5 and
+      bare `pip` targets 3.14, which is how the wheel-less pin slipped through. Use
+      `py -3.14 -m pytest tests` and `py -3.14 -m pipeline` to match CI. The full pipeline and
+      all 34 tests were re-run on 3.14 on 2026-09-05 and `zip-data.json` came out
+      byte-identical to the 3.13 build (sha256 `bd796dfe...`).
 
 ### P4 · Phase 6 tooling gap
 

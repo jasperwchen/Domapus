@@ -53,7 +53,13 @@ jobs:
           cache: pip
 
       - name: Install pipeline deps
-        run: pip install -r requirements.txt
+        # --only-binary=:all: turns "this pin has no wheel for the pinned Python"
+        # into an immediate, legible failure. Without it pip silently falls back
+        # to a source build, and pyarrow from source needs Arrow C++ via CMake —
+        # which spent four minutes compiling and then failed with
+        # "Could not find a package configuration file provided by Arrow",
+        # an error that says nothing about the actual cause.
+        run: pip install --only-binary=:all: -r requirements.txt
 
       - name: Ban implicit deduplication
         # drop_duplicates and groupby().last() delegate the tie-break to a sort

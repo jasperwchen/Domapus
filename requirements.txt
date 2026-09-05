@@ -4,6 +4,14 @@
 # release was 3.0.5 — the next scheduled run would have installed a major
 # version with mandatory copy-on-write straight into the sort/dedup path.
 #
+# EVERY PIN HERE MUST HAVE A cp314 WHEEL. `.python-version` is 3.14, so a pin
+# without one makes pip fall back to building from source — and pyarrow from
+# source needs Arrow C++ via CMake, which fails on the runner after four minutes
+# with a CMake error that says nothing about the real cause. CI installs with
+# `--only-binary=:all:` so that failure surfaces immediately as "no wheel for
+# this Python" instead. Check before bumping:
+#   pip index versions <pkg>  — or the wheel list on PyPI for cpXYZ tags.
+#
 # pandas 2.3.3 is the newest 2.x with cp314 wheels (2.3.2 and older have none,
 # and CI pins Python 3.14, so anything older would build from source).
 # Moving to pandas 3.x is a deliberate migration, not an accident: it makes
@@ -15,5 +23,15 @@ pytest==8.4.2
 # pyarrow does the CSV streaming ingest: 1.33 GB in ~35 s against pandas'
 # minutes, and its typed `include_columns` is what keeps "07002" a string
 # rather than the integer 7002.
-pyarrow==19.0.1
-numpy==2.2.4
+#
+# 22.0.0 is the FIRST release with cp314 wheels — 19.0.1 was pinned here briefly
+# because that is what happened to be installed locally on Python 3.13, and CI
+# spent four minutes trying to compile Arrow C++ before failing. Verified on the
+# real 1.33 GB file under Python 3.14: `zip-data.json` is byte-identical to the
+# 19.0.1 output, so the bump changes no published number.
+pyarrow==25.0.1
+
+# numpy is deliberately NOT pinned here. Nothing in pipeline/ imports it — the
+# diff gate computes its own median so the gate has no numeric dependency of its
+# own — and it arrives transitively via pandas anyway. Phase 5 adds it explicitly
+# alongside scipy and statsmodels, when there is finally something importing it.
