@@ -139,3 +139,7 @@ public/data/temp-geo/
 # time the rule is actually here.
 docs/FINAL-SPEC*.md
 docs/ENGINEERING-LOG.md
+
+# Monthly snapshots live on the data-* releases, not in the repo. Committing
+# them put 14.45 MiB of never-read LFS objects behind every checkout.
+public/data/archive/

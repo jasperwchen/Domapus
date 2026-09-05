@@ -86,46 +86,56 @@ jobs:
         fi
 
     - name: Publish the verified build
-      # Phase 2 as specified wants an immutable per-month release plus a ~6 KB
-      # pointer commit. That is BLOCKED: `gh release list` is empty, so there are
-      # no releases yet, and creating the first ones is an outward action on a
-      # public repo. Until then the copy is at least separated from the build, so
-      # a failed build leaves public/data/ untouched.
+      # Copies into public/data/ only after both gates report ok, so a refused
+      # build leaves the last known-good published data untouched. The archive
+      # half of phase 2 is no longer blocked — releases exist now, and the next
+      # step uploads to them instead of committing.
       run: |
         jq -e '.status == "ok"' build/s4_gate_report.json > /dev/null
         jq -e '.status == "ok"' build/s3_assemble_report.json > /dev/null
         cp build/zip-data.json build/last_updated.json build/manifest.json \
            build/orphans.json public/data/
 
-    - name: Create Archive Copy
-      id: archive_logic
+    - name: Archive the snapshot to the data release
+      # The archive used to be committed as LFS objects, which put 14.45 MiB of
+      # data no code path reads behind every checkout (prune-dist.mjs already
+      # strips data/archive from dist). Releases hold it now, so this uploads
+      # instead of committing.
+      #
+      # The dedupe check reads the RELEASE, not the working tree. A fresh
+      # checkout has no archive/ directory, so the old "newest file on disk"
+      # test would see nothing and re-archive on every single run.
+      #
+      # Unconditional on purpose: it runs even when the data did not change,
+      # because the dedupe check makes a repeat a no-op, and a month missed by
+      # a failed run can still be filled in later.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         NEW_PERIOD=$(jq -r '.period_end' public/data/last_updated.json)
         # A missing period_end means last_updated.json is malformed, not that
-        # the data was unchanged (the unchanged case is handled further down and
-        # still exits 0). Failing here lets the "notify" job run.
+        # the data was unchanged. Failing here lets the "notify" job run.
         if [ "$NEW_PERIOD" == "null" ] || [ -z "$NEW_PERIOD" ]; then
           echo "Error: No period_end found in last_updated.json"
           exit 1
         fi
 
-        LATEST_ARCHIVE_FILE=$(ls public/data/archive/zip-data-*.json.gz 2>/dev/null | sort | tail -n 1)
-        if [ -n "$LATEST_ARCHIVE_FILE" ]; then
-          LATEST_ARCHIVE_DATE=$(echo "$LATEST_ARCHIVE_FILE" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
-        else
-          LATEST_ARCHIVE_DATE="0000-00-00"
+        TAG="data-${NEW_PERIOD%-*}"           # 2026-07-31 -> data-2026-07
+        ASSET="zip-data-$NEW_PERIOD.json.gz"
+        echo "Current data period: $NEW_PERIOD -> $TAG/$ASSET"
+
+        if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null \
+             | grep -qx "$ASSET"; then
+          echo "Already archived on $TAG. Skipping."
+          exit 0
         fi
 
-        echo "Current data period: $NEW_PERIOD"
-        echo "Latest archived period: $LATEST_ARCHIVE_DATE"
-
-        if [[ "$NEW_PERIOD" > "$LATEST_ARCHIVE_DATE" ]]; then
-          echo "New month detected. Creating archive copy..."
-          mkdir -p public/data/archive/
-          gzip -c public/data/zip-data.json > "public/data/archive/zip-data-$NEW_PERIOD.json.gz"
-        else
-          echo "This period is already archived. Skipping copy."
-        fi
+        gzip -c public/data/zip-data.json > "$ASSET"
+        gh release view "$TAG" > /dev/null 2>&1 \
+          || gh release create "$TAG" --title "Data ${NEW_PERIOD%-*}" \
+               --notes "Monthly ZIP snapshots for the period ending $NEW_PERIOD."
+        gh release upload "$TAG" "$ASSET"
+        rm -f "$ASSET"
 
     - name: Check for changes to commit
       id: check_changes
@@ -144,8 +154,7 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add public/data/zip-data.json public/data/last_updated.json \
-                public/data/manifest.json public/data/orphans.json \
-                public/data/archive/
+                public/data/manifest.json public/data/orphans.json
         git commit -m "Update market data - $(date +'%Y-%m-%d %H:%M:%S' --utc)"
         git push
         echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
