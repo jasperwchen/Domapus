@@ -148,35 +148,42 @@ def validate(records: dict, redfin_period: str | None, zhvi_period: str | None) 
     return {"period_age_days": ages, "columns": len(KEY_ORDER), "zips": len(records)}
 
 
-def compare_against_existing(live_path: Path, records: dict) -> tuple[str | None, int, int]:
-    """(previous timestamp, ZIPs changed, data points changed).
+def load_live(path: Path) -> tuple[str | None, dict]:
+    """The published snapshot as (timestamp, {zip: {field: value}}).
+
+    Loaded ONCE per run and passed to both the change report and the diff gate;
+    it is an 8 MB parse and there is no reason to do it twice.
+    """
+    if not path.exists():
+        return None, {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("Could not read existing snapshot %s: %s", path, e)
+        return None, {}
+    ts = payload.get("last_updated_utc")
+    if not all(k in payload for k in ("f", "z", "d")):
+        return ts, {}
+    fields = payload["f"]
+    return ts, {z: dict(zip(fields, payload["d"][i])) for i, z in enumerate(payload["z"])}
+
+
+def count_changes(live: dict, records: dict) -> tuple[int, int]:
+    """(ZIPs changed, data points changed).
 
     On the first run after the feed migration the field list changes, so every ZIP
     reads as changed. That is expected once and is the change REPORT, not the diff
     gate — the gate never looks at the field list.
     """
-    if not live_path.exists():
-        return None, 0, 0
-    try:
-        payload = json.loads(live_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
-        log.warning("Could not read existing snapshot %s: %s", live_path, e)
-        return None, 0, 0
-
-    ts = payload.get("last_updated_utc")
-    if not all(k in payload for k in ("f", "z", "d")):
-        return ts, 0, 0
-
-    fields = payload["f"]
-    old = {z: dict(zip(fields, payload["d"][i])) for i, z in enumerate(payload["z"])}
-
-    changed = set(records) ^ set(old)
+    if not live:
+        return 0, 0
+    changed = set(records) ^ set(live)
     points = 0
-    for z in set(records) & set(old):
-        if records[z] != old[z]:
+    for z in set(records) & set(live):
+        if records[z] != live[z]:
             changed.add(z)
-            points += sum(1 for k, v in records[z].items() if v != old[z].get(k))
-    return ts, len(changed), points
+            points += sum(1 for k, v in records[z].items() if v != live[z].get(k))
+    return len(changed), points
 
 
 def write_snapshot(records: dict, out_path: Path, previous_timestamp: str | None,

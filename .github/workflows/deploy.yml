@@ -1,9 +1,27 @@
 name: Deploy
 
+# `workflow_call` is the fix for the deploy bug. `update_data.yml` pushes its data
+# commit with the default GITHUB_TOKEN, and GitHub's documented loop prevention
+# means a push made with GITHUB_TOKEN does NOT trigger workflows — so this file's
+# `on: push` never fired for the data commit and new data sat on main unpublished
+# until an unrelated human push happened to redeploy it.
+#
+# Calling this workflow from inside the same run graph sidesteps the loop
+# prevention entirely. The failure symptom of a MISWIRED workflow_call is
+# identical to the original bug (a data commit that never deploys), so verify
+# that a Deploy job actually appears in the run graph — not merely that the YAML
+# parses.
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to deploy. Pass the data commit's SHA from the caller.
+        type: string
+        required: false
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
+    paths-ignore: ['**.md', 'docs/**']
 
 permissions:
   contents: write
@@ -20,6 +38,21 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          # LOAD-BEARING under workflow_call. This job inherits the CALLER's
+          # event, so actions/checkout would otherwise default to github.sha —
+          # the SHA as of when the cron fired, which is BEFORE the data commit.
+          # Deploying that SHA republishes LAST month's data and looks exactly
+          # like the bug this whole wiring exists to fix.
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Report what is being deployed
+        run: |
+          echo "ref input : '${{ inputs.ref }}'"
+          echo "deploying : $(git rev-parse HEAD)"
+          if [ -f public/data/last_updated.json ]; then
+            echo "period_end: $(jq -r '.period_end // "none"' public/data/last_updated.json)"
+          fi
 
       - uses: actions/setup-node@v6
         with:

@@ -1,0 +1,39 @@
+{
+  "generated_from": {
+    "panel": "panel.parquet",
+    "panel_periods": 173,
+    "panel_transitions": 172
+  },
+  "rule": "max(P99 of the observed moved>25% distribution x 1.5, floor 0.01)",
+  "note": "NOT calibrated from public/data/archive/*.json.gz \u2014 those were produced by the buggy pipeline and would bake the defect in.",
+  "thresholds": {
+    "median_sale_price": {
+      "moved_gt_25pct": 0.28073,
+      "observed_p99": 0.18715,
+      "observed_max": 0.1905,
+      "observed_median": 0.14113,
+      "transitions": 172
+    },
+    "median_list_price": {
+      "moved_gt_25pct": 0.29573,
+      "observed_p99": 0.19715,
+      "observed_max": 0.20397,
+      "observed_median": 0.13999,
+      "transitions": 172
+    },
+    "median_ppsf": {
+      "moved_gt_25pct": 0.21561,
+      "observed_p99": 0.14374,
+      "observed_max": 0.14599,
+      "observed_median": 0.10413,
+      "transitions": 172
+    },
+    "zhvi": {
+      "moved_gt_25pct": 0.01,
+      "observed_p99": 0.0,
+      "observed_max": 0.0,
+      "observed_median": 0.0,
+      "transitions": 318
+    }
+  }
+}

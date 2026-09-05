@@ -148,3 +148,22 @@ def fetch_bytes(url: str, label: str) -> bytes:
 def is_multipart_etag(etag: str) -> bool:
     """`<hex>-<n>` means a multipart upload: an MD5-of-MD5s, never the body digest."""
     return "-" in etag
+
+
+def fingerprint(probe_info: dict) -> str:
+    """Identity of the bytes upstream is currently serving.
+
+    `Last-Modified` is recorded but EXCLUDED from the hash, and `LAST UPDATED` is
+    excluded from everything: both are stamps the publisher controls, not
+    properties of the bytes. A republish of identical content must produce an
+    identical fingerprint, or the "warn once per fingerprint" rule degenerates
+    into "warn every run".
+
+    Two uses:
+      * unchanged fingerprint -> nothing new exists, exit 0 without downloading.
+        That is not a failure.
+      * a stale feed warns ONCE per fingerprint, not once per cron tick.
+    """
+    parts = "|".join(str(probe_info.get(k, "")) for k in
+                     ("etag", "content_length", "probe_sha256", "first_row"))
+    return hashlib.sha256(parts.encode("utf-8")).hexdigest()[:16]

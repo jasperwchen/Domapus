@@ -674,3 +674,102 @@ next, alone.
 
 `npx playwright install chromium --only-shell` was needed locally mid-session; the browser
 had disappeared from the Playwright cache between two benchmark runs.
+
+---
+
+## 2026-09-05 — PHASE 2: diff gate, the deploy fix, fingerprinting
+
+### The diff gate is calibrated from real data, and the spec's estimate of it was wrong
+
+`scripts/calibrate_diff_gate.py` -> `tests/baselines/diff_gate.json`. Rule:
+`max(P99 of the observed moved>25% distribution x 1.5, floor 0.01)` over the panel's own
+**172** month-over-month transitions (the spec said 170; that came from the void `171 x 24,619`
+shape). ZHVI is calibrated separately from its own wide monthly file, 318 transitions.
+
+| metric | limit | observed p99 | observed max | **observed median** |
+|---|---|---|---|---|
+| `median_sale_price` | 0.281 | 0.187 | 0.191 | **0.141** |
+| `median_list_price` | 0.296 | 0.197 | 0.204 | **0.140** |
+| `median_ppsf` | 0.216 | 0.144 | 0.146 | **0.104** |
+| `zhvi` | 0.010 (floor) | **0.000** | 0.000 | 0.000 |
+
+**Correction to spec section 8.5.** It asserts "a threshold near 0.05" and predicts the
+property-type bug would trip it "~6x". Both are wrong. A ZIP median over ~14 sales is genuinely
+noisy: in a **normal** month **14.1%** of ZIPs move their median sale price by more than 25%.
+The threshold cannot sit near 0.05 without firing every single month, so it lands at 0.281.
+
+**The gate still catches the bug, but the margin is 1.2x, not 6x.** Measured for real by running
+the gate on the previously published snapshot (`HEAD~1:public/data/zip-data.json`, the buggy
+pipeline's output) against this build:
+
+| metric | moved>25% | limit | verdict |
+|---|---|---|---|
+| `median_sale_price` | **33.9%** of 19,901 | 28.1% | TRIPS |
+| `median_list_price` | **30.3%** of 18,885 | 29.6% | TRIPS |
+| `median_ppsf` | **22.9%** of 19,753 | 21.6% | TRIPS |
+| `zhvi` | 0.0% of 26,262 | 1.0% | passes |
+
+ZHVI passing is the right answer and a useful property: the bug was Redfin-side, so the gate
+localises the fault to a source rather than merely saying "something moved".
+
+Caveat, stated because the number will be quoted: this transition confounds three things — the
+property-type bug, a two-month period gap (2026-05-31 -> 2026-07-31), and the two series Redfin
+redefined. It is not a clean measurement of the bug alone. It IS exactly the transition the gate
+sees in production, and it trips.
+
+**ZHVI needed a threshold floor.** `moved>25%` is exactly 0.000 in all 318 monthly transitions
+— ZHVI is `sm_sa`, smoothed and seasonally adjusted — so P99 x 1.5 sets the threshold to 0.0 and
+the gate would fire on a single outlier ZIP. `FLOOR = 0.01` in the calibration script, with the
+measurement in the comment.
+
+**One check the per-ZIP test cannot do alone**, kept and tested: a uniform 15% national lift
+moves NO individual ZIP past the 25% per-ZIP test, so the per-ZIP check is blind to it.
+`test_national_median_shift_is_caught_even_below_the_per_zip_threshold` asserts exactly that,
+and asserts the per-ZIP fraction is 0.0 first so the test cannot pass for the wrong reason.
+
+### Bug 6 — the deploy fix
+
+`deploy.yml` gains `workflow_call` with a `ref` input; `update_data.yml` gains a `deploy` job
+that calls it with the data commit's SHA. A push made with `GITHUB_TOKEN` does not trigger
+workflows, so `deploy.yml`'s `on: push` never fired for the data commit.
+
+`ref: inputs.ref || github.sha` is load-bearing. Under `workflow_call` the job inherits the
+CALLER's event, so `actions/checkout` would default to the SHA as of when the cron fired —
+before the data commit — and deploy LAST month's data. That symptom is indistinguishable from
+Bug 6 itself, which is why the deploy job prints the SHA and `period_end` it is publishing.
+
+**Acceptance test, still owed:** confirm a Deploy job appears in the same run graph as a
+publish. YAML that parses proves nothing here.
+
+### Fingerprinting and staleness
+
+`sources.fingerprint()` hashes `{etag, content_length, sha256 of the first 1 MB, first data
+row}`. `Last-Modified` is recorded but excluded, and `LAST UPDATED` is excluded from everything:
+both are stamps the publisher controls, not properties of the bytes, and including either makes
+"warn once per fingerprint" degenerate into "warn every run".
+
+Unchanged fingerprint -> exit 0, no download, no publish. Nothing new exists; that is not a
+failure. `--force` overrides.
+
+Staleness **warns**, never fails, in both the pipeline and the workflow. Spec section 1.5.1
+already contains the reason and an earlier draft contradicted itself on it: a hard fail refuses
+to publish, so the manifest carrying the outage banner is never written and the banner can never
+render.
+
+### `notify` no longer opens one issue per failed run
+
+It finds the standing `pipeline-failure` issue, reopens it if closed, and comments. The old
+version created a new issue on every failure, so a persistent upstream problem buried its own
+signal in duplicates. Stage reports upload as a `pipeline-reports` artifact on every run.
+
+### BLOCKED, and not worked around
+
+Spec Phase 2 wants an immutable `data-YYYY-MM` release plus a ~6 KB pointer commit.
+**`gh release list` is empty** — there are no releases at all — and creating the first ones is an
+outward action on a public repo, so it needs the user, not an agent. Until then
+`update_data.yml` copies `build/` into `public/data/` after both stage reports read `ok`. The
+copy is at least separated from the build, so a failed build leaves `public/data/` untouched,
+which the old in-place write did not.
+
+This also still blocks, in the order todos.md already records: the archive untrack, the
+`.gitattributes` LFS rule removal, and the ZHVI vintage archive.
