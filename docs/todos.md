@@ -70,15 +70,14 @@ deploy footprint (92.6 -> 46.9 MB) and the coverage fix itself.
 
 `dist` is 198 MB (history 121, tileset 45, snapshot 11), under the 300 MiB guard.
 
-## Phase 6 — remaining
+## Phase 6 — closed
 
-- [ ] **Decide where the tileset lives.** §5.9 wants `gh release create geometry-v1` with the
-      exact invocations in the notes, `deploy.yml` doing `gh release download` keyed on
-      `manifest.geometry_tag`, and `public/data/us_zip_codes.pmtiles` untracked. Today the new
-      46.9 MB archive is committed in place of the old 92.6 MB one, which works but adds a
-      permanent 47 MB blob to main's history. `.github/workflows/geometry.yml` already cuts the
-      release when given a tag; the deploy-side download and the untrack are not wired.
-      **Outward-facing and irreversible in git history — needs an explicit decision.**
+- **DECIDED 2026-09-06 (user): the tileset stays committed in git.** `public/data/us_zip_codes.pmtiles`
+  is the 46.9 MB archive, tracked, and `deploy.yml` needs no download step. The cost accepted
+  is that each geometry rebuild adds a permanent ~47 MB blob to history; geometry is a roughly
+  annual job, so that is a slow clock. **Do not re-open this as a "cleanup" without asking.**
+  §5.9's release path is not dead — `geometry.yml` still cuts a `geometry-vN` release when
+  handed a tag, which is the escape hatch if repo size ever does become the problem.
 
 ## Phase 7 — remaining
 

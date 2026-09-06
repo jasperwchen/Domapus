@@ -1568,3 +1568,9 @@ comment explaining exactly why decoded comparison is the weaker test. Left alone
 outside Phases 6-7 and touches the publish gate.
 
 `dist` re-measured after the real run: **198 MB**.
+
+**DECIDED 2026-09-06 (user): the tileset stays committed in git**, rather than moving to a
+`geometry-vN` release per §5.9. `deploy.yml` therefore needs no geometry download step and
+cannot deploy a blank map through a silent fetch failure. Accepted cost: every geometry
+rebuild adds a permanent ~47 MB blob to history. `geometry.yml` still publishes a release when
+given a tag, so the §5.9 path stays available without rewriting anything.
