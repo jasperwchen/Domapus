@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <!-- Google Tag Manager -->
+  <script>
+    (function (w, d, s, l, i) {
+      w[l] = w[l] || [];
+      w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+      var f = d.getElementsByTagName(s)[0],
+        j = d.createElement(s),
+        dl = l != "dataLayer" ? "&l=" + l : "";
+      j.async = true;
+      j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
+      f.parentNode.insertBefore(j, f);
+    })(window, document, "script", "dataLayer", "GTM-PNP9L5ZD");
+  </script>
+  <!-- End Google Tag Manager -->
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Domapus: ZIP Code Housing Data Map</title>
+  <meta name="description"
+    content="Interactive map showing ZIP-level housing data. Compare median prices, price per sqft, and days on market across 33,000+ U.S. ZIP codes.">
+  <meta name="author" content="Jasper Chen" />
+
+  <!-- SEO: Canonical Link -->
+  <link rel="canonical" href="https://jasperwchen.github.io/Domapus/" />
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
+  <link rel="preconnect" href="https://www.google-analytics.com" crossorigin />
+  <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
+  <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Preload what actually gates the first coloured pixel.
+       The paint table is ~24 KB against the snapshot's ~2.5 MB, and the two
+       fetches below start in the SAME TICK. Chaining them (manifest first, then
+       read the hashed filename out of it) would serialise two round trips in
+       front of a 24 KB download — ~600 ms of pure latency on slow 4G, which is
+       most of the win. The filename map is inlined at build time from the same
+       committed manifest the deploy verifies, so a stale inline fails the deploy
+       rather than shipping a 404 on the critical path.
+       The snapshot is fetched too, but nothing waits for it to paint. -->
+  <!-- `crossorigin` is REQUIRED for as="fetch" even same-origin: Chrome matches
+       preloads to fetch() in CORS mode, and without it the preload and the fetch
+       land in different cache entries and the file downloads TWICE. Measured on
+       the bench harness: bytes-before-first-colour went 27,780 -> 55,560 with the
+       attribute removed. Do not "tidy" it away.
+       Only the manifest is preloaded. The paint table cannot be: its filename is
+       metric-dependent and static HTML cannot read ?metric=, so preloading the
+       default would waste 100 KB on the critical path for any deep link to a
+       different metric. The inline script below runs during head parse and starts
+       that fetch itself, which is within a few milliseconds of what the preload
+       scanner would have managed. -->
+  <link rel="preload" href="/Domapus/data/manifest.json" as="fetch" crossorigin />
+  <script>
+    (function () {
+      var base = new URL('/Domapus/data/', document.baseURI).href;
+      var paint = JSON.parse('{"zhvi":"paint/zhvi-531ec0a1.u8","median_sale_price":"paint/median_sale_price-749eb976.u8","median_ppsf":"paint/median_ppsf-cc78cbf6.u8","homes_sold":"paint/homes_sold-38692d98.u8","active_listings":"paint/active_listings-151acce6.u8","median_dom":"paint/median_dom-29148a96.u8","sold_above_list":"paint/sold_above_list-afb229be.u8","months_of_supply":"paint/months_of_supply-b679c715.u8","zhvi_yoy":"paint/zhvi_yoy-f6970376.u8"}');
+      var metric = new URLSearchParams(location.search).get('metric') || 'zhvi';
+      var file = paint[metric] || paint.zhvi;
+
+      // No inlined map means this is a build from before the first pipeline run.
+      // Resolve to null rather than fetching `undefined`: the app then reads the
+      // manifest itself and pays one extra round trip, which is the correct
+      // degradation. Fetching a 404 here would cost the same round trip AND an
+      // error in the console.
+      // NO `crossorigin` on the preload links above, and a plain fetch here.
+      // Both files are same-origin, and the two have to agree on credentials mode
+      // or the browser keeps them in separate cache entries and downloads twice —
+      // it says so out loud: "preload found, but not used because the request
+      // credentials mode does not match". `crossorigin` (i.e. anonymous) means
+      // credentials mode SAME-ORIGIN, not omit, which is the trap: the obvious
+      // repair of adding `credentials: 'omit'` to the fetch makes it worse.
+      window.__domapusBoot = file
+        ? Promise.all([
+            fetch(base + 'manifest.json').then(function (r) { return r.json(); }),
+            fetch(base + file).then(function (r) { return r.arrayBuffer(); })
+          ]).then(function (v) {
+            return { manifest: v[0], paint: v[1], metric: metric };
+          }).catch(function () { return null; })
+        : Promise.resolve(null);
+
+      window.__zipDataPromise = fetch(base + 'zip-data.json')
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .catch(function () { return null; });
+    })();
+  </script>
+
+  <!-- Favicon and Manifest links -->
+  <link rel="icon" href="/Domapus/Logo.svg" type="image/svg+xml" />
+  <link rel="icon" href="/Domapus/favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/Domapus/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/Domapus/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/Domapus/favicon-16x16.png" />
+  <link rel="manifest" href="/Domapus/site.webmanifest" />
+
+  <!-- Structured Data (JSON-LD) -->
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Dataset","name":"Interactive U.S. Housing Data Analysis","description":"Aggregated Redfin and Zillow real estate data for 33,000+ US ZIP codes.","url":"https://jasperwchen.github.io/Domapus/","isAccessibleForFree":true,"license":"https://github.com/jasperwchen/Domapus/blob/main/LICENSE.md","creator":{"@type":"Person","name":"Jasper Chen"},"spatialCoverage":{"@type":"Place","name":"United States"},"distribution":{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":"https://jasperwchen.github.io/Domapus/data/zip-data.json"}},{"@type":"WebApplication","name":"Domapus","url":"https://jasperwchen.github.io/Domapus/","applicationCategory":"VisualizationTool","operatingSystem":"Web Browser","description":"Real-time ZIP-code-level housing data visualization tool exploring prices and inventory trends."}]}</script>
+
+  <!-- Open Graph / Social Media -->
+  <meta property="og:image" content="https://jasperwchen.github.io/Domapus/preview.png" />
+  <meta property="og:url" content="https://jasperwchen.github.io/Domapus/" />
+  <meta property="og:type" content="website" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://jasperwchen.github.io/Domapus/preview.png" />
+  <meta name="twitter:creator" content="@Jasperwchen" />
+  <meta property="og:title" content="Domapus: ZIP Code Housing Data Map">
+  <meta name="twitter:title" content="Domapus: ZIP Code Housing Data Map">
+  <meta property="og:description"
+    content="Interactive map showing ZIP-level housing data. Compare median prices, price per sqft, and days on market across 33,000+ U.S. ZIP codes.">
+  <meta name="twitter:description"
+    content="Interactive map showing ZIP-level housing data. Compare median prices, price per sqft, and days on market across 33,000+ U.S. ZIP codes.">
+  <script type="module" crossorigin src="/Domapus/assets/index-CRZWw_AX.js"></script>
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/rolldown-runtime-CbXtAM7H.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/jsx-runtime-BkYz1wMz.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/utils-Blz4KEBp.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/pdf-export-zrvOlc6r.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/data-url-CUmKctnA.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/maplibre-D_XmCFlU.js">
+  <link rel="stylesheet" crossorigin href="/Domapus/assets/maplibre-B2k4QVOw.css">
+  <link rel="stylesheet" crossorigin href="/Domapus/assets/index-D4uaLFy_.css">
+</head>
+
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PNP9L5ZD" height="0" width="0"
+      style="display: none; visibility: hidden"></iframe></noscript>
+
+  <div id="root"></div>
+</body>
+
+</html>

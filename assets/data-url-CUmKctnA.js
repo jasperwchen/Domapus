@@ -1,0 +1,1 @@
+function e(e){return new URL(`/Domapus/data/${e}`,window.location.origin).href}export{e as t};
