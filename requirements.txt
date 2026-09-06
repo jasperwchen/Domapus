@@ -20,7 +20,7 @@ pandas==2.3.3
 # 2.33.0 patches GHSA-gc5v-m9x4-r6x2, insecure temp file reuse in
 # extract_zipped_paths(). Pure-Python wheel, so no cp314 question.
 requests==2.33.0
-pytest==8.4.2
+pytest==9.0.3
 
 # pyarrow does the CSV streaming ingest: 1.33 GB in ~35 s against pandas'
 # minutes, and its typed `include_columns` is what keeps "07002" a string
