@@ -12,6 +12,10 @@ const DIST = args.find((a) => !a.startsWith("--")) ?? "dist";
 const ALWAYS = [
   "data/archive",       // monthly snapshots; no code path reads them
   "data/zcta-meta.csv", // pipeline input, read by pipeline/dim.py; the site never fetches it
+  // The Cartographic Boundary shapefile the geometry build unpacks here. Gitignored, so it
+  // never reaches CI — but a local `npm run build` after a geometry run would otherwise
+  // publish 162 MB of source geometry and trip the deploy size guard.
+  "data/temp-geo",
 ];
 
 // Linked only from the production URL, so a preview copy is dead weight.

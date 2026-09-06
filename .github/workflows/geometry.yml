@@ -1,0 +1,107 @@
+name: Geometry
+
+# Dispatch-only. The ZCTA delineation changes decennially and the Cartographic Boundary
+# file is re-cut about annually, so there is nothing here worth a schedule — and a 40-minute
+# tiling job on a cron is a good way to burn Actions minutes rebuilding an identical archive.
+#
+# Local runs are the normal path (`npm run geometry`, Docker Desktop running). This exists so
+# the build is reproducible by someone without Docker, and so the release is cut by a job
+# whose log records the exact invocations rather than by a laptop.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release to create, e.g. geometry-v2. Leave blank to build and verify only.'
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  geometry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+
+      # Same pinned image the local script uses, built from the committed Dockerfile rather
+      # than pulled from a third party — that Dockerfile plus build_geometry.sh is the whole
+      # reproducibility record the release notes point at.
+      - name: Build tippecanoe
+        run: docker build -f Dockerfile.tippecanoe -t domapus/tippecanoe:2.78.0 .
+
+      - name: Fetch the Cartographic Boundary source
+        run: |
+          set -euo pipefail
+          mkdir -p public/data/temp-geo
+          curl -fsSL --retry 3 -o /tmp/cb.zip \
+            https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_zcta520_500k.zip
+          unzip -q -o /tmp/cb.zip -d public/data/temp-geo/cb_2020_us_zcta520_500k
+          ls -l public/data/temp-geo/cb_2020_us_zcta520_500k
+
+      # A1, A4, A5, A6 and A7 all run inside this script and all of them fail the job.
+      - name: Build and verify
+        run: bash scripts/geometry/build_geometry.sh
+
+      - name: Summarise
+        run: |
+          {
+            echo '### Geometry build'
+            echo '```'
+            ls -l build/us_zip_codes.pmtiles public/data/zcta-geom.csv \
+                  public/data/zcta-tiny-points.geojson
+            echo '```'
+            echo '#### Coverage (A7)'
+            echo '```'
+            jq -r '.per_zoom[] | "z\(.zoom)  polygons \(.polygons)  +dots \(.covered_by_dots)  missing \(.missing)  stored \(.stored_bytes)"' \
+              build/coverage-after.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geometry
+          path: |
+            build/us_zip_codes.pmtiles
+            build/coverage-after.json
+            public/data/zcta-geom.csv
+            public/data/zcta-tiny-points.geojson
+          retention-days: 14
+
+      # Spec 5.9: the release notes carry the exact invocations, because they are the only
+      # reproducibility record for a binary that no longer lives in git.
+      - name: Publish the geometry release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Built by \`.github/workflows/geometry.yml\` run ${{ github.run_id }} from \`${{ github.sha }}\`."
+            echo
+            echo "Toolchain: mapshaper $(jq -r .toolchain.mapshaper geometry.lock.json), tippecanoe $(jq -r .toolchain.tippecanoe geometry.lock.json) (\`Dockerfile.tippecanoe\`)."
+            echo
+            echo '## Exact invocations'
+            echo '```sh'
+            cat scripts/geometry/build_geometry.sh
+            echo '```'
+            echo
+            echo '## Coverage (A7)'
+            echo '```json'
+            cat build/coverage-after.json
+            echo '```'
+          } > /tmp/notes.md
+          gh release create "${{ inputs.release_tag }}" \
+            build/us_zip_codes.pmtiles \
+            public/data/zcta-geom.csv \
+            public/data/zcta-tiny-points.geojson \
+            geometry.lock.json \
+            --title "Geometry ${{ inputs.release_tag }}" \
+            --notes-file /tmp/notes.md

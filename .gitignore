@@ -143,3 +143,8 @@ docs/ENGINEERING-LOG.md
 # Monthly snapshots live on the data-* releases, not in the repo. Committing
 # them put 14.45 MiB of never-read LFS objects behind every checkout.
 public/data/archive/
+
+# Per-ZIP history buckets: ~6,100 files, ~121 MB, regenerated every month by the
+# pipeline's S8 stage. Committing them would grow the repo by that much per release.
+# They ship as a tarball on the monthly data release; deploy.yml unpacks it.
+public/data/history/

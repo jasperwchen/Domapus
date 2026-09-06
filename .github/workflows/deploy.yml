@@ -60,6 +60,42 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      - name: Unpack the history buckets from the data release
+        # S8's ~6,100 buckets are gitignored (121 MB, regenerated monthly), so a fresh
+        # checkout has no public/data/history and the build would publish a site whose
+        # sidebar chart 404s for every ZIP.
+        #
+        # This warns rather than fails, unlike the geometry asset. The history chart is
+        # deliberate progressive enhancement — Sparkline.tsx renders "History is
+        # unavailable" and the other 15 metric cards are untouched — so a missing bundle
+        # costs one panel, not the map. Failing the deploy over it would be worse than
+        # shipping without it.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -d public/data/history ]; then
+            echo "history/ is already in the tree; not fetching."
+            exit 0
+          fi
+          PERIOD=$(jq -r '.redfin.period_end // empty' public/data/manifest.json)
+          if [ -z "$PERIOD" ]; then
+            echo "::warning::manifest.json has no redfin.period_end; skipping history."
+            exit 0
+          fi
+          TAG="data-${PERIOD%-*}"
+          ASSET="history-$PERIOD.tar.gz"
+          if gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP" 2>/dev/null; then
+            mkdir -p public/data/history
+            tar -xzf "$RUNNER_TEMP/$ASSET" -C public/data/history
+            rm -f "$RUNNER_TEMP/$ASSET"
+            echo "Unpacked $(ls public/data/history | wc -l) history files from $TAG/$ASSET."
+          else
+            echo "::warning::$TAG has no $ASSET. The sidebar history chart will show its"
+            echo "::warning::unavailable state. Everything else deploys normally."
+          fi
+
       - run: npm run build
 
       - name: Guard published size

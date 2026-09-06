@@ -1,0 +1,486 @@
+{
+  "label": "phase7",
+  "url": "http://localhost:4173/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi&lat=39.5&lng=-98.35&zoom=4&metric=zhvi",
+  "valid": true,
+  "invalidReason": null,
+  "conditions": {
+    "net": "slow4g",
+    "cpu": 4,
+    "viewport": "1440x900",
+    "runs": 10,
+    "pinned": true
+  },
+  "warnings": [],
+  "summary": {
+    "lcp": {
+      "median": 6224,
+      "p95": 6468,
+      "min": 6196,
+      "max": 6480,
+      "n": 10
+    },
+    "tbt": {
+      "median": 2997,
+      "p95": 3186,
+      "min": 2972,
+      "max": 3190,
+      "n": 10
+    },
+    "maxLongTask": {
+      "median": 1304,
+      "p95": 1318,
+      "min": 1293,
+      "max": 1379,
+      "n": 10
+    },
+    "longTaskCount": {
+      "median": 18,
+      "p95": 19,
+      "min": 17,
+      "max": 20,
+      "n": 10
+    },
+    "domContentLoaded": {
+      "median": 5864.79999999702,
+      "p95": 6112.9000000059605,
+      "min": 5835.29999999702,
+      "max": 6118.600000008941,
+      "n": 10
+    },
+    "loadEvent": {
+      "median": 6557.79999999702,
+      "p95": 6776.300000011921,
+      "min": 6528.79999999702,
+      "max": 6794.5,
+      "n": 10
+    },
+    "transferTotal": {
+      "median": 5792699,
+      "p95": 5792765,
+      "min": 5792627,
+      "max": 5792840,
+      "n": 10
+    },
+    "gatingBytes": {
+      "median": 27780,
+      "p95": 27780,
+      "min": 27780,
+      "max": 27780,
+      "n": 10
+    },
+    "gatingBytesLegacy": {
+      "median": 2705037,
+      "p95": 2705037,
+      "min": 2705037,
+      "max": 2705037,
+      "n": 10
+    },
+    "requestCount": {
+      "median": 45,
+      "p95": 45,
+      "min": 45,
+      "max": 45,
+      "n": 10
+    },
+    "heapBytes": {
+      "median": 52920624,
+      "p95": 67898176,
+      "min": 46707092,
+      "max": 74036252,
+      "n": 10
+    },
+    "metricSwitchMs": {
+      "median": 564,
+      "p95": 627,
+      "min": 514,
+      "max": 680,
+      "n": 10
+    },
+    "cls": {
+      "median": 0.004432457831399759,
+      "p95": 0.004432458292146115,
+      "min": 0.004424001669131516,
+      "max": 0.004432458580112588,
+      "n": 10
+    },
+    "wallMs": {
+      "median": 33110,
+      "p95": 33365,
+      "min": 33088,
+      "max": 33394,
+      "n": 10
+    },
+    "byKind": {
+      "other": {
+        "median": 334876,
+        "p95": 334885,
+        "min": 334866,
+        "max": 334885,
+        "n": 10
+      },
+      "js": {
+        "median": 553369,
+        "p95": 553369,
+        "min": 553369,
+        "max": 553369,
+        "n": 10
+      },
+      "css": {
+        "median": 18386,
+        "p95": 18386,
+        "min": 18386,
+        "max": 18386,
+        "n": 10
+      },
+      "data-json": {
+        "median": 2705260,
+        "p95": 2705260,
+        "min": 2705260,
+        "max": 2705260,
+        "n": 10
+      },
+      "basemap": {
+        "median": 754540,
+        "p95": 754606,
+        "min": 754469,
+        "max": 754691,
+        "n": 10
+      },
+      "pmtiles": {
+        "median": 1426268,
+        "p95": 1426268,
+        "min": 1426268,
+        "max": 1426268,
+        "n": 10
+      }
+    },
+    "marks": {
+      "map:applyChoropleth": {
+        "median": 53.900000005960464,
+        "p95": 57.70000000298023,
+        "min": 45.70000000298023,
+        "max": 58.5,
+        "n": 10
+      },
+      "store:construct": {
+        "median": 5.199999988079071,
+        "p95": 5.299999997019768,
+        "min": 4.5999999940395355,
+        "max": 5.299999997019768,
+        "n": 10
+      }
+    }
+  },
+  "samples": [
+    {
+      "lcp": 6236,
+      "cls": 0.004432458061772937,
+      "tbt": 3190,
+      "maxLongTask": 1301,
+      "longTaskCount": 18,
+      "domContentLoaded": 5868.5,
+      "loadEvent": 6542.5999999940395,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 57.70000000298023,
+        "store:construct": 5.199999988079071
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792840,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334866,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754691,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 67789128,
+      "metricSwitchMs": 627,
+      "wallMs": 33365,
+      "painted": true
+    },
+    {
+      "lcp": 6232,
+      "cls": 0.004424001669131516,
+      "tbt": 2997,
+      "maxLongTask": 1300,
+      "longTaskCount": 17,
+      "domContentLoaded": 5875.70000000298,
+      "loadEvent": 6540.399999991059,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 45.8999999910593,
+        "store:construct": 5
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792739,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334876,
+        "css": 18386,
+        "js": 553369,
+        "data-json": 2705260,
+        "basemap": 754580,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 67644416,
+      "metricSwitchMs": 563,
+      "wallMs": 33090,
+      "painted": true
+    },
+    {
+      "lcp": 6468,
+      "cls": 0.004432458580112588,
+      "tbt": 3186,
+      "maxLongTask": 1304,
+      "longTaskCount": 20,
+      "domContentLoaded": 6112.9000000059605,
+      "loadEvent": 6776.300000011921,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 57.6000000089407,
+        "store:construct": 5.299999997019768
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792693,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334876,
+        "js": 553369,
+        "data-json": 2705260,
+        "css": 18386,
+        "basemap": 754534,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 46824044,
+      "metricSwitchMs": 680,
+      "wallMs": 33394,
+      "painted": true
+    },
+    {
+      "lcp": 6480,
+      "cls": 0.004432458292146115,
+      "tbt": 3051,
+      "maxLongTask": 1379,
+      "longTaskCount": 18,
+      "domContentLoaded": 6118.600000008941,
+      "loadEvent": 6794.5,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 45.70000000298023,
+        "store:construct": 5.200000002980232
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792765,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334876,
+        "js": 553369,
+        "data-json": 2705260,
+        "css": 18386,
+        "basemap": 754606,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 46731612,
+      "metricSwitchMs": 546,
+      "wallMs": 33110,
+      "painted": true
+    },
+    {
+      "lcp": 6200,
+      "cls": 0.0044324581193662315,
+      "tbt": 2972,
+      "maxLongTask": 1318,
+      "longTaskCount": 18,
+      "domContentLoaded": 5836.4000000059605,
+      "loadEvent": 6557.79999999702,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 49.20000000298023,
+        "store:construct": 5
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792690,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334876,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754531,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 52920624,
+      "metricSwitchMs": 564,
+      "wallMs": 33091,
+      "painted": true
+    },
+    {
+      "lcp": 6196,
+      "cls": 0.004428507721407751,
+      "tbt": 2975,
+      "maxLongTask": 1309,
+      "longTaskCount": 17,
+      "domContentLoaded": 5835.29999999702,
+      "loadEvent": 6560.199999988079,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 58.5,
+        "store:construct": 5.299999997019768
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792699,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334876,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754540,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 74036252,
+      "metricSwitchMs": 514,
+      "wallMs": 33088,
+      "painted": true
+    },
+    {
+      "lcp": 6208,
+      "cls": 0.0044324578889930535,
+      "tbt": 3177,
+      "maxLongTask": 1297,
+      "longTaskCount": 18,
+      "domContentLoaded": 5835.9000000059605,
+      "loadEvent": 6569.79999999702,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 56.30000001192093,
+        "store:construct": 5.200000002980232
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792696,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334885,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754528,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 53575288,
+      "metricSwitchMs": 594,
+      "wallMs": 33365,
+      "painted": true
+    },
+    {
+      "lcp": 6236,
+      "cls": 0.004432457773806464,
+      "tbt": 3154,
+      "maxLongTask": 1293,
+      "longTaskCount": 19,
+      "domContentLoaded": 5878.100000008941,
+      "loadEvent": 6538.29999999702,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 50.5,
+        "store:construct": 5.299999997019768
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792627,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334875,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754469,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 67898176,
+      "metricSwitchMs": 579,
+      "wallMs": 33341,
+      "painted": true
+    },
+    {
+      "lcp": 6224,
+      "cls": 0.004428507721407751,
+      "tbt": 2991,
+      "maxLongTask": 1312,
+      "longTaskCount": 17,
+      "domContentLoaded": 5864.79999999702,
+      "loadEvent": 6528.79999999702,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 53.900000005960464,
+        "store:construct": 4.5999999940395355
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792709,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334885,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754541,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 46811068,
+      "metricSwitchMs": 597,
+      "wallMs": 33130,
+      "painted": true
+    },
+    {
+      "lcp": 6204,
+      "cls": 0.004432457831399759,
+      "tbt": 2984,
+      "maxLongTask": 1308,
+      "longTaskCount": 17,
+      "domContentLoaded": 5846.79999999702,
+      "loadEvent": 6558.79999999702,
+      "mainThreadResourceCount": 35,
+      "marks": {
+        "map:applyChoropleth": 57.099999994039536,
+        "store:construct": 5
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5792749,
+      "gatingBytes": 27780,
+      "gatingBytesLegacy": 2705037,
+      "byKind": {
+        "other": 334876,
+        "js": 553369,
+        "css": 18386,
+        "data-json": 2705260,
+        "basemap": 754590,
+        "pmtiles": 1426268
+      },
+      "requestCount": 45,
+      "heapBytes": 46707092,
+      "metricSwitchMs": 545,
+      "wallMs": 33106,
+      "painted": true
+    }
+  ]
+}

@@ -1416,3 +1416,117 @@ puts temp directories at the predictable `/tmp/pytest-of-{user}` (CVE-2025-71176
 and the pinned 8.4.2 was inside the vulnerable range. The spec's `9.0.3` was the
 patch, not an arbitrary newer number. 9.x is a major bump, so it was verified
 rather than assumed: all 37 tests pass.
+
+---
+
+## 2026-09-06 — Phases 6 and 7
+
+Docker Desktop was started by the user, which unblocked the only hard blocker.
+
+### Phase 6 — geometry
+
+`Dockerfile.tippecanoe` (felt/tippecanoe 2.78.0, built from source, committed so the
+*compiler* is pinned too), `scripts/geometry/build_geometry.sh`,
+`scripts/geometry/verify_coverage.mjs`, `geometry.lock.json`, `.github/workflows/geometry.yml`.
+`scripts/geometry/build_sidecar.sh` is deleted — `build_geometry.sh` is a strict superset and
+two copies of the same mapshaper invocation is a divergence waiting to happen.
+
+**The coverage loss is now measured by this repo, not inherited.** `verify_coverage.mjs`
+decodes the finished archive and counts distinct `ZCTA5CE20` per zoom. Against the *old*
+tileset: **1,952 missing at z3 (5.8%), 841 at z4** — the default view — and only z12 complete.
+The old archive's own metadata says why: it was built `--drop-densest-as-needed` with
+`--no-tiny-polygon-reduction-at-maximum-zoom` (note: *at maximum zoom*, not the full flag), so
+`dropped_by_rate` is 99 at z3 / 94 at z4 and `tiny_polygons` 5,225 / 2,354. Bug 2, recorded by
+the tool that caused it. The rebuilt archive has **no `strategies` block at all**.
+
+After: **z3-z10 carry all 33,780**, as polygon or dot. A1 and A4 pass exactly — 33,791 source,
+33,780 kept, 11 territory features dropped, matching the lock file.
+
+Three places the spec was wrong, all resolved by measuring:
+
+- **A7 cannot be "100% polygons at every zoom".** At z2 one pixel is ~39 km at 40°N, so a
+  smaller ZIP cannot survive quantisation however it is tiled. §5.6's dot layer is the spec's
+  own answer, so A7 now asserts *represented* — polygon **or** dot — and gates from z3, the
+  main map's `minZoom`. z2 exists only for the AK/HI export insets and is 75 short; all 75 are
+  lower-48 (IL, MI, OH, NY) and appear in no z2 inset. Reported, not gated.
+- **A6's 500 KB raw cap was written when the tileset still dropped features to stay small.**
+  Carrying every ZCTA at low zoom is the point of the rebuild. Measured worst tile is
+  **806,400 B raw at z2** (743,661 B stored across all three z2 tiles). Cap moved to 1,000,000 B
+  — still a tripwire, ~24% headroom. The old tileset also breached 500 KB (564,080 B at z3), so
+  the cap was never met by anything.
+- **The archive is 46,948,252 B, not the estimated ~20 MB.** 2.0x, not 4.6x. The estimate
+  assumed tippecanoe would keep dropping features.
+
+**The honest performance result, which is not the one the spec predicted.** §3.7 claims page
+weight falls to ~2.9 MB after Phase 6. Measured at the pinned view, tile transfer went
+**1,052,980 -> 1,426,268 B (+35%)** and total transfer 5.42 -> 5.79 MB. Correctness cost bytes:
+z4 now ships all 33,712 ZCTAs instead of dropping 841 and merging tiny ones into squares, and
+the size cut came from dropping z11/z12 — zooms this view never requests. TBT 2695 -> 2997 ms
+for the same reason. **Do not repeat the 1.9x page-weight claim.** The defensible claims are
+the deploy footprint (92.6 -> 46.9 MB) and the coverage fix.
+
+§12 #16 closed: the z2 tiles cost **743,661 B stored**, against the estimated 0.2-0.3 MB.
+Phase 3's invariant still holds on the new tileset — `map:sourceReload` 0, no tile refetch
+through a metric switch.
+
+**A JavaScript bug worth remembering, because it looked like corrupt data.** The MVT parser
+skipped length-delimited fields with `r.pos += r.varint()`. JS reads the left-hand `r.pos`
+*before* evaluating the right-hand call, so the length prefix's own bytes were counted twice
+and the reader landed short, then read a tag byte out of the middle of a field and threw
+"unsupported wire type 7". It presented as a malformed archive.
+
+### Phase 7 — history and sparkline
+
+`pipeline/history.py` (stage S8), `src/lib/history.ts`, `src/components/dashboard/Sparkline.tsx`,
+wired lazily into `Sidebar.tsx`. `forecast.py` now keeps `f_h1`/`f_h3`/`f_h6` — `model["f"]` was
+always a 4 x Z array and `run()` discarded three rows.
+
+**The break marker has no valid target, and that is a measured result, not a shortcut.** The
+user asked for the mid-2026 discontinuity in `sold_above_list` and `median_list_price` to be
+marked. Measured on the panel: the cross-sectional median of `sold_above_list` runs
+**15.01 -> 16.67** across the 2026-05/06 boundary against **16.45 -> 17.33** for the same months
+a year earlier, and `median_list_price` is **flat at 339,900** straight through. Redfin restated
+the whole history under the new definitions rather than switching over going forward, so the
+series we hold are internally continuous. Drawing an axis break inside them would invent a
+discontinuity. What is true is that they no longer match what this site published before the
+migration (+6.70 pp, -$8,200), so they ship as per-series *restatement notes*. The chart draws a
+break line exactly when `notes[series].at` is non-null; it is null for both today. §12 #23
+closes as "no splice, no break — restated upstream".
+
+**§4.4's sizing was low by ~8x and the shape had to change.** The panel is dense: only 11.9% of
+Redfin cells are null and the median series has no leading or trailing padding to trim.
+
+- ZIP3 buckets are 37 ZIPs x 665 cells = **~124 KB raw / ~43 KB gz**, against the estimated
+  45 KB / 11 KB. That misses Phase 7's own "< 200 ms on slow-4G" by an order of magnitude.
+  **Bucket depth is 4**: 6,085 buckets, median **19,087 B raw / 6,382 B gz**. ZIP4 neighbours
+  are a tight local cluster where ZIP3 is a whole region, so the prefetch is worth more.
+- The axes, q table and notes are identical in every bucket. Inlined they were ~8.5 KB per file
+  = ~52 MB of pure repetition, a third of the payload. They ship once in
+  **`history/index.json` (50,303 B raw / 16,198 B gz)**. First click 22.6 KB gz, every click
+  after 6.4 KB.
+- **Series are §4.4's three** (`msp`, `hs`, `zhvi`). `abv` and `mlp` were added and then removed
+  once the measurement above showed there was no break to draw — the only reason they were there.
+
+`dist` is **198 MB** (history 121, tileset 45, snapshot 11). Under the 300 MiB guard.
+`prune-dist.mjs` gained `data/temp-geo`: the geometry build unpacks a 162 MB Census shapefile
+under `public/`, which Vite publishes wholesale — the first build after a geometry run was
+**360 MB** and would have failed the deploy guard.
+
+Verified in a real browser at the pinned view: series switching, the confidence slider moving
+the band across all six levels, the band and slider appearing only for ZHVI (the only forecast
+series), and — with `fetch` patched to reject every `/history/` request — the sidebar still
+rendering all 15 metric cards with no error boundary. 122 tests pass (85 vitest, 37 pytest).
+
+### Corrections to `todos.md` that were already stale
+
+- **The gh-pages cleanup commit is obsolete and must not be pushed.** `deploy.yml` uses
+  `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, which replaces the branch with one
+  commit per deploy. gh-pages is **1 commit, 119.88 MiB, no `pr-preview/`**. The prepared
+  commit `a2e8476` is 7 commits and a **133.45 MiB** tree from 2026-08-29 — bigger and older.
+  Pushing it would revert the live site and regrow the branch.
+- The `data-2026-07` release exists with all seven snapshots plus the ZHVI vintage;
+  `.gitattributes` is empty and `public/data/archive/**` is untracked. Phase 0.2 is finished
+  and both P0 items are closed.
+- The export-inset half of Phase 6 landed in Phase 4 already — `ALASKA_DEFAULT_BOUNDS` is
+  `[[-168.0, 54.5], [-130.0, 70.0]]` and the "we don't want to rebuild the tileset" comment is
+  gone. The spec's Phase 6 section is stale on this.

@@ -1,0 +1,38 @@
+# tippecanoe, pinned and committed.
+#
+# Spec 5.9 asks the geometry release notes to carry the exact invocations as the only
+# reproducibility record for a binary that no longer lives in git. A third-party image
+# would leave the *compiler* unpinned, so the image is built here instead: this file plus
+# scripts/geometry/build_geometry.sh is the whole record.
+#
+# tippecanoe does not build natively on Windows, which is the only reason this exists.
+#
+#   docker build -f Dockerfile.tippecanoe -t domapus/tippecanoe:2.78.0 .
+
+FROM debian:bookworm-slim AS build
+
+# felt/tippecanoe is the maintained fork; mapbox/tippecanoe was archived in 2023.
+ARG TIPPECANOE_REF=2.78.0
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates git libsqlite3-dev zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "${TIPPECANOE_REF}" \
+      https://github.com/felt/tippecanoe.git /src \
+ && make -C /src -j"$(nproc)" \
+ && make -C /src install
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libsqlite3-0 zlib1g \
+ && rm -rf /var/lib/apt/lists/*
+
+# No ENTRYPOINT: the image carries tippecanoe, tippecanoe-decode and tile-join, and the
+# build script calls each by name.
+COPY --from=build /usr/local/bin/tippecanoe /usr/local/bin/tippecanoe
+COPY --from=build /usr/local/bin/tippecanoe-decode /usr/local/bin/tippecanoe-decode
+COPY --from=build /usr/local/bin/tile-join /usr/local/bin/tile-join
+
+WORKDIR /work

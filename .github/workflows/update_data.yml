@@ -95,6 +95,9 @@ jobs:
         jq -e '.status == "ok"' build/s3_assemble_report.json > /dev/null
         cp build/zip-data.json build/last_updated.json build/manifest.json \
            build/orphans.json public/data/
+        # ~6,100 files, ~121 MB. Gitignored — the next step puts them on the release.
+        rm -rf public/data/history
+        cp -r build/history public/data/history
 
     - name: Archive the snapshot to the data release
       # The archive used to be committed as LFS objects, which put 14.45 MiB of
@@ -131,6 +134,32 @@ jobs:
         fi
 
         gzip -c public/data/zip-data.json > "$ASSET"
+        gh release view "$TAG" > /dev/null 2>&1 \
+          || gh release create "$TAG" --title "Data ${NEW_PERIOD%-*}" \
+               --notes "Monthly ZIP snapshots for the period ending $NEW_PERIOD."
+        gh release upload "$TAG" "$ASSET"
+        rm -f "$ASSET"
+
+    - name: Archive the history buckets to the data release
+      # Same reasoning as the snapshot above, and more so: S8 emits ~6,100 files and
+      # ~121 MB every month. One tarball per period; deploy.yml unpacks it back into
+      # public/data/history before building.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        NEW_PERIOD=$(jq -r '.period_end' public/data/last_updated.json)
+        TAG="data-${NEW_PERIOD%-*}"
+        ASSET="history-$NEW_PERIOD.tar.gz"
+
+        if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null \
+             | grep -qx "$ASSET"; then
+          echo "Already archived on $TAG. Skipping."
+          exit 0
+        fi
+
+        tar -czf "$ASSET" -C public/data/history .
+        ls -l "$ASSET"
         gh release view "$TAG" > /dev/null 2>&1 \
           || gh release create "$TAG" --title "Data ${NEW_PERIOD%-*}" \
                --notes "Monthly ZIP snapshots for the period ending $NEW_PERIOD."

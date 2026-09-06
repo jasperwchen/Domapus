@@ -153,6 +153,14 @@ export function MapLibreMap({
     const map = new maplibregl.Map({
       container,
       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      // The tileset is built -Z2 -z10 (geometry.lock.json). MapLibre overzooms past a
+      // source's maxzoom natively, so z10 tiles serve z11 and z12 at 7.5 m quantisation
+      // against a 30 m pixel here — 0.25 px of error, and feature-state, hover and click
+      // keep working. Raise maxZoom past 14 and that error becomes visible as soft edges;
+      // re-tile at a deeper -z first.
+      //
+      // minZoom 3 is the floor the tileset guarantees full ZCTA coverage at. z2 tiles exist
+      // for the Alaska and Hawaii export insets, which fit below z3, and are 75 ZCTAs short.
       minZoom: 3,
       maxZoom: 12,
       ...(hasInitialView

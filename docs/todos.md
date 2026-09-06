@@ -16,9 +16,8 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
   that older name, worked in it from a stale base, and silently reverted ~12 fixes before the
   fork was caught and merged (see AGENT-LOG). If you find a second spec file, you are looking
   at a fork — merge it, do not adopt it.
-- **Untracked on purpose**, and the `.gitignore` rule genuinely exists at the end of the file.
-  It is a local working document, not a shipped artifact, and it churns far too fast to be
-  worth reviewing in diffs.
+- **Untracked on purpose.** It is a local working document, not a shipped artifact, and it
+  churns far too fast to be worth reviewing in diffs.
 - Because it is untracked there is **no git history and no recovery**. Back it up to the
   session scratchpad before any bulk edit. Every edit should assert a unique anchor match
   before applying — that is what caught the fork. (One snapshot exists by accident:
@@ -31,7 +30,7 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
 
 ---
 
-## Phases 0–5 — LANDED. Rationale and measurements in AGENT-LOG.
+## Phases 0-5 — LANDED. Rationale and measurements in AGENT-LOG.
 
 On `main` and pushed. Phases 4 and 5 are commit `477acd1`.
 
@@ -50,37 +49,49 @@ optimisation. Name the baseline in every claim.
 
 ---
 
+## Phases 6 and 7 — LANDED 2026-09-06. Rationale and measurements in AGENT-LOG.
+
+| | phase3 | phase5 | **phase7** |
+|---|---|---|---|
+| LCP | 7012 ms | 6212 ms | **6224 ms** |
+| TBT | 2934 ms | 2695 ms | **2997 ms** |
+| metric switch | 1491 ms | 647 ms | **564 ms** |
+| bytes to first colour | 2,570,348 B | 27,780 B | **27,780 B** |
+| tile transfer @ pinned view | — | 1,052,980 B | **1,426,268 B** |
+| tileset archive | 92.6 MB | 92.6 MB | **46.9 MB** |
+| ZCTAs present at z4 | 32,939 | 32,939 | **33,780** |
+
+**Fixing the coverage bug cost bytes, and the claim must be stated that way.** Tile transfer
+at the default view went UP 35%, because z4 now ships all 33,712 ZCTAs instead of dropping 841
+and merging tiny ones into squares; the archive cut came from dropping z11/z12, zooms this
+view never requests. TBT moved for the same reason. **Do not repeat §3.7's "1.9x page weight
+after Phase 6" — it is wrong in sign for the tile component.** The defensible claims are the
+deploy footprint (92.6 -> 46.9 MB) and the coverage fix itself.
+
+`dist` is 198 MB (history 121, tileset 45, snapshot 11), under the 300 MiB guard.
+
+## Phase 6 — remaining
+
+- [ ] **Decide where the tileset lives.** §5.9 wants `gh release create geometry-v1` with the
+      exact invocations in the notes, `deploy.yml` doing `gh release download` keyed on
+      `manifest.geometry_tag`, and `public/data/us_zip_codes.pmtiles` untracked. Today the new
+      46.9 MB archive is committed in place of the old 92.6 MB one, which works but adds a
+      permanent 47 MB blob to main's history. `.github/workflows/geometry.yml` already cuts the
+      release when given a tag; the deploy-side download and the untrack are not wired.
+      **Outward-facing and irreversible in git history — needs an explicit decision.**
+
+## Phase 7 — remaining
+
+- [ ] **Run the real pipeline end to end so S8 emits from `forecast.py`'s own horizons.**
+      `build/history/` was produced by driving `history.write()` with `f_h12` standing in for
+      h1/h3/h6, because a full run needs the source CSVs. The shipped `f` array is therefore
+      four copies of the h12 value until `py -3.14 -m pipeline` runs. Everything else — axes,
+      series, sigma, the q table, bucket sizes — is real.
+
 ## Blocked on user
 
-- [!] Push the gh-pages cleanup commit — 800.70 / 1024 MiB Pages limit
-      `git push origin a2e8476913cbeb9f479f4d622ffb133fd8b0a2ce:gh-pages`
 - [!] Close the 5 open Renovate PRs (outward action on a public repo)
-
-## Archive — blocking order, do NOT reorder
-
-`gh release list` is **empty**. There are no releases at all, so deleting the archive today
-destroys the only copy of six monthly snapshots.
-
-1. [ ] Create the `data-YYYY-MM` releases; upload the 6 existing archive files
-2. [ ] Verify each asset downloads and its sha256 matches
-3. [ ] Only then: `git rm --cached public/data/archive/**` + drop the `.gitattributes` LFS rule
-
-Until step 3, Phase 0.2 is **half done**: `lfs: true` is gone from both workflows, but
-`.gitattributes` still carries `public/data/archive/** filter=lfs` and all six archive files
-are still tracked, so the 14.45 MiB LFS pull per checkout has not actually stopped.
-
-## P0 · Irreversible if delayed
-
-- [ ] **Archive the current ZHVI vintage as a release asset.** Zillow overwrites in place, so a
-      month not saved can never be backtested — and the backtest is optimistic by an unknown
-      amount until real point-in-time vintages accumulate. One in hand:
-      `temp-data/Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv` (123,065,811 B, 2026-08-28).
-      `build/zhvi-panel.parquet` now exists (319 x 26,269), so there is finally something to
-      archive *against*.
-- [ ] **Create the first release at all.** Three things already assume releases exist: the
-      archive untrack, `geometry-vN`, and `deploy.yml`'s `gh release download`.
-
----
+- [!] The gh-pages cleanup push is **obsolete — do not run it.** See "Publishing surfaces".
 
 ## Verification still owed
 
@@ -93,28 +104,8 @@ are still tracked, so the 14.45 MiB LFS pull per checkout has not actually stopp
       `vite.config.ts` inlines the paint filenames from that manifest at build time and
       `deploy.yml` verifies it with `sha256sum -c`; that path is untested end to end on CI.
 - [ ] **Phase 5's forecast tier-1 rung is dead code against real data.** The metro-growth-path
-      fallback for 12–23 observations is reported in `f_tier` but never exercised — every ZHVI
+      fallback for 12-23 observations is reported in `f_tier` but never exercised — every ZHVI
       ZIP has >= 24 months. Either find a ZIP that needs it or delete the rung.
-
-## Phase 6 — geometry
-
-- [ ] **Start Docker Desktop and run `tippecanoe` in a container; commit the Dockerfile.**
-      Confirmed: `tippecanoe: command not found`; Docker Desktop 28.1.1 installed but the
-      **daemon is not running**; WSL present with only the `docker-desktop` distro.
-      `mapshaper 0.7.58` works, so §5.2 step 1 and §5.5 run locally today and only §5.3 is
-      blocked. Committing the Dockerfile also satisfies §5.9's demand that the exact
-      invocations be the reproducibility record.
-- [ ] Pin `mapshaper@0.7.58` in `package.json` devDependencies. `scripts/geometry/build_sidecar.sh`
-      pins it via `npx --package`, which works but is not a lockfile.
-- [ ] §12 #16 wants a **measured** z2 tile cost, which means iterating, which means local Docker.
-
-## Phase 7 — history and sparkline
-
-- [ ] `history/<zip3>.json`, ~890 files. Both panels now exist (`panel.parquet` 173 x 33,952 and
-      `zhvi-panel.parquet` 319 x 26,269), so this is unblocked.
-- [ ] The two series that changed definition in May 2026 — `sold_above_list` and
-      `median_list_price` — need a **break marker** wherever a time series crosses June 2026.
-      The methodology page explains them; the chart does not mark them yet.
 
 ---
 
@@ -150,6 +141,17 @@ to publish that is not just a copy of Redfin's file.
 
 ## Facts established — do not re-derive
 
+### Publishing surfaces (measured 2026-09-06)
+
+- **`gh-pages` is NOT at 800.70 MiB and the cleanup commit is obsolete.** `deploy.yml` uses
+  `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, which replaces the branch with one
+  fresh commit per deploy. The branch is **1 commit, 119.88 MiB, no `pr-preview/`**. The prepared
+  cleanup commit `a2e8476` is 7 commits and a **133.45 MiB** tree from 2026-08-29 — bigger and
+  older. Pushing it would revert the live site and regrow the branch. **Do not push it.**
+- The `data-2026-07` release exists and carries all seven `zip-data-*.json.gz` snapshots plus the
+  123,065,811 B ZHVI vintage. `.gitattributes` is empty and `public/data/archive/**` is untracked,
+  so **Phase 0.2 is finished** and the LFS pull per checkout has actually stopped.
+
 ### The feed (measured on all 4,930,000 rows, 2026-09-04)
 
 | fact | value |
@@ -159,7 +161,7 @@ to publish that is not just a copy of Redfin's file.
 | distinct ZIPs `Z` | **33,952** ever · **29,738** latest · 26,148 latest with `HOMES SOLD` |
 | `FREQUENCY` / `REGION TYPE` / `LAST UPDATED` | uniform across all rows |
 | MoM non-null cells | **0**. Redfin publishes no ZIP-level MoM, deliberately |
-| window length | 92 d ×2,857,977 · 91 ×1,026,380 · 90 ×733,207 · 89 ×312,436 |
+| window length | 92 d x2,857,977 · 91 x1,026,380 · 90 x733,207 · 89 x312,436 |
 
 **Every constant derived from `171 x 24,619` is void.** `P` and `Z` are measured at S2 every
 run and written to `manifest.panel`; do not carry a period count forward from any document.
@@ -184,7 +186,7 @@ run and written to `manifest.panel`; do not carry a period count forward from an
 - 2020 ZCTA count is **33,791** (not 33,120, the 2010 delineation). `zcta-meta.csv` has 33,771
   rows — a *derived* file, 20 short. Use 33,791 as the denominator for coverage percentages.
 - `zcta-geom.csv`: **33,780 rows**, 2,058,046 B. Max lon extent **8.3966° at 99503**, which is
-  83,966 at ×1e4 and overflows int16 — bbox offsets must be **int32**. Post-territory-filter
+  83,966 at x1e4 and overflows int16 — bbox offsets must be **int32**. Post-territory-filter
   the tallest is 99701 at 2.7511°, which *fits* int16; do not let a later reader "optimise"
   latitude on the strength of that.
 - **Median vertex spacing 292.9 m** over 5,624,668 segments after the 20 m simplify (p25 188.3,
@@ -215,7 +217,7 @@ run and written to `manifest.panel`; do not carry a period count forward from an
 
 `housing_market/monthly/all_zips.csv`. The other four ZIP-level families are `property_types`
 (2.86 GB, reintroduces the aggregation bug), `zips_in_top_50_metros` (364 MB, coverage loss),
-and `price_drops` / `delistings_relistings` / `contract_cancellations` (0.56–0.67 GB each, all
+and `price_drops` / `delistings_relistings` / `contract_cancellations` (0.56-0.67 GB each, all
 publishing 16 days behind `housing_market`, so a shared staleness contract would false-trip).
 `housing_market/zip_lookup.csv` is 403.
 

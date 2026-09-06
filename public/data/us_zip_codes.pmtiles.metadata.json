@@ -1,81 +1,144 @@
 {
-    "antimeridian_adjusted_bounds": "-176.696676,17.674030,-64.565193,71.341223",
-    "description": "Domapus US Zip Codes Boundary. https://github.com/jasperwchen/Domapus",
+    "name": "Domapus US ZCTA (2020 vintage, CB 1:500k)",
     "format": "pbf",
-    "generator": "tippecanoe v2.80.0",
-    "generator_options": "tippecanoe -l us_zip_codes -Z3 -z12 --no-simplification-of-shared-nodes --drop-densest-as-needed --no-tiny-polygon-reduction-at-maximum-zoom '--simplification=5'",
-    "name": "US ZCTA Boundary",
-    "strategies": {
-        "0": {},
-        "1": {},
-        "2": {},
-        "3": {
-            "dropped_by_rate": 99,
-            "tiny_polygons": 5225
-        },
-        "4": {
-            "dropped_by_rate": 94,
-            "tiny_polygons": 2354
-        },
-        "5": {
-            "dropped_by_rate": 76,
-            "tiny_polygons": 961
-        },
-        "6": {
-            "dropped_by_rate": 63,
-            "tiny_polygons": 315
-        },
-        "7": {
-            "dropped_by_rate": 45,
-            "tiny_polygons": 64
-        },
-        "8": {
-            "dropped_by_rate": 32,
-            "tiny_polygons": 36
-        },
-        "9": {
-            "dropped_by_rate": 22,
-            "tiny_polygons": 59
-        },
-        "10": {
-            "dropped_by_rate": 17,
-            "tiny_polygons": 53
-        },
-        "11": {
-            "dropped_by_rate": 10,
-            "tiny_polygons": 57
-        },
-        "12": {}
-    },
+    "type": "overlay",
+    "description": "Domapus US ZCTA (2020 vintage, CB 1:500k)",
+    "version": "2",
+    "generator": "tippecanoe v2.78.0",
+    "generator_options": "tippecanoe -o /work/build/us_zip_codes.pmtiles -l us_zip_codes -n 'Domapus US ZCTA (2020 vintage, CB 1:500k)' -Z2 -z10 --no-tiny-polygon-reduction --no-simplification-of-shared-nodes --no-feature-limit --no-tile-size-limit '--simplification=2' --hilbert --force /work/build/zcta-tiles.json",
+    "antimeridian_adjusted_bounds": "-176.696680,17.674680,-64.565590,71.341220",
+    "vector_layers": [
+        {
+            "id": "us_zip_codes",
+            "description": "",
+            "minzoom": 2,
+            "maxzoom": 10,
+            "fields": {
+                "ZCTA5CE20": "String"
+            }
+        }
+    ],
     "tilestats": {
         "layerCount": 1,
         "layers": [
             {
+                "layer": "us_zip_codes",
+                "count": 33780,
+                "geometry": "Polygon",
                 "attributeCount": 1,
                 "attributes": [
                     {
                         "attribute": "ZCTA5CE20",
                         "count": 1000,
-                        "type": "string"
+                        "type": "string",
+                        "values": [
+                            "00601",
+                            "00602",
+                            "00603",
+                            "00606",
+                            "00610",
+                            "00611",
+                            "00612",
+                            "00616",
+                            "00617",
+                            "00622",
+                            "00623",
+                            "00624",
+                            "00627",
+                            "00631",
+                            "00636",
+                            "00637",
+                            "00638",
+                            "00641",
+                            "00646",
+                            "00647",
+                            "00650",
+                            "00652",
+                            "00653",
+                            "00656",
+                            "00659",
+                            "00660",
+                            "00662",
+                            "00664",
+                            "00667",
+                            "00669",
+                            "00670",
+                            "00674",
+                            "00676",
+                            "00677",
+                            "00678",
+                            "00680",
+                            "00682",
+                            "00683",
+                            "00685",
+                            "00687",
+                            "00688",
+                            "00690",
+                            "00692",
+                            "00693",
+                            "00694",
+                            "00698",
+                            "00703",
+                            "00704",
+                            "00705",
+                            "00707",
+                            "00714",
+                            "00715",
+                            "00716",
+                            "00717",
+                            "00718",
+                            "00719",
+                            "00720",
+                            "00723",
+                            "00725",
+                            "00727",
+                            "00728",
+                            "00729",
+                            "00730",
+                            "00731",
+                            "00735",
+                            "00736",
+                            "00738",
+                            "00739",
+                            "00740",
+                            "00741",
+                            "00745",
+                            "00751",
+                            "00754",
+                            "00757",
+                            "00765",
+                            "00766",
+                            "00767",
+                            "00769",
+                            "00771",
+                            "00772",
+                            "00773",
+                            "00775",
+                            "00777",
+                            "00778",
+                            "00780",
+                            "00782",
+                            "00783",
+                            "00784",
+                            "00786",
+                            "00791",
+                            "00794",
+                            "00795",
+                            "00802",
+                            "00820",
+                            "00830",
+                            "00840",
+                            "00850",
+                            "00851",
+                            "00901",
+                            "00906"
+                        ]
                     }
-                ],
-                "count": 33780,
-                "geometry": "Polygon",
-                "layer": "us_zip_codes"
+                ]
             }
         ]
     },
-    "type": "overlay",
-    "vector_layers": [
-        {
-            "description": "",
-            "fields": {
-                "ZCTA5CE20": "String"
-            },
-            "id": "us_zip_codes",
-            "maxzoom": 12,
-            "minzoom": 3
-        }
-    ],
-    "version": "2"
+    "minzoom": "2",
+    "maxzoom": "10",
+    "bounds": "-176.696680,17.674680,-64.565590,71.341220"
 }

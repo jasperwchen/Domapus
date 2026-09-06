@@ -264,14 +264,22 @@ def run(panel_path, records: dict, index=None) -> dict:
     hi = HORIZONS.index(SHIPPED_HORIZON)
     sd = closed_form_sd(model["rho"], model["sigma"], SHIPPED_HORIZON)
 
+    # `model["f"]` is [len(HORIZONS) x Z] — every horizon is already fitted. Only h12 is a
+    # snapshot column, because adding one would shift every column after it and the column
+    # order is the wire contract (§4.3). The other three ride the history file instead
+    # (§4.4 `f`), so they are kept on the record under names the snapshot encoder ignores.
     filled = 0
     for zip_code, rec in records.items():
         j = zi.get(zip_code)
         if j is None or tiers[j] == 0 or not np.isfinite(model["f"][hi, j]):
             rec["f_h12"] = rec["f_sigma"] = None
             rec["f_tier"] = 0
+            for h in HORIZONS:
+                rec[f"f_h{h}"] = None
             continue
-        rec["f_h12"] = int(round(float(np.exp(model["f"][hi, j]))))
+        for k, h in enumerate(HORIZONS):
+            v = model["f"][k, j]
+            rec[f"f_h{h}"] = int(round(float(np.exp(v)))) if np.isfinite(v) else None
         rec["f_sigma"] = round(float(model["sigma"][j]), 6) if np.isfinite(model["sigma"][j]) else None
         rec["f_tier"] = int(tiers[j])
         filled += 1

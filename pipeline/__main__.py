@@ -23,7 +23,7 @@ from pathlib import Path
 
 from .contracts import PipelineError
 from . import (
-    changes, classify, dim, forecast, gate, geom, noise, panel, paint, redfin,
+    changes, classify, dim, forecast, gate, geom, history, noise, panel, paint, redfin,
     serialize, sources, spatial, zhvi,
 )
 
@@ -227,6 +227,17 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     paint.assert_agrees_with_snapshot(records, paint_assets, paint_dir)
     _report("s7_paint", "ok", assets=paint_assets)
 
+    # --- S8 HISTORY ---------------------------------------------------------
+    # Per-ZIP series bucketed by ZIP3, fetched on click. Progressive enhancement:
+    # nothing on the critical path reads these, so a failed fetch costs the chart
+    # and nothing else.
+    _require("s5b_forecast")
+    history_report = history.write(
+        panel_path, zhvi_panel_path, records, BUILD / "history",
+        forecast_report["backtest"]["q"],
+    )
+    _report("s8_history", "ok", **history_report)
+
     out = BUILD / "zip-data.json"
     written = serialize.write_snapshot(records, out, {
         "built_utc": now if (prev_ts is None or changed) else prev_ts,
@@ -278,7 +289,9 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "classes": class_report["classes"],
         "diverging": bound,
         "classing": class_report["classing"],
-        "assets": {"paint": paint_assets, "snapshot": "zip-data.json"},
+        "history": history_report,
+        "assets": {"paint": paint_assets, "snapshot": "zip-data.json",
+                   "history": "history/<zip3>.json"},
     }
     (BUILD / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     (BUILD / "orphans.json").write_text(

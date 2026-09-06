@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
-import { X, ArrowLeft, TrendingUp, TrendingDown, BarChart3, MapPin, Building, Loader2 } from "lucide-react";
+import { X, ArrowLeft, TrendingUp, TrendingDown, BarChart3, MapPin, Building, LineChart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ZipData } from "./map/types";
@@ -10,6 +10,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { formatRedfinWindow } from "@/lib/data-dates";
 
 const ZipComparison = lazy(() => import("./ZipComparison").then(m => ({ default: m.ZipComparison })));
+// Lazy so the history chart and its fetch stay off the first-paint path entirely.
+const Sparkline = lazy(() => import("./Sparkline").then(m => ({ default: m.Sparkline })));
 
 interface SidebarProps {
   isOpen: boolean;
@@ -109,6 +111,13 @@ export function Sidebar({ isOpen, zipData, store, onClose }: SidebarProps) {
                 ))}
               </div>
             </div>
+            <h3 className="text-sm font-medium pt-1 flex items-center"><LineChart className="h-4 w-4 mr-2" />History</h3>
+            <Card><CardContent className="p-4">
+              <Suspense fallback={<div className="h-[150px] animate-pulse rounded-md bg-muted/40" aria-hidden />}>
+                <Sparkline zipCode={zipData.zipCode} />
+              </Suspense>
+            </CardContent></Card>
+
             <h3 className="text-sm font-medium pt-1 flex items-center"><Building className="h-4 w-4 mr-2" />Market Data</h3>
             <div className="space-y-3">
               {allMetrics.map((metric, index) => {

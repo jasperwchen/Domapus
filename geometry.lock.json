@@ -1,0 +1,77 @@
+{
+  "$comment": [
+    "Spec 5.7. What the geometry build asserted last time it ran, so a silent change in the",
+    "source vintage cannot silently change the map. Every number here is measured, not",
+    "recalled; scripts/geometry/build_geometry.sh compares against it and fails the run.",
+    "Bump `version` and the release tag together when the source vintage changes."
+  ],
+  "version": 1,
+  "release_tag": "geometry-v1",
+  "built_utc": "2026-09-06",
+  "source": {
+    "dataset": "cb_2020_us_zcta520_500k",
+    "vintage": "2020 ZCTA delineation, Cartographic Boundary 1:500k",
+    "crs": "NAD83 geographic",
+    "$comment": "Not TIGER. Median vertex spacing after the 20 m simplify is 292.9 m over 5,624,668 segments; at z10 one CSS pixel is ~117 m, so the median segment is ~2.5 px. TIGER would multiply file size for detail past the zoom this tileset publishes.",
+    "feature_count": 33791,
+    "median_vertex_spacing_m": 292.9
+  },
+  "territory_filter": {
+    "$comment": "Coded replacement for an undocumented hand-edit. Keeps Puerto Rico (131 ZIPs) and the USVI (6), which have real market data. A4 asserts this exact list.",
+    "bounds": [-180, 17, -64, 72],
+    "dropped_count": 11,
+    "dropped": [
+      "96799",
+      "96910", "96913", "96915", "96916", "96917", "96928", "96929",
+      "96950", "96951", "96952"
+    ]
+  },
+  "tileset": {
+    "layer": "us_zip_codes",
+    "promote_id": "ZCTA5CE20",
+    "min_zoom": 2,
+    "max_zoom": 10,
+    "feature_count": 33780,
+    "bytes": 46948252,
+    "$comment": "92,590,855 B before. The cut is 2.0x, not the 4.6x the spec estimated, because that estimate assumed tippecanoe would keep dropping features to stay small — which is the bug this rebuild exists to fix. Carrying every ZCTA at low zoom is what costs the difference.",
+    "previous_bytes": 92590855,
+    "z2_marginal_stored_bytes": 743661,
+    "max_raw_tile_bytes": 806400,
+    "max_raw_tile_at": "2/1/1",
+    "raw_tile_cap": 1000000
+  },
+  "sidecar": {
+    "file": "public/data/zcta-geom.csv",
+    "rows": 33780,
+    "bytes": 2058046
+  },
+  "tiny_points": {
+    "file": "public/data/zcta-tiny-points.geojson",
+    "$comment": "Rendered as a circle layer under the fill, coloured by the same constant match on the same feature id, so a sub-pixel ZCTA reaches the reader as a dot instead of vanishing. This is the entire low-zoom answer; there is no county overview layer (spec 10.3).",
+    "filter_km": 2,
+    "features": 991,
+    "bytes": 200770
+  },
+  "coverage": {
+    "$comment": "A7, measured by scripts/geometry/verify_coverage.mjs against the finished archive. `strict_from` is the floor the gate enforces: the main map sets minZoom 3, and z2 exists only so the Alaska and Hawaii export insets have tiles to draw. At z2 one pixel is ~39 km at 40 N, so a ZIP smaller than that cannot survive quantisation however it is tiled; the 75 it loses are lower-48 and appear in no z2 inset.",
+    "strict_from": 3,
+    "polygons_by_zoom": {
+      "2": 33213, "3": 33573, "4": 33712, "5": 33769, "6": 33779,
+      "7": 33780, "8": 33780, "9": 33780, "10": 33780
+    },
+    "uncovered_by_zoom": {
+      "2": 75, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0, "10": 0
+    },
+    "previous_polygons_by_zoom": {
+      "$comment": "The tileset this replaces, decoded by the same tool. It shipped a 5.8% loss at z3 and 2.5% at z4 — the default view — and nothing ever opened it to look.",
+      "3": 31828, "4": 32939, "5": 33486, "6": 33670, "7": 33730,
+      "8": 33750, "9": 33761, "10": 33765, "11": 33772, "12": 33780
+    }
+  },
+  "toolchain": {
+    "mapshaper": "0.7.58",
+    "tippecanoe": "2.78.0",
+    "tippecanoe_image": "domapus/tippecanoe:2.78.0",
+    "dockerfile": "Dockerfile.tippecanoe"
+  }
+}
