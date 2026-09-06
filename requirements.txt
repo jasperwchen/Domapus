@@ -20,7 +20,18 @@ pandas==2.3.3
 # 2.33.0 patches GHSA-gc5v-m9x4-r6x2, insecure temp file reuse in
 # extract_zipped_paths(). Pure-Python wheel, so no cp314 question.
 requests==2.33.0
-pytest==8.4.2
+# 9.0.3 patches CVE-2025-71176 / GHSA-6w46-j5rx-g56g: pytest through 9.0.2 puts
+# its temp directories at the predictable path `/tmp/pytest-of-{user}` on UNIX,
+# which lets a local user cause a denial of service or possibly escalate. The pin
+# was 8.4.2, which is inside the vulnerable range — Dependabot alert 46 on the
+# default branch was this, and the spec's `pytest==9.0.3` was the fix rather than
+# an arbitrary newer number.
+#
+# Pinned to the LATEST 9.x rather than the 9.0.3 minimum, on the same reasoning as
+# pyarrow below: a minimum satisfies one advisory and can leave the next one open.
+# 9.x is a MAJOR bump, so it was verified rather than assumed — all 37 tests pass
+# on 9.1.1 under Python 3.14. Pure-Python wheel, so no cp314 question.
+pytest==9.1.1
 
 # pyarrow does the CSV streaming ingest: 1.33 GB in ~35 s against pandas'
 # minutes, and its typed `include_columns` is what keeps "07002" a string

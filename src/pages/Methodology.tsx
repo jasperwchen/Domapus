@@ -367,6 +367,38 @@ export default function Methodology() {
         </Section>
       )}
 
+      <Section title="Two series changed definition in May 2026, and older numbers are not comparable">
+        <p>
+          Redfin rebuilt its data pipeline in May 2026 and unified two previously
+          separate trackers into one. Most series survived that unchanged. Two did
+          not, and comparing them against anything we published before June 2026 is
+          comparing different quantities:
+        </p>
+        <ul className="list-disc pl-5 space-y-2">
+          <li>
+            <strong>% Sold Above List</strong> is now measured against the{" "}
+            <em>original</em> list price rather than the most recent one. A home
+            listed at $500k, cut to $450k, and sold at $460k counts as{" "}
+            <em>below</em> list under the new definition and <em>above</em> list
+            under the old one. The share moves for reasons that have nothing to do
+            with the market.
+          </li>
+          <li>
+            <strong>Median New Listing Price</strong> narrowed to newly listed homes
+            only, where it previously covered all active inventory. Because new
+            listings skew differently from the standing stock, the rebuilt series
+            runs roughly $8,000 below the old one.
+          </li>
+        </ul>
+        <p>
+          Redfin's own announcement says some headline numbers would look different
+          after the rebuild. That is the honest framing: this is an upstream
+          definition change, not a data error and not a market movement. Anywhere a
+          time series crosses June 2026, these two need a break marker rather than a
+          continuous line.
+        </p>
+      </Section>
+
       <Section title="Two things about the source data that look like bugs and are not">
         <p>
           <strong>The map shows a rolling three-month window, never a month.</strong>{" "}

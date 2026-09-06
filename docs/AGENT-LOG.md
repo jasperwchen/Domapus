@@ -1252,3 +1252,167 @@ Three runs, three different things learned:
 
 CI itself is green again on `d7fa515`, and its run is named `CI` rather than its own file path,
 which is the other half of the workflow-parse fix.
+
+
+---
+
+## Phases 4 and 5 — LANDED 2026-09-05, commit `477acd1`, pushed to `main`
+
+Paint byte, typed-array store, real bboxes, and the whole statistics layer, in one
+commit. They cannot be separated: the paint byte is
+`(reliability_tier << 4) | (class_index + 1)` and both fields come from Phase 5
+modules, so splitting them ships a file whose every byte is undefined. The wire
+format change is one commit for the same reason — pipeline, worker, `types.ts` and
+the frontend all read the same positional contract.
+
+### Measured, `bench/results/phase5-after.json`, 3 runs, slow4g / 4x CPU / 1440x900
+
+| | phase3 baseline | phase5-after | |
+|---|---|---|---|
+| **bytes before first colour** | **2,570,348 B** | **27,780 B** | **92.5x** |
+| metric switch | 1,848 ms | 647 ms | 2.9x |
+| LCP | 7,240 ms | 6,212 ms | -14.2% |
+| TBT | 3,914 ms | 2,695 ms | -31.1% |
+| long task count | 26 | 18 | -30.8% |
+| transfer | 5.01 MB | 5.17 MB | +3.1% WORSE |
+| requests | 41 | 45 | +9.8% WORSE |
+| JS heap | 56.0 MB | 63.7 MB | +13.8% WORSE |
+
+The three regressions are structural and expected: the snapshot went 38 -> 50
+columns, and the manifest and paint table are two more requests. None is on the
+path to first colour. `class:assign` (48 ms) and `class:breaks` (94 ms) disappear
+entirely — the pipeline does that work now — and `store:construct` is 5 ms.
+
+`GATES_FIRST_COLOR` in `bench/run.mjs` changed with the architecture, which is the
+metric working rather than cheating: the snapshot no longer gates paint, so
+counting it would report 2.5 MB and claim the phase changed nothing.
+`gatingBytesLegacy` still reports the old definition alongside.
+
+### The five numbers that moved, and why each mattered
+
+**K = 0.5598, not 0.5395.** Refitted on the migrated `173 x 33,952` panel. The
+method reproduced on a completely different file — same plateau shape, same lag-1
+attenuation (`0.5598 * 0.43 = 0.241` predicted vs `0.2369` measured) — which is
+better evidence for the estimator than the original fit was.
+
+**The rankable gate is `rse < 10%` = n >= 32, not `n >= 30`.** This is the one to
+remember. `n >= 30` was never a chosen threshold; it was `0.5395/sqrt(30) = 9.85%`
+rounded to a nice integer. At the new K, n = 30 gives 10.22% and is *not* rankable.
+Hardcoding 30 would have quietly made the "one threshold, explained once" property
+false — the map would gate on one number while the methodology page explained a
+different one. `noise.py` derives it from the fitted K and publishes
+`rankable_n_implied`. Rankable population: **9,456 of 25,603 reporting ZIPs**,
+superseding both the dead feed's 8,544/20,010 and the 9,781 the paint-table
+experiment used.
+
+**The selection effect is four times worse than the spec estimated.** Rankable
+ZIPs have a median price of $394,884 against $275,953 for excluded ones, and
+**24.8%** of thin ZIPs land in the bottom colour class against **5.5%** of reliable
+ones — the spec said 11.3% vs 4.2%. Same direction, much larger. `classify.py`
+publishes all four numbers so the legend copy cannot drift from them.
+
+**Redfin publishes a +30,993,016% year-over-year change.** ZIP 12207 (Albany, NY)
+recorded a $1 median sale price in 2025-07 — one $1 transaction. The published YoY
+is arithmetically correct, useless, and too large for the int32 the wire format
+uses. `changes.py` nulls a ratio change whose base falls below that metric's own
+declared range floor: there is no honest value to clamp to, because we do not know
+what that ZIP's prices did, only that its year-ago sample was one $1 sale.
+
+**The YoY reconciliation contract needs a propagated tolerance, not a flat one.**
+We recompute from *published* levels, which are rounded; Redfin computed from
+unrounded ones. The base's quantisation propagates as
+`(|yoy| + 100) * quant / base`, so half a cent on a $1.01/sqft base is 41
+percentage points on an 8,400% change. With that: `median_sale_price` 0 of 23,738
+exceed, `median_list_price` 1 of 25,625, `median_list_ppsf` 42 of 25,570,
+`median_ppsf` 62 of 23,673. The survivors are ZIPs whose base Redfin has since
+**restated** (31905's published YoY implies a 2025-06 level of 491,058.7 against
+the 492,250.0 now in the file), which no tolerance on our side can reconcile. So
+the contract is a SHARE, gated at 1% against a worst measured 0.262% — sharp
+against the failure it exists to catch, since a lag or units error moves every ZIP.
+
+### The LISA gate did what it was designed to do
+
+This is the result worth keeping. `lisa_median_n_by_class` ungated:
+`HH 38 / ns 22 / LL 5 / LH 6 / HL 2`. The spatial-outlier classes were a low-sample
+detector wearing a spatial-statistics costume — sampling noise pushes a thin ZIP
+away from its neighbourhood mean, which is the definition of an HL/LH outlier.
+
+Gated to the 9,456 rankable ZIPs: **`ns 87 / HH 74 / LL 68 / LH 77 / HL 86`**. The
+classes are no longer separable by sample size. The 27 HL and 20 LH survivors are
+real. Moran's I on the gated set is `0.7699 / 0.7343 / 0.6862 / 0.6363` at
+k = 4/8/16/32 — uniformly *higher* than ungated, because the ungated graph is
+diluted by ZIPs whose value is mostly noise.
+
+### The forecast's interval story held up
+
+83 origins, quarterly, expanding window, 41 calibrate / 42 evaluate. Nominal 80%:
+
+| method | h=1 | h=3 | h=6 | h=12 |
+|---|---|---|---|---|
+| random walk `sigma*sqrt(h)` | 81.3 | 44.0 | 30.2 | 24.7 |
+| AR(1) own closed form | 89.4 | 78.2 | 75.8 | 78.6 |
+| **empirical quantiles (shipped)** | **82.8** | **80.7** | **82.0** | **87.9** |
+
+MASE 0.395 / 0.592 / 0.697 / 0.680. Most of the gap is using a random-walk variance
+for a model that is not a random walk; empirical calibration closes the rest, and
+that remainder is non-normality. 83 origins are worth about **20 independent** ones
+at a quarterly stride with h=12, and that is the number published.
+
+### Four bugs found by running the app, not by tests
+
+All 85 vitest and 37 pytest passed throughout. These came from opening a browser.
+
+1. **The painter's write-skip cache keyed on the class index alone.** Reliability
+   used to be metric-invariant on the client too, so `k` was the only thing that
+   could change between epochs. It is not any more: `ACTIVE_LISTINGS` is exempt
+   from the reliability fade and expresses that by reporting every ZIP as tier 3.
+   A ZIP whose class happened to match under both metrics was skipped, kept the
+   previous metric's tier, and stayed faded on a map that must not fade anything.
+   Now keyed on both, with a regression test.
+2. **The map never initialised when its container measured 0x0 at mount.**
+   `tryInit` gives up at zero size and the ResizeObserver only ever resized a map
+   that already existed, so it never retried. Symptom: permanently blank map, no
+   canvas, no style request, no failed fetch, no error anywhere — and intermittent,
+   because it came down to layout timing. Pre-existing; the new load order changed
+   when the container settles and made it reproducible.
+3. **`loadedZips()` threw when called before the `zips` source existed.** It runs
+   from the map's own `load` handler, which fires when the STYLE is ready; the
+   source is added later.
+4. **`<link rel="preload" as="fetch">` needs `crossorigin` even same-origin.**
+   Without it the preload and the fetch land in different cache entries and the
+   file downloads twice — measured 27,780 -> 55,560 B before first colour. The
+   obvious repair makes it worse: `crossorigin` means credentials mode
+   *same-origin*, not *omit*, so adding `credentials: 'omit'` to the fetch breaks
+   the match in the other direction. The paint preload link was then dropped
+   entirely, because its filename is metric-dependent and static HTML cannot read
+   `?metric=`.
+
+### Judgement calls the spec did not make
+
+- **Section 6.6 assigns no classing scheme to three painted metrics.**
+  `active_listings`, `median_dom` and `months_of_supply` appear in none of its four
+  families. All three are right-skewed positives with no anchor value the way 100%
+  is for a share, and rank is what a reader compares, so they joined the quantile
+  family.
+- **"Equal interval anchored at 100%" is a 100-pinned grid whose width comes from
+  p1..p99**, not equal intervals over a literal [0, 100] domain. The literal
+  reading collapses `sold_above_list` into two colours — the exact failure section
+  6.6 rejects when it argues against unanchored log classing.
+- **The fade carve-out lives in feature-state, not in a second paint expression.**
+  Swapping expressions on a metric change calls `setPaintProperty` on a value
+  MapLibre has seen as data-driven, which marks the source `reload` and re-parses
+  every tile: the 3375 ms regression Phase 3 removed.
+
+### Closed in the same pass
+
+Section 12 items **5** (median vertex spacing **292.9 m** over 5,624,668 segments —
+do NOT take the TIGER branch; the ~150 m rule was a proxy for "too coarse to draw"
+and at z10 one CSS pixel is ~117 m, so the median segment is ~2.5 px), **7**
+(per-metric K: `median_dom` 1.4576, `avg_sale_to_list_ratio` 0.0749), **11** (gated
+LISA) and **12** (the 398-ZIP classing gap — it was two populations, not a lost ZIP).
+
+`pytest` 8.4.2 -> **9.1.1**, which closes Dependabot alert 46: pytest through 9.0.2
+puts temp directories at the predictable `/tmp/pytest-of-{user}` (CVE-2025-71176)
+and the pinned 8.4.2 was inside the vulnerable range. The spec's `9.0.3` was the
+patch, not an arbitrary newer number. 9.x is a major bump, so it was verified
+rather than assumed: all 37 tests pass.
