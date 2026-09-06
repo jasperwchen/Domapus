@@ -1,5 +1,5 @@
 {
-  "generated_utc": "2026-09-05T23:21:39.085051+00:00",
+  "generated_utc": "2026-09-06T17:26:34.542695+00:00",
   "redfin": {
     "period_end": "2026-07-31",
     "period_begin": "2026-05-01",
@@ -35,13 +35,13 @@
   },
   "orphans": 819,
   "changed": {
-    "zips": 33701,
-    "data_points": 258207
+    "zips": 28919,
+    "data_points": 28919
   },
   "validation": {
     "period_age_days": {
-      "redfin": 36,
-      "zhvi": 36
+      "redfin": 37,
+      "zhvi": 37
     },
     "columns": 50,
     "zips": 33771
@@ -674,6 +674,24 @@
       "clamped_high": 2298
     }
   },
+  "history": {
+    "buckets": 6085,
+    "zips": 33458,
+    "periods": 173,
+    "zhvi_months": 319,
+    "series": [
+      "hs",
+      "msp",
+      "zhvi"
+    ],
+    "forecast_zips": 26261,
+    "bytes_total": 112212277,
+    "bytes_median": 19087,
+    "bytes_index": 50303,
+    "bucket_depth": 4,
+    "period_first": "2012-03-31",
+    "period_last": "2026-07-31"
+  },
   "assets": {
     "paint": {
       "zhvi": {
@@ -749,6 +767,7 @@
         "fade_exempt": false
       }
     },
-    "snapshot": "zip-data.json"
+    "snapshot": "zip-data.json",
+    "history": "history/<zip3>.json"
   }
 }

@@ -11,7 +11,7 @@
 #   SKIP_MASTER=1 bash scripts/geometry/build_geometry.sh   # reuse build/zcta-master.json
 set -euo pipefail
 
-SHP="public/data/temp-geo/cb_2020_us_zcta520_500k/cb_2020_us_zcta520_500k.shp"
+SHP="temp-data/temp-geo/cb_2020_us_zcta520_500k/cb_2020_us_zcta520_500k.shp"
 MS="npx --yes --package=mapshaper@0.7.58"
 IMAGE="domapus/tippecanoe:2.78.0"
 LOCK="geometry.lock.json"

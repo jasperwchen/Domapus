@@ -40,11 +40,11 @@ jobs:
       - name: Fetch the Cartographic Boundary source
         run: |
           set -euo pipefail
-          mkdir -p public/data/temp-geo
+          mkdir -p temp-data/temp-geo
           curl -fsSL --retry 3 -o /tmp/cb.zip \
             https://www2.census.gov/geo/tiger/GENZ2020/shp/cb_2020_us_zcta520_500k.zip
-          unzip -q -o /tmp/cb.zip -d public/data/temp-geo/cb_2020_us_zcta520_500k
-          ls -l public/data/temp-geo/cb_2020_us_zcta520_500k
+          unzip -q -o /tmp/cb.zip -d temp-data/temp-geo/cb_2020_us_zcta520_500k
+          ls -l temp-data/temp-geo/cb_2020_us_zcta520_500k
 
       # A1, A4, A5, A6 and A7 all run inside this script and all of them fail the job.
       - name: Build and verify

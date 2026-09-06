@@ -126,9 +126,7 @@ bench/results/superseded/
 # Large upstream downloads staged for local runs. These MUST stay out of the
 # working tree's stageable set: a run killed between download and cleanup used
 # to leave a 1.33 GB file that `git add -A` would happily commit.
-temp-redfin/
 temp-data/
-public/data/temp-geo/
 
 # The working spec. Deliberately untracked: it is a local design document, not a
 # shipped artifact, and it churns far too fast to be worth reviewing in diffs.

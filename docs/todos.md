@@ -1,7 +1,7 @@
 # Domapus — open work
 
 **Open items only.** Finished work, rationale and the append-only agent log live in
-`docs/AGENT-LOG.md`. When something here is done, delete it from this file and record it
+`docs/CHANGES.md`. When something here is done, delete it from this file and record it
 there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
 
 `[ ]` todo · `[~]` in progress · `[!]` blocked
@@ -14,7 +14,7 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
 
 - **One spec file. That exact name.** There is no `FINAL-SPEC.md`. An earlier agent recreated
   that older name, worked in it from a stale base, and silently reverted ~12 fixes before the
-  fork was caught and merged (see AGENT-LOG). If you find a second spec file, you are looking
+  fork was caught and merged (see CHANGES.md). If you find a second spec file, you are looking
   at a fork — merge it, do not adopt it.
 - **Untracked on purpose.** It is a local working document, not a shipped artifact, and it
   churns far too fast to be worth reviewing in diffs.
@@ -23,14 +23,14 @@ there. This file is the *progress*; `docs/FINAL-SPEC-08-2026.md` is the *plan*.
   before applying — that is what caught the fork. (One snapshot exists by accident:
   `1249f88..d5b662f` carried the file. Use `git show 1249f88:docs/FINAL-SPEC-08-2026.md` if
   the working copy is ever lost.)
-- `docs/AGENT-LOG.md` and `docs/todos.md` **are** tracked. Keep them that way.
+- `docs/CHANGES.md` and `docs/todos.md` **are** tracked. Keep them that way.
 - `docs/ENGINEERING-LOG.md` is **not** tracked, same reasoning as the spec. Its history up to
   `50cc65b` is in git if an earlier version is ever wanted.
 - `datap/` renamed to `temp-data/`.
 
 ---
 
-## Phases 0-5 — LANDED. Rationale and measurements in AGENT-LOG.
+## Phases 0-5 — LANDED. Rationale and measurements in CHANGES.md.
 
 On `main` and pushed. Phases 4 and 5 are commit `477acd1`.
 
@@ -49,7 +49,7 @@ optimisation. Name the baseline in every claim.
 
 ---
 
-## Phases 6 and 7 — LANDED 2026-09-06. Rationale and measurements in AGENT-LOG.
+## Phases 6 and 7 — LANDED 2026-09-06. Rationale and measurements in CHANGES.md.
 
 | | phase3 | phase5 | **phase7** |
 |---|---|---|---|

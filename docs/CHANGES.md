@@ -1530,3 +1530,41 @@ rendering all 15 metric cards with no error boundary. 122 tests pass (85 vitest,
 - The export-inset half of Phase 6 landed in Phase 4 already — `ALASKA_DEFAULT_BOUNDS` is
   `[[-168.0, 54.5], [-130.0, 70.0]]` and the "we don't want to rebuild the tileset" comment is
   gone. The spec's Phase 6 section is stale on this.
+
+AGENT_LOG.md renamed to CHANGES.md
+all temp source file (redfin, zillow, zip cb) moved to temp-data/
+### 2026-09-06, later — the full pipeline run that closes Phase 7's placeholder
+
+Both source CSVs were on disk the whole time; the earlier search only looked in `temp-data/`
+and the Redfin file there is the **dead pre-migration feed**
+(`zip_code_market_tracker.tsv000.gz`). The live one was in `temp-redfin/`, since moved to
+`temp-data/redfin/`.
+
+```
+py -3.14 -m pipeline \
+  --redfin-csv temp-data/redfin/redfin_data_center-housing_market-monthly-all_zips.csv \
+  --zhvi-csv   temp-data/Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv \
+  --skip-probe
+```
+
+Exit 0, all stages S0-S8. S8: **6,085 buckets, 33,458 ZIPs, 173 periods x 319 ZHVI months,
+107.0 MB, median bucket 19,087 B.** The forecast paths are now real — **0 of 26,261 ZIPs have
+all four horizons identical**, against 100% before (30303 declines 205,213 -> 196,930 across
+h1..h12; 30305 and 30306 rise). §12 #4's history-bucket **[E]** is now **[M]**.
+
+**The run is a clean determinism check.** Against the snapshot published 2026-09-05 from the
+same inputs: **0 of 50 columns differ**, same ZIP list, same `d` arrays. Only `built_utc`,
+`generated_utc` and the new `manifest.history` block moved.
+
+**Pre-existing bug found by that comparison, NOT introduced here and NOT fixed here.**
+`serialize.count_changes()` reported **28,919 changed data points against bit-identical
+output**. It compares full-precision in-memory `records[z][k]` against `live[z][k]` decoded
+from the snapshot, which was quantised on the way out — 0.13995 encodes to 1400 at scale 1e4
+and decodes to 0.14, so the `!=` fires on quantisation, not on change. Consequences:
+`update_data.yml`'s "Check for changes to commit" gate (`data_points_changed > 0`) can never
+say no, and `built_utc` churns every run even when nothing moved. The fix is to compare
+*encoded* integers, the way `_assert_value_round_trip` already deliberately does — it has a
+comment explaining exactly why decoded comparison is the weaker test. Left alone because it is
+outside Phases 6-7 and touches the publish gate.
+
+`dist` re-measured after the real run: **198 MB**.
