@@ -3,6 +3,7 @@ import { X, ArrowLeft, TrendingUp, TrendingDown, BarChart3, MapPin, Building, Lo
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ZipData } from "./map/types";
+import type { ZipTable } from "@/lib/zip-table";
 import { Badge } from "@/components/ui/badge";
 import { formatMetricValue, formatChange, METRIC_DEFINITIONS, FormatType, getStateName } from "./map/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -13,11 +14,11 @@ const ZipComparison = lazy(() => import("./ZipComparison").then(m => ({ default:
 interface SidebarProps {
   isOpen: boolean;
   zipData: ZipData | null;
-  allZipData: Record<string, ZipData>;
+  store: ZipTable | null;
   onClose: () => void;
 }
 
-export function Sidebar({ isOpen, zipData, allZipData, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, zipData, store, onClose }: SidebarProps) {
   const [showComparison, setShowComparison] = useState(false);
   const isMobile = useIsMobile();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -83,7 +84,7 @@ export function Sidebar({ isOpen, zipData, allZipData, onClose }: SidebarProps) 
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             }>
-              <ZipComparison currentZip={zipData} allZipData={allZipData}/>
+              <ZipComparison currentZip={zipData} store={store} />
             </Suspense>
           </div>
         ) : (

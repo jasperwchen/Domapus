@@ -1,161 +1,136 @@
-import { ZipData } from "../components/dashboard/map/types";
-import { getMetricValue } from "../lib/metric-value";
-import { computeQuantileBounds5_95 } from "../lib/quantiles";
-import { WorkerMessage, LoadDataRequest } from "./worker-types";
+// The worker's only remaining job is JSON.parse and a transpose into typed arrays.
+//
+// It used to build 33,771 plain objects and structured-clone them to the main
+// thread, which measured 173 ms of object construction plus 238 ms of clone. Now
+// it converts each column to an Int32Array in one pass and posts with a TRANSFER
+// LIST, so the buffers move rather than copy: one message, zero copies, no object
+// graph. The snapshot is also off the critical path entirely — the paint table
+// colours the map before this finishes.
+//
+// No DecompressionStream and no pre-compressed file. GitHub Pages/Fastly already
+// gzips application/json, verified live; a second layer would only add bytes.
+
+import { isSnapshotPayload, type SnapshotHeader } from "../lib/snapshot";
+import type { LoadSnapshotRequest, WorkerMessage } from "./worker-types";
 
 let currentAbortController: AbortController | null = null;
 
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const { id, type, data } = e.data;
 
-  if (currentAbortController) {
-    currentAbortController.abort('superseded');
-  }
+  if (currentAbortController) currentAbortController.abort("superseded");
   currentAbortController = new AbortController();
   const signal = currentAbortController.signal;
 
   // Each invocation owns its own id. When a later message aborts this one, the
   // ABORTED reply must carry THIS id — the caller keys pending promises by id,
   // and replying with the newer id would settle the wrong request.
-  const abortCurrent = () => {
-    self.postMessage({ type: "ABORTED", id });
-  };
+  const abortCurrent = () => self.postMessage({ type: "ABORTED", id });
 
   try {
-    switch (type) {
-      case "LOAD_AND_PROCESS_DATA": {
-        const { url, selectedMetric, prefetchedBuffer } = data as LoadDataRequest;
+    if (type !== "LOAD_SNAPSHOT") throw new Error(`unknown worker request ${type}`);
+    const { url, prefetchedBuffer } = data as LoadSnapshotRequest;
 
-        let buffer: ArrayBuffer;
-
-        if (prefetchedBuffer && prefetchedBuffer.byteLength > 100) {
-          buffer = prefetchedBuffer;
-          self.postMessage({ type: "PROGRESS", data: { phase: "Processing cached data..." } });
-        } else {
-          self.postMessage({ type: "PROGRESS", data: { phase: "Fetching market data..." } });
-          const response = await fetch(url, { signal });
-          if (!response.ok) {
-            if (response.status === 404) {
-              throw new Error("Data file not found. Please try refreshing the page.");
-            } else if (response.status >= 500) {
-              throw new Error("Server error. Please try again later.");
-            }
-            throw new Error(`Failed to load data (${response.status}). Please try refreshing.`);
-          }
-
-          const contentLength = response.headers.get('content-length');
-          if (contentLength && parseInt(contentLength) < 100) {
-            throw new Error("Data file appears to be empty or incomplete. Please try refreshing.");
-          }
-
-          buffer = await response.arrayBuffer();
-          if (buffer.byteLength < 100) {
-            throw new Error("Received incomplete data. Please check your connection and try again.");
-          }
+    let buffer: ArrayBuffer;
+    if (prefetchedBuffer && prefetchedBuffer.byteLength > 100) {
+      buffer = prefetchedBuffer;
+      self.postMessage({ type: "PROGRESS", data: { phase: "Processing cached data..." } });
+    } else {
+      self.postMessage({ type: "PROGRESS", data: { phase: "Fetching market data..." } });
+      const response = await fetch(url, { signal });
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Data file not found. Please try refreshing the page.");
         }
-
-        let fullPayload: unknown;
-        try {
-          const jsonText = new TextDecoder().decode(buffer);
-
-          if (jsonText.startsWith('version https://git-lfs.github.com')) {
-            console.error('[Worker] Received Git LFS pointer instead of actual data file');
-            throw new Error("Data file not available. The server returned a placeholder instead of actual data. Please try refreshing or contact support.");
-          }
-
-          fullPayload = JSON.parse(jsonText);
-          if (!fullPayload || typeof fullPayload !== 'object') {
-            throw new Error("Invalid data format: expected object");
-          }
-        } catch (err) {
-          console.error('[Worker] JSON parse failed:', err);
-          const errMessage = err instanceof Error ? err.message : "Unknown error";
-          const detailedError = errMessage.includes('Unexpected token') || errMessage.includes('JSON')
-            ? `JSON parse error: Data file appears corrupted or incomplete (${errMessage})`
-            : `JSON parse error: ${errMessage}`;
-          throw new Error(detailedError);
+        if (response.status >= 500) {
+          throw new Error("Server error. Please try again later.");
         }
-
-        // The pipeline emits only the columnar format. The legacy keyed
-        // format ({"zip_codes": {...}}) is no longer produced and is no
-        // longer supported here.
-        if (
-          typeof fullPayload !== 'object' || fullPayload === null ||
-          !('f' in fullPayload) || !('z' in fullPayload) || !('d' in fullPayload)
-        ) {
-          throw new Error("Invalid data format: expected columnar format with keys f, z, d");
-        }
-
-        const { f: fields, z: zipCodes, d: rows } = fullPayload as {
-          last_updated_utc?: string;
-          f: string[];
-          z: string[];
-          d: (string | number | null)[][];
-        };
-
-        if (zipCodes.length !== rows.length) {
-          throw new Error(`Columnar data is malformed: ${zipCodes.length} zip codes but ${rows.length} rows`);
-        }
-
-        const last_updated_utc = (fullPayload as { last_updated_utc?: string }).last_updated_utc;
-        const zipData: Record<string, ZipData> = {};
-        const metricValues: number[] = [];
-        const BATCH_SIZE = 5000;
-
-        self.postMessage({ type: "PROGRESS", data: { phase: "Reconstructing ZIP data..." } });
-
-        for (let i = 0; i < zipCodes.length; i++) {
-          if (signal.aborted) {
-            abortCurrent();
-            return;
-          }
-
-          const zipCode = zipCodes[i];
-          const row = rows[i];
-          const entry: Record<string, unknown> = { zipCode };
-
-          for (let j = 0; j < fields.length; j++) {
-            entry[fields[j]] = row[j];
-          }
-
-          // Handle lat/lng aliases (pipeline emits lat/lng; ZipData uses latitude/longitude)
-          const dataRecord = entry as unknown as ZipData;
-          const entryWithCoords = entry as { lat?: number | null; lng?: number | null };
-          if (dataRecord.latitude === undefined) dataRecord.latitude = entryWithCoords.lat ?? null;
-          if (dataRecord.longitude === undefined) dataRecord.longitude = entryWithCoords.lng ?? null;
-
-          zipData[zipCode] = dataRecord;
-
-          const metric = getMetricValue(dataRecord, selectedMetric);
-          if (metric > 0) metricValues.push(metric);
-
-          if (i % BATCH_SIZE === 0) {
-            self.postMessage({
-              type: "PROGRESS",
-              data: { phase: "Reconstructing ZIP data...", processed: i, total: zipCodes.length },
-            });
-          }
-        }
-
-        const bounds = computeQuantileBounds5_95(metricValues);
-        console.log(`[Worker] Data processed: ${Object.keys(zipData).length} ZIPs, bounds:`, bounds);
-
-        self.postMessage({ type: "DATA_PROCESSED", id, data: { zip_codes: zipData, last_updated_utc, bounds } });
-        break;
+        throw new Error(`Failed to load data (${response.status}). Please try refreshing.`);
+      }
+      buffer = await response.arrayBuffer();
+      if (buffer.byteLength < 100) {
+        throw new Error("Received incomplete data. Please check your connection and try again.");
       }
     }
+
+    const text = new TextDecoder().decode(buffer);
+
+    // A real failure mode this repo has hit: the archive was tracked with Git LFS
+    // and a checkout without LFS serves the pointer file, which parses as neither
+    // JSON nor an error anyone can read.
+    if (text.startsWith("version https://git-lfs.github.com")) {
+      throw new Error(
+        "Data file not available. The server returned a Git LFS placeholder " +
+          "instead of the actual data.",
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown error";
+      throw new Error(`JSON parse error: the data file looks corrupt or truncated (${msg})`);
+    }
+
+    if (!isSnapshotPayload(payload)) {
+      throw new Error(
+        "Invalid data format: expected a domapus-snapshot envelope with f, z and d.",
+      );
+    }
+
+    const { d, ...rest } = payload;
+    const header = rest as SnapshotHeader;
+
+    if (d.length !== header.f.length) {
+      throw new Error(`Snapshot is malformed: ${d.length} columns for ${header.f.length} names`);
+    }
+
+    self.postMessage({ type: "PROGRESS", data: { phase: "Building columns..." } });
+
+    const buffers: Record<string, ArrayBuffer> = {};
+    for (let j = 0; j < header.f.length; j++) {
+      if (signal.aborted) {
+        abortCurrent();
+        return;
+      }
+      const src = d[j];
+      if (src.length !== header.z.length) {
+        throw new Error(
+          `Snapshot is malformed: column ${header.f[j]} has ${src.length} values ` +
+            `for ${header.z.length} ZIPs`,
+        );
+      }
+      // One pass, no per-value branching: the null sentinel IS an int32, so nulls
+      // need no special case here and stay distinguishable from a real 0.
+      const col = new Int32Array(src.length);
+      for (let i = 0; i < src.length; i++) col[i] = src[i];
+      buffers[header.f[j]] = col.buffer;
+
+      if (j % 8 === 0) {
+        self.postMessage({
+          type: "PROGRESS",
+          data: { phase: "Building columns...", processed: j, total: header.f.length },
+        });
+      }
+    }
+
+    // The transfer list is what makes this free: the column buffers MOVE to the
+    // main thread instead of being copied, which is the 238 ms structured clone
+    // this format change exists to delete.
+    (self as unknown as {
+      postMessage(message: unknown, transfer: Transferable[]): void;
+    }).postMessage(
+      { type: "SNAPSHOT_READY", id, data: { header, buffers, bytes: buffer.byteLength } },
+      Object.values(buffers),
+    );
   } catch (err) {
     if (signal.aborted) {
       abortCurrent();
     } else {
-      const errMessage = err instanceof Error ? err.message : "Unknown error";
-      const errorType = type || "UNKNOWN";
+      const msg = err instanceof Error ? err.message : "Unknown error";
       console.error("[Worker] Error:", err);
-      self.postMessage({
-        type: "ERROR",
-        id,
-        error: `Worker ${errorType} error: ${errMessage}`,
-      });
+      self.postMessage({ type: "ERROR", id, error: `Worker ${type || "UNKNOWN"} error: ${msg}` });
     }
   }
 };

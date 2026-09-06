@@ -1,0 +1,269 @@
+{
+  "label": "phase3-gating-baseline",
+  "url": "http://localhost:4319/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi",
+  "valid": true,
+  "invalidReason": null,
+  "conditions": {
+    "net": "slow4g",
+    "cpu": 4,
+    "viewport": "1440x900",
+    "runs": 3,
+    "pinned": true
+  },
+  "warnings": [],
+  "summary": {
+    "lcp": {
+      "median": 7240,
+      "p95": 7240,
+      "min": 7028,
+      "max": 7284,
+      "n": 3
+    },
+    "tbt": {
+      "median": 3914,
+      "p95": 3914,
+      "min": 3674,
+      "max": 3988,
+      "n": 3
+    },
+    "maxLongTask": {
+      "median": 1217,
+      "p95": 1217,
+      "min": 1183,
+      "max": 1239,
+      "n": 3
+    },
+    "longTaskCount": {
+      "median": 26,
+      "p95": 26,
+      "min": 24,
+      "max": 28,
+      "n": 3
+    },
+    "domContentLoaded": {
+      "median": 5787.70000000298,
+      "p95": 5787.70000000298,
+      "min": 5784.20000000298,
+      "max": 5813.79999999702,
+      "n": 3
+    },
+    "loadEvent": {
+      "median": 6631.30000000447,
+      "p95": 6631.30000000447,
+      "min": 6529.10000000149,
+      "max": 6659.70000000298,
+      "n": 3
+    },
+    "transferTotal": {
+      "median": 5253652,
+      "p95": 5253652,
+      "min": 5253567,
+      "max": 5253774,
+      "n": 3
+    },
+    "gatingBytes": {
+      "median": 2570348,
+      "p95": 2570348,
+      "min": 2570348,
+      "max": 2570348,
+      "n": 3
+    },
+    "requestCount": {
+      "median": 41,
+      "p95": 41,
+      "min": 41,
+      "max": 41,
+      "n": 3
+    },
+    "heapBytes": {
+      "median": 58735628,
+      "p95": 58735628,
+      "min": 58641232,
+      "max": 58830148,
+      "n": 3
+    },
+    "metricSwitchMs": {
+      "median": 1848,
+      "p95": 1848,
+      "min": 1782,
+      "max": 1902,
+      "n": 3
+    },
+    "cls": {
+      "median": 0.0011263725961023234,
+      "p95": 0.0011263725961023234,
+      "min": 0.0011263725961023234,
+      "max": 0.0011482090222328617,
+      "n": 3
+    },
+    "wallMs": {
+      "median": 31338,
+      "p95": 31338,
+      "min": 31280,
+      "max": 31346,
+      "n": 3
+    },
+    "byKind": {
+      "other": {
+        "median": 305329,
+        "p95": 305329,
+        "min": 305329,
+        "max": 305338,
+        "n": 3
+      },
+      "data-json": {
+        "median": 2570520,
+        "p95": 2570520,
+        "min": 2570520,
+        "max": 2570520,
+        "n": 3
+      },
+      "css": {
+        "median": 18115,
+        "p95": 18115,
+        "min": 18115,
+        "max": 18115,
+        "n": 3
+      },
+      "js": {
+        "median": 552170,
+        "p95": 552170,
+        "min": 552170,
+        "max": 552170,
+        "n": 3
+      },
+      "basemap": {
+        "median": 754538,
+        "p95": 754538,
+        "min": 754453,
+        "max": 754651,
+        "n": 3
+      },
+      "pmtiles": {
+        "median": 1052980,
+        "p95": 1052980,
+        "min": 1052980,
+        "max": 1052980,
+        "n": 3
+      }
+    },
+    "marks": {
+      "class:breaks": {
+        "median": 94.29999999701977,
+        "p95": 94.29999999701977,
+        "min": 92.69999999552965,
+        "max": 102.5,
+        "n": 3
+      },
+      "class:assign": {
+        "median": 47.70000000298023,
+        "p95": 47.70000000298023,
+        "min": 46.80000000447035,
+        "max": 56.69999999552965,
+        "n": 3
+      },
+      "map:applyChoropleth": {
+        "median": 60.30000000447035,
+        "p95": 60.30000000447035,
+        "min": 59,
+        "max": 62,
+        "n": 3
+      }
+    }
+  },
+  "samples": [
+    {
+      "lcp": 7028,
+      "cls": 0.0011263725961023234,
+      "tbt": 3674,
+      "maxLongTask": 1217,
+      "longTaskCount": 24,
+      "domContentLoaded": 5787.70000000298,
+      "loadEvent": 6529.10000000149,
+      "mainThreadResourceCount": 31,
+      "marks": {
+        "class:breaks": 102.5,
+        "class:assign": 46.80000000447035,
+        "map:applyChoropleth": 60.30000000447035
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5253652,
+      "gatingBytes": 2570348,
+      "byKind": {
+        "other": 305329,
+        "data-json": 2570520,
+        "css": 18115,
+        "js": 552170,
+        "basemap": 754538,
+        "pmtiles": 1052980
+      },
+      "requestCount": 41,
+      "heapBytes": 58641232,
+      "metricSwitchMs": 1848,
+      "wallMs": 31346,
+      "painted": true
+    },
+    {
+      "lcp": 7284,
+      "cls": 0.0011263725961023234,
+      "tbt": 3988,
+      "maxLongTask": 1183,
+      "longTaskCount": 28,
+      "domContentLoaded": 5813.79999999702,
+      "loadEvent": 6659.70000000298,
+      "mainThreadResourceCount": 31,
+      "marks": {
+        "class:breaks": 94.29999999701977,
+        "class:assign": 56.69999999552965,
+        "map:applyChoropleth": 62
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5253774,
+      "gatingBytes": 2570348,
+      "byKind": {
+        "other": 305338,
+        "data-json": 2570520,
+        "css": 18115,
+        "js": 552170,
+        "basemap": 754651,
+        "pmtiles": 1052980
+      },
+      "requestCount": 41,
+      "heapBytes": 58830148,
+      "metricSwitchMs": 1782,
+      "wallMs": 31280,
+      "painted": true
+    },
+    {
+      "lcp": 7240,
+      "cls": 0.0011482090222328617,
+      "tbt": 3914,
+      "maxLongTask": 1239,
+      "longTaskCount": 26,
+      "domContentLoaded": 5784.20000000298,
+      "loadEvent": 6631.30000000447,
+      "mainThreadResourceCount": 31,
+      "marks": {
+        "class:breaks": 92.69999999552965,
+        "class:assign": 47.70000000298023,
+        "map:applyChoropleth": 59
+      },
+      "pinnedViewApplied": true,
+      "transferTotal": 5253567,
+      "gatingBytes": 2570348,
+      "byKind": {
+        "other": 305329,
+        "css": 18115,
+        "js": 552170,
+        "data-json": 2570520,
+        "basemap": 754453,
+        "pmtiles": 1052980
+      },
+      "requestCount": 41,
+      "heapBytes": 58735628,
+      "metricSwitchMs": 1902,
+      "wallMs": 31338,
+      "painted": true
+    }
+  ]
+}

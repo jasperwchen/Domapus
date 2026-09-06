@@ -8,9 +8,11 @@ import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";
 import { Fullscreen } from "lucide-react";
 import {
-  ChoroplethPainter, classOpacityExpression, classPaintExpression,
+  ChoroplethPainter, classOpacityExpression, classPaintExpression, lisaPaintExpression,
+  loadedZips,
 } from "@/lib/choropleth-painter";
 import type { ClassSource } from "@/lib/class-source";
+import type { ZipTable } from "@/lib/zip-table";
 import { mark, measure } from "@/lib/perf";
 import type { ProgressData } from "@/workers/worker-types";
 
@@ -20,17 +22,26 @@ interface MapProps {
   onZipSelect: (zipData: ZipData) => void;
   searchZip?: string;
   searchTrigger?: number;
-  zipData: Record<string, ZipData>;
+  /** Null until the snapshot lands. The map still paints without it — the paint
+   *  table colours the fill — so nothing here may block on it. */
+  store: ZipTable | null;
   isLoading: boolean;
   loadingProgress?: ProgressData;
   /** The one live class authority. Swapping it bumps an epoch; the painter
    *  rewrites the full ZIP set and the paint expression never changes. */
   classSource: ClassSource | null;
+  /** `loaded` is the ZIPs on loaded TILES, which is the correct scope for
+   *  painting; the viewport filter that auto-scale needs is applied upstream
+   *  against real polygon bounds. */
   onMapMove: (
-    bounds: [[number, number], [number, number]],
+    loaded: readonly string[],
+    bounds: maplibregl.LngLatBounds,
     view?: { lat: number; lng: number; zoom: number }
   ) => void;
   onUserInteraction?: () => void;
+  /** Show the spatial-cluster overlay. Off by default: it is a second reading of
+   *  the same map and it only means anything over the rankable set. */
+  showLisa?: boolean;
   initialCenter?: [number, number];
   initialZoom?: number;
 }
@@ -44,12 +55,13 @@ export function MapLibreMap({
   onZipSelect,
   searchZip,
   searchTrigger,
-  zipData,
+  store,
   isLoading,
   loadingProgress,
   classSource,
   onMapMove,
   onUserInteraction,
+  showLisa = false,
   initialCenter,
   initialZoom,
 }: MapProps) {
@@ -95,11 +107,11 @@ export function MapLibreMap({
   }, []);
 
   // Refs for current data to avoid stale closures
-  const propsRef = useRef({ zipData, selectedMetric, onZipSelect });
+  const propsRef = useRef({ store, selectedMetric, onZipSelect });
   useEffect(() => {
-    propsRef.current = { zipData, selectedMetric, onZipSelect };
-  }, [zipData, selectedMetric, onZipSelect]);
-  const hasData = useMemo(() => Object.keys(zipData).length > 0, [zipData]);
+    propsRef.current = { store, selectedMetric, onZipSelect };
+  }, [store, selectedMetric, onZipSelect]);
+  const hasData = useMemo(() => (store?.n ?? 0) > 0, [store]);
   const scheduleReload = useCallback(() => {
     const attempts = Number(sessionStorage.getItem(RELOAD_ATTEMPTS_KEY) ?? "0");
     if (attempts >= MAX_RELOAD_ATTEMPTS) {
@@ -178,7 +190,8 @@ export function MapLibreMap({
       setIsMapReady(true);
       const center = map.getCenter();
       onMapMoveRef.current(
-        map.getBounds().toArray() as [[number, number], [number, number]],
+        loadedZips(map),
+        map.getBounds(),
         { lat: center.lat, lng: center.lng, zoom: map.getZoom() }
       );
     });
@@ -210,7 +223,21 @@ export function MapLibreMap({
     };
 
     const handleResize = () => {
-      if (!mapRef.current || didUnmount) return;
+      if (didUnmount) return;
+
+      // Retry initialisation, not just resizing. `tryInit` gives up when the
+      // container measures 0x0, which happens whenever layout has not settled by
+      // the time this effect runs — and the ResizeObserver used to be no help,
+      // because it returned here on `!mapRef.current` and only ever resized a map
+      // that already existed. The result was a permanently blank map with no
+      // error anywhere: no canvas, no style request, no failed fetch to find.
+      // Whether it reproduced came down to layout timing, which is why it looked
+      // intermittent.
+      if (!mapRef.current) {
+        tryInit();
+        return;
+      }
+
       const newWidth = container.clientWidth;
       const newHeight = container.clientHeight;
       const widthDiff = Math.abs(newWidth - containerSizeRef.current.width);
@@ -320,9 +347,11 @@ export function MapLibreMap({
 
           const props = features[0].properties ?? {};
           const zipCode = (props.ZCTA5CE20 || props.zipCode || props.id) as string;
-          const { zipData: currentZipData, selectedMetric: currentMetric } = propsRef.current;
+          const { store: currentStore, selectedMetric: currentMetric } = propsRef.current;
+          // One object per hover, materialised on demand — not 33,771 at load.
+          const row = zipCode ? currentStore?.get(zipCode) : null;
 
-          if (!zipCode || !currentZipData[zipCode]) {
+          if (!row) {
             popupRef.current?.remove();
             return;
           }
@@ -335,7 +364,7 @@ export function MapLibreMap({
 
           popupRef.current
             .setLngLat(ev.lngLat)
-            .setDOMContent(createMetricPopupContent(currentZipData[zipCode], currentMetric))
+            .setDOMContent(createMetricPopupContent(row, currentMetric))
             .addTo(map);
 
         } catch (err: unknown) {
@@ -354,11 +383,9 @@ export function MapLibreMap({
 
       const props = features[0].properties ?? {};
       const zipCode = (props.ZCTA5CE20 || props.zipCode || props.id) as string;
-      const { zipData: currentZipData, onZipSelect: currentOnSelect } = propsRef.current;
-
-      if (zipCode && currentZipData[zipCode]) {
-        currentOnSelect(currentZipData[zipCode]);
-      }
+      const { store: currentStore, onZipSelect: currentOnSelect } = propsRef.current;
+      const row = zipCode ? currentStore?.get(zipCode) : null;
+      if (row) currentOnSelect(row);
     };
 
     const mouseoutHandler = () => {
@@ -369,7 +396,8 @@ export function MapLibreMap({
     const moveEndHandler = () => {
       const center = map.getCenter();
       onMapMoveRef.current(
-        map.getBounds().toArray() as [[number, number], [number, number]],
+        loadedZips(map),
+        map.getBounds(),
         { lat: center.lat, lng: center.lng, zoom: map.getZoom() }
       );
     };
@@ -428,6 +456,20 @@ export function MapLibreMap({
           "fill-color": classPaintExpression() as never,
           "fill-opacity": classOpacityExpression() as never,
         }
+      }, beforeId);
+
+      // LISA overlay, above the fill and below the borders. Hidden until the
+      // user asks for it; the toggle moves `fill-opacity` between two literals,
+      // which is not a data-driven value and so costs no source reload.
+      map.addLayer({
+        id: "zips-lisa",
+        type: "fill",
+        source: "zips",
+        "source-layer": "us_zip_codes",
+        paint: {
+          "fill-color": lisaPaintExpression() as never,
+          "fill-opacity": 0,
+        },
       }, beforeId);
 
       painterRef.current = new ChoroplethPainter(map);
@@ -545,14 +587,50 @@ export function MapLibreMap({
     return () => cancelAnimationFrame(id);
   }, [selectedMetric]);
 
+  // 5b. LISA overlay.
+  //
+  // The `lisa` feature-state is written LAZILY — once, the first time the overlay
+  // is switched on — rather than alongside the class writes. It comes from the
+  // snapshot rather than the paint table, so it is not available at first paint
+  // anyway, and most sessions never open the overlay; paying 33,771 writes for a
+  // layer at zero opacity would be work for nothing. Once written it stays, and
+  // MapLibre re-applies it to every tile that loads or is revived from cache.
+  const lisaWrittenRef = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapReady || !map.getLayer("zips-lisa")) return;
+
+    if (showLisa && store && !lisaWrittenRef.current) {
+      const col = store.col("lisa");
+      if (col) {
+        for (let row = 0; row < store.n; row++) {
+          const v = store.valueAt("lisa", row);
+          if (v === null) continue;
+          map.setFeatureState(
+            { source: "zips", sourceLayer: "us_zip_codes", id: store.zips[row] },
+            { lisa: v },
+          );
+        }
+        lisaWrittenRef.current = true;
+      }
+    }
+
+    // `fill-opacity` between two literals. A literal is not a data-driven value,
+    // so this is the one setPaintProperty in the file that does NOT mark the
+    // source for reload.
+    map.setPaintProperty("zips-lisa", "fill-opacity", showLisa ? 0.75 : 0);
+  }, [isMapReady, showLisa, store]);
+
   // 6. Fly to Search and Highlight ZIP
   useEffect(() => {
     if (!isMapReady || !mapRef.current || !pmtilesLoaded) return;
-    if (!searchZip || !zipData[searchZip]) return;
+    if (!searchZip) return;
+    const target = store?.get(searchZip);
+    if (!target) return;
 
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded() || !map.getSource("zips") || !map.getLayer("zips-border")) return;
-    const { longitude, latitude } = zipData[searchZip];
+    const { longitude, latitude } = target;
 
     // Clear previous highlight
     if (highlightedZipRef.current && highlightedZipRef.current !== searchZip) {
@@ -572,7 +650,7 @@ export function MapLibreMap({
     if (longitude && latitude) {
       map.flyTo({ center: [longitude, latitude], zoom: 10, duration: 1500 });
     }
-  }, [isMapReady, pmtilesLoaded, searchZip, searchTrigger, zipData]);
+  }, [isMapReady, pmtilesLoaded, searchZip, searchTrigger, store]);
 
 
   const handleResetBounds = useCallback(() => {

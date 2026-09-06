@@ -35,6 +35,8 @@ const ROWS = [
   ["Max long task", (s) => s.maxLongTask?.median, (v) => `${Math.round(v)} ms`, "lower"],
   ["Long task count", (s) => s.longTaskCount?.median, (v) => String(Math.round(v)), "lower"],
   ["Transfer", (s) => s.transferTotal?.median, (v) => `${(v / 1048576).toFixed(2)} MB`, "lower"],
+  ["Bytes before first colour", (s) => s.gatingBytes?.median,
+   (v) => `${v.toLocaleString("en-US")} B`, "lower"],
   ["Requests", (s) => s.requestCount?.median, (v) => String(Math.round(v)), "lower"],
   ["JS heap", (s) => s.heapBytes?.median, (v) => `${(v / 1048576).toFixed(1)} MB`, "lower"],
   ["Metric switch", (s) => s.metricSwitchMs?.median, (v) => `${Math.round(v)} ms`, "lower"],

@@ -1,4 +1,4 @@
-import { useEffect, Suspense } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,6 +7,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { trackError } from './lib/analytics';
+
+// Lazy: the methodology page is a reference document, not part of the map's
+// critical path, and it should not sit in the bundle every visitor downloads.
+const Methodology = lazy(() => import("./pages/Methodology"));
 
 const queryClient = new QueryClient();
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
@@ -61,6 +65,7 @@ const App = () => {
           <Suspense fallback={<div className="h-screen w-screen flex items-center justify-center bg-background"><div className="animate-pulse text-muted-foreground">Loading...</div></div>}>
             <Routes>
               <Route path="/" element={<Index />} />
+              <Route path="/methodology" element={<Methodology />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

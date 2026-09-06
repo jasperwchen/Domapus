@@ -149,22 +149,45 @@ def test_divide_by_100_is_exactly_the_two_mislabelled_columns():
 
 # --- Output shape ----------------------------------------------------------
 
-def test_key_order_is_38_and_carries_no_redfin_mom():
-    assert len(serialize.KEY_ORDER) == 38
-    assert not [k for k in serialize.KEY_ORDER if k.endswith("_mom") and k != "zhvi_mom"]
-    assert "zhvi_mom" in serialize.KEY_ORDER
-    for new in ("active_listings", "months_of_supply", "median_list_ppsf"):
-        assert new in serialize.KEY_ORDER
+def test_snapshot_is_50_columns_and_carries_no_redfin_mom():
+    f = serialize.SNAPSHOT_COLUMNS
+    assert len(f) == 50
+    assert len(set(f)) == 50
+    # Redfin publishes no MoM at ZIP level: 0 non-null cells in 4,930,000 x 14.
+    # ZHVI does, because it is smoothed and seasonally adjusted on real months.
+    assert not [k for k in f if k.endswith("_mom") and k != "zhvi_mom"]
+    assert "zhvi_mom" in f
+    for new in ("al", "mos", "lppsf"):
+        assert new in f
 
 
-def test_key_order_has_no_duplicates():
-    assert len(set(serialize.KEY_ORDER)) == len(serialize.KEY_ORDER)
-
-
-def test_every_redfin_metric_has_a_yoy():
+def test_every_redfin_metric_has_a_level_and_a_yoy_on_the_wire():
+    """Both halves of every metric survive the projection to short names."""
     for key in LEVELS.values():
-        assert key in serialize.KEY_ORDER
-        assert f"{key}_yoy" in serialize.KEY_ORDER
+        assert key in serialize.SOURCE_OF.values(), key
+        assert f"{key}_yoy" in serialize.SOURCE_OF.values(), key
+
+
+def test_every_column_declares_a_scale():
+    """A missing scale is SILENT: the column decodes unscaled and a 4.6% relative
+    standard error reaches the popup as the number 46."""
+    for name in serialize.SNAPSHOT_COLUMNS:
+        assert name in serialize.SCALES, name
+
+
+def test_breaks_may_only_name_painted_columns():
+    """A break set for an unpainted column implies a legend that does not exist."""
+    assert set(serialize.PAINTED_SHORT.values()) <= set(serialize.SNAPSHOT_COLUMNS)
+    assert len(serialize.PAINTED_SHORT) == 9
+
+
+def _envelope(**over):
+    base = {"built_utc": "2026-09-05T00:00:00Z", "period_start": "2026-05-01",
+            "period_end": "2026-07-31", "frequency": "Rolling 3 Months",
+            "vintage": "2026-08-03", "zhvi_month": "2026-07-31",
+            "classes": 7, "breaks": {}, "classing": {}}
+    base.update(over)
+    return base
 
 
 def test_snapshot_round_trips_and_keeps_leading_zeros(tmp_path, latest):
@@ -172,11 +195,45 @@ def test_snapshot_round_trips_and_keeps_leading_zeros(tmp_path, latest):
                 "lat": 1.0, "lng": -2.0} for z in ["00501", "07002", "30309"]}
     records, period, coverage = serialize.assemble(meta, {}, latest)
     out = tmp_path / "zip-data.json"
-    serialize.write_snapshot(records, out, None, True)
+    serialize.write_snapshot(records, out, _envelope())
     back = json.loads(out.read_text(encoding="utf-8"))
     assert "00501" in back["z"], "leading zero destroyed — ZIP was read as an integer"
-    assert back["f"] == serialize.KEY_ORDER
-    assert all(len(r) == 38 for r in back["d"])
+    assert back["f"] == serialize.SNAPSHOT_COLUMNS
+    # COLUMN-major: 50 arrays each as long as z, not one row per ZIP.
+    assert len(back["d"]) == 50
+    assert all(len(col) == len(back["z"]) for col in back["d"])
+
+
+def test_null_is_not_zero_on_the_wire(tmp_path, latest):
+    """The failure a one-pass Int32Array conversion causes: `0` is a legal value
+    for homes_sold, median_dom, sold_above_list, cov, rel and lisa, so mapping
+    null to 0 destroys real zeros."""
+    meta = {z: {"city": "X", "county": "Y", "state": "NY", "metro": None,
+                "lat": 1.0, "lng": -2.0} for z in ["00501", "07002", "30309"]}
+    records, _, _ = serialize.assemble(meta, {}, latest)
+    records["00501"]["median_dom"] = 0
+    records["07002"]["median_dom"] = None
+
+    out = tmp_path / "zip-data.json"
+    serialize.write_snapshot(records, out, _envelope())
+    back = json.loads(out.read_text(encoding="utf-8"))
+
+    j = back["f"].index("dom")
+    row = {z: i for i, z in enumerate(back["z"])}
+    assert back["d"][j][row["00501"]] == 0
+    assert back["d"][j][row["07002"]] == back["null_sentinel"]
+    assert back["null_sentinel"] == serialize.NULL_SENTINEL
+
+
+def test_unpainted_breaks_are_refused(tmp_path, latest):
+    meta = {z: {"city": "X", "county": "Y", "state": "NY", "metro": None,
+                "lat": 1.0, "lng": -2.0} for z in ["00501", "07002", "30309"]}
+    records, _, _ = serialize.assemble(meta, {}, latest)
+    with pytest.raises(PipelineError, match="unpainted column"):
+        serialize.write_snapshot(
+            records, tmp_path / "x.json",
+            _envelope(breaks={"mlp": [1, 2, 3, 4, 5, 6]}),
+        )
 
 
 def test_zero_survives_and_is_not_confused_with_null():

@@ -1,26 +1,26 @@
 // Who decides which class a ZIP is in. Exactly one authority is live at a time.
 //
-// | Mode                    | Authority            | Available |
-// |-------------------------|----------------------|-----------|
-// | Fixed scale (default)   | `PaintTable`         | Phase 4 onward |
-// | Fixed scale, Phase 3    | `LegacyClassSource`  | now; deleted when PaintTable lands |
-// | Auto scale (opt-in)     | `ViewportClassSource`| now, over the loaded rows |
+// | Mode                  | Authority             |
+// |-----------------------|-----------------------|
+// | Fixed scale (default) | `PaintTableSource`    |
+// | Auto scale (opt-in)   | `ViewportClassSource` |
 //
-// WHY `LegacyClassSource` HAS TO EXIST. Phase 3 ships a CONSTANT paint expression
-// that reads `["feature-state", "k"]`, but the artifact that supplies `k` — the
-// pipeline's precomputed paint table — does not ship until Phase 4. With no
-// interim authority the map would read a feature-state key nothing writes and
-// render entirely as NO_DATA_COLOR.
+// `LegacyClassSource` is gone. It existed for one phase only, to supply `k` while
+// the paint expression already read `["feature-state","k"]` but the pipeline did
+// not yet emit a paint table; with the table shipping, a second in-process
+// classing implementation is exactly the "two class authorities" flaw the design
+// exists to avoid. `ChoroplethPainter` never learned where classes come from, so
+// swapping the authority was the one-line change it was meant to be.
 //
-// It is deliberately throwaway, and that is the point: `ChoroplethPainter` never
-// learns where classes come from, so swapping the authority in Phase 4 is a
-// one-line change and the Phase 3 benchmark measures the same painter that ships.
+// Switching modes bumps the epoch and rewrites the full ZIP set, so the two can
+// never overlap or leave stale colours behind.
 
-import type { ZipData } from "@/components/dashboard/map/types";
+import type maplibregl from "maplibre-gl";
 import { CLASSES } from "./choropleth";
-import { getMetricValue } from "./metric-value";
+import { FADE_EXEMPT, type PaintTable } from "./paint-table";
 import { span } from "./perf";
 import { computeQuantileBuckets } from "./quantiles";
+import { WIRE_OF, type ZipTable } from "./zip-table";
 
 export interface ClassSource {
   /** 0..K-1, or -1 for no data. */
@@ -47,41 +47,87 @@ export function classify(value: number, breaks: readonly number[]): number {
   return k;
 }
 
-function valuesFor(rows: Iterable<ZipData>, metric: string): number[] {
-  const out: number[] = [];
-  for (const row of rows) {
-    const v = getMetricValue(row, metric);
-    if (v > 0) out.push(v);
+/**
+ * The national authority: the pipeline's precomputed byte-per-ZIP table.
+ *
+ * Nothing is computed here. The breaks came from the same run that encoded the
+ * table, over the ZIPs whose median is rankable, and the pipeline asserts the two
+ * artifacts agree for every ZIP and every metric before either is published.
+ */
+export class PaintTableSource implements ClassSource {
+  readonly epoch = nextEpoch++;
+  readonly zips: readonly string[];
+  readonly breaks: readonly number[];
+
+  private readonly faded: boolean;
+
+  constructor(
+    private readonly table: PaintTable,
+    breaks: readonly number[] | undefined,
+    zips: readonly string[],
+    metric?: string,
+  ) {
+    this.breaks = breaks ?? [];
+    this.zips = zips;
+    this.faded = !metric || !FADE_EXEMPT.has(metric);
   }
-  return out;
+
+  classOf(zip: string): number {
+    return this.table.classOf(zip);
+  }
+
+  reliabilityOf(zip: string): number {
+    // The fade carve-out, applied HERE rather than in the paint expression: a
+    // second expression would have to be swapped in on a metric change, and
+    // rewriting a data-driven paint value reloads every tile. Reporting full
+    // reliability makes the constant expression evaluate to full opacity.
+    return this.faded ? this.table.reliabilityOf(zip) : 3;
+  }
 }
 
 /**
- * Interim national authority: computes the same 7 quantile breaks the pipeline
- * will later precompute, from the already-loaded row-major snapshot.
+ * Auto-scale authority: the same 7 classes, recomputed over the ZIPs in view.
  *
- * `reliabilityOf` always returns 3 (full opacity). The relative standard error
- * it would need does not exist until Phase 5, and inventing a tier here would
- * fade ZIPs on no evidence.
+ * It answers -1 for every ZIP outside the sample. That is correct rather than a
+ * gap: a ZIP outside the viewport has no place on a viewport-derived scale, and
+ * the painter still writes the full set, so nothing keeps a stale colour.
+ *
+ * Reliability still comes from the paint table. The viewport changes which values
+ * set the scale; it does not change how many sales a ZIP had.
  */
-export class LegacyClassSource implements ClassSource {
+export class ViewportClassSource implements ClassSource {
   readonly epoch = nextEpoch++;
   readonly zips: readonly string[];
   readonly breaks: readonly number[];
   private readonly classes = new Map<string, number>();
 
-  constructor(data: Record<string, ZipData>, metric: string) {
-    this.zips = Object.keys(data);
+  constructor(
+    store: ZipTable,
+    private readonly table: PaintTable,
+    private readonly metric: string,
+    visibleRows: Int32Array,
+  ) {
+    this.zips = store.zips;
+    const wire = WIRE_OF[metric] ?? metric;
+
+    const values: number[] = [];
+    for (let i = 0; i < visibleRows.length; i++) {
+      const v = store.valueAt(wire, visibleRows[i]);
+      if (v !== null && v > 0) values.push(v);
+    }
+
     this.breaks = span(
       "class:breaks",
-      () => computeQuantileBuckets(valuesFor(Object.values(data), metric), CLASSES),
-      { metric, n: this.zips.length },
+      () => computeQuantileBuckets(values, CLASSES),
+      { metric, n: values.length },
     );
     if (this.breaks.length === 0) return;
+
     span("class:assign", () => {
-      for (const zip of this.zips) {
-        const v = getMetricValue(data[zip], metric);
-        this.classes.set(zip, v > 0 ? classify(v, this.breaks) : -1);
+      for (let i = 0; i < visibleRows.length; i++) {
+        const row = visibleRows[i];
+        const v = store.valueAt(wire, row);
+        if (v !== null && v > 0) this.classes.set(store.zips[row], classify(v, this.breaks));
       }
     }, { metric });
   }
@@ -90,46 +136,49 @@ export class LegacyClassSource implements ClassSource {
     return this.classes.get(zip) ?? -1;
   }
 
-  reliabilityOf(): number {
-    return 3;
+  reliabilityOf(zip: string): number {
+    return FADE_EXEMPT.has(this.metric) ? 3 : this.table.reliabilityOf(zip);
   }
 }
 
 /**
- * Auto-scale authority: the same classing, over the ZIPs currently in view.
+ * Correct scope for AUTO-SCALE QUANTILES: loaded features whose REAL polygon bbox
+ * intersects the viewport.
  *
- * It answers -1 for every ZIP outside the sample. That is correct rather than a
- * gap: a ZIP outside the viewport has no place on a viewport-derived scale, and
- * the painter still writes the full set, so nothing keeps a stale colour.
+ * This is the Bug 3 fix. The old spatial index put a 0.01-degree box around each
+ * centroid — about 1.1 km, against a measured median ZCTA span of 7.45 km — so
+ * every large rural ZCTA fell out of its own viewport and auto-scaling over a view
+ * containing one big rural ZIP returned an empty set.
+ *
+ * DELIBERATELY NOT the same function as `loadedZips`, which is the correct scope
+ * for PAINTING (whole loaded tiles, because scoping tighter leaves tile edges
+ * unpainted). Conflating the two is what produced the original auto-scale bug, so
+ * they stay two named functions rather than one parameterised one.
+ *
+ * A flat scan of four comparisons over 33k rows is ~0.1 ms. An R-tree of 33k JS
+ * objects earns nothing here on either time or memory, which is why `rbush` is
+ * gone rather than rebuilt against the new bounds.
  */
-export class ViewportClassSource implements ClassSource {
-  readonly epoch = nextEpoch++;
-  readonly zips: readonly string[];
-  readonly breaks: readonly number[];
-  private readonly classes = new Map<string, number>();
+export function visibleZipRows(
+  loaded: readonly string[],
+  store: ZipTable,
+  b: maplibregl.LngLatBounds,
+): Int32Array {
+  const west = b.getWest();
+  const south = b.getSouth();
+  const east = b.getEast();
+  const north = b.getNorth();
 
-  constructor(data: Record<string, ZipData>, metric: string, visible: readonly string[]) {
-    this.zips = Object.keys(data);
-    const rows: ZipData[] = [];
-    for (const zip of visible) {
-      const row = data[zip];
-      if (row) rows.push(row);
-    }
-    this.breaks = computeQuantileBuckets(valuesFor(rows, metric), CLASSES);
-    if (this.breaks.length === 0) return;
-    for (const zip of visible) {
-      const row = data[zip];
-      if (!row) continue;
-      const v = getMetricValue(row, metric);
-      if (v > 0) this.classes.set(zip, classify(v, this.breaks));
-    }
+  const out = new Int32Array(loaded.length);
+  let k = 0;
+  for (const zip of loaded) {
+    const row = store.rowOf(zip);
+    if (row < 0) continue;
+    const bounds = store.boundsOf(row);
+    if (!bounds) continue;
+    if (bounds.east < west || bounds.west > east) continue;
+    if (bounds.north < south || bounds.south > north) continue;
+    out[k++] = row;
   }
-
-  classOf(zip: string): number {
-    return this.classes.get(zip) ?? -1;
-  }
-
-  reliabilityOf(): number {
-    return 3;
-  }
+  return out.subarray(0, k);
 }

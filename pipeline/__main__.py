@@ -22,13 +22,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .contracts import PipelineError
-from . import dim, gate, panel, redfin, serialize, sources, zhvi
+from . import (
+    changes, classify, dim, forecast, gate, geom, noise, panel, paint, redfin,
+    serialize, sources, spatial, zhvi,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 LIVE_SNAPSHOT = ROOT / "public" / "data" / "zip-data.json"
 LIVE_MANIFEST = ROOT / "public" / "data" / "manifest.json"
 ZCTA_META = ROOT / "public" / "data" / "zcta-meta.csv"
+ZCTA_GEOM = ROOT / "public" / "data" / "zcta-geom.csv"
 GATE_BASELINE = ROOT / "tests" / "baselines" / "diff_gate.json"
 
 log = logging.getLogger("pipeline")
@@ -121,12 +125,20 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         _report("s1_acquire", "ok",
                 redfin_bytes=redfin_csv.stat().st_size, zhvi_bytes=len(zhvi_bytes))
 
-        # --- S2 INGEST + PANEL ---------------------------------------------
+        # --- S2 INGEST + PANELS --------------------------------------------
+        # Both panels are written here, and both for the same reason: a module
+        # that parses a whole file and returns three columns of it has thrown
+        # away everything the statistics need. `panel.parquet` fixed that for
+        # Redfin; `zhvi-panel.parquet` fixes it for Zillow, and the forecast
+        # cannot be fitted without it.
         _require("s1_acquire")
         panel_path = BUILD / "panel.parquet"
+        zhvi_panel_path = BUILD / "zhvi-panel.parquet"
         redfin_report, latest_rows = redfin.ingest(redfin_csv, panel_path)
         panel_report = panel.verify(panel_path, redfin_report["rows"])
-        _report("s2_ingest", "ok", redfin=redfin_report, panel=panel_report)
+        zhvi_panel_report = zhvi.write_panel(zhvi_bytes, zhvi_panel_path)
+        _report("s2_ingest", "ok", redfin=redfin_report, panel=panel_report,
+                zhvi_panel=zhvi_panel_report)
     finally:
         if tmpdir is not None:
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -136,9 +148,20 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     redfin_records = redfin.latest_records(latest_rows)
     zhvi_records, zhvi_period = zhvi.process(zhvi_bytes)
     zcta = dim.load(ZCTA_META)
+    geometry = geom.load(ZCTA_GEOM)
 
-    records, redfin_period, coverage = serialize.assemble(zcta, zhvi_records, redfin_records)
+    records, redfin_period, coverage = serialize.assemble(
+        zcta, zhvi_records, redfin_records, geometry
+    )
+    # Every change metric is ours, computed from published levels at lag 12. It
+    # runs before validation so the range contract sees the values we ship.
+    changes_report = changes.recompute(panel_path, records, redfin_period)
     validation = serialize.validate(records, redfin_period, zhvi_period)
+
+    now = datetime.now(timezone.utc).isoformat()
+    period_begin = next(
+        (r.get("period_begin") for r in redfin_records.values() if r.get("period_begin")), None
+    )
 
     prev_ts, live = serialize.load_live(LIVE_SNAPSHOT)
     zips_changed, points_changed = serialize.count_changes(live, records)
@@ -161,21 +184,73 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     )
     _report("s4_gate", "ok", **gate_report)
 
+    # --- S5 NOISE -----------------------------------------------------------
+    # Fits K on the panel and writes `msp_rse` and `rel` into every record. It
+    # runs before classing because `rel` is what gates the break population, and
+    # before painting because the reliability nibble is half the paint byte.
+    _require("s4_gate")
+    noise_report = noise.measure(panel_path, records)
+    _report("s5_noise", "ok", **noise_report)
+
+    # --- S5b FORECAST -------------------------------------------------------
+    # AR(1) on log ZHVI growth plus the 82-origin backtest. Fills `f_h12`,
+    # `f_sigma` and `f_tier`.
+    forecast_report = forecast.run(zhvi_panel_path, records)
+    _report("s5b_forecast", "ok", **forecast_report)
+
+    # --- S5c SPATIAL --------------------------------------------------------
+    # LISA over the rankable set only. Ungated it is a low-sample detector, not a
+    # spatial statistic — see the module docstring. Fills `lisa`.
+    previous_lisa = {z: r["lisa"] for z, r in live.items() if r.get("lisa") is not None}
+    spatial_report = spatial.run(records, previous_lisa)
+    _report("s5c_spatial", "ok", **spatial_report)
+
+    # --- S6 CLASSIFY --------------------------------------------------------
+    # The bound for the one painted diverging series is DERIVED from the pooled
+    # ZHVI panel each release, not carried forward as a constant, so a claim that
+    # it targets ~5% saturation stays checkable.
+    _require("s5_noise")
+    bound = classify.derive_diverging_bound(zhvi.pooled_yoy(zhvi_panel_path))
+    class_report = classify.compute(records, bound["bound"])
+    classify.assign(records, class_report["breaks"])
+    _report("s6_classify", "ok", diverging=bound, **class_report)
+
+    # --- S7 PAINT -----------------------------------------------------------
+    # 100,000 bytes per painted metric, against the 8.2 MB that gates first
+    # colour today. The cross-artifact assertion is what stops the map and the
+    # detail panel from ever disagreeing about the same ZIP.
+    _require("s6_classify")
+    paint_dir = BUILD / "paint"
+    if paint_dir.exists():
+        shutil.rmtree(paint_dir)
+    paint_assets = paint.write(records, classify.PAINTED, paint_dir)
+    paint.assert_agrees_with_snapshot(records, paint_assets, paint_dir)
+    _report("s7_paint", "ok", assets=paint_assets)
+
     out = BUILD / "zip-data.json"
-    written = serialize.write_snapshot(records, out, prev_ts, changed)
+    written = serialize.write_snapshot(records, out, {
+        "built_utc": now if (prev_ts is None or changed) else prev_ts,
+        "period_start": period_begin,
+        "period_end": redfin_period,
+        "frequency": redfin_report["frequency"],
+        "vintage": redfin_report["last_updated"],
+        "zhvi_month": zhvi_period,
+        "classes": class_report["classes"],
+        "breaks": {serialize.PAINTED_SHORT[m]: b for m, b in class_report["breaks"].items()},
+        "classing": {serialize.PAINTED_SHORT[m]: c["scheme"]
+                     for m, c in class_report["classing"].items()},
+    })
 
     manifest = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "redfin": {
             "period_end": redfin_period,
-            "period_begin": next(
-                (r.get("period_begin") for r in redfin_records.values() if r.get("period_begin")),
-                None,
-            ),
+            "period_begin": period_begin,
             "vintage": redfin_report["last_updated"],
             "rows": redfin_report["rows"],
         },
-        "zhvi": {"period_end": zhvi_period, "zips": len(zhvi_records)},
+        "zhvi": {"period_end": zhvi_period, "zips": len(zhvi_records),
+                 "panel": zhvi_panel_report},
         # Identity of the upstream bytes. An unchanged fingerprint on the next run
         # means nothing new exists and the run exits 0 without downloading.
         "fingerprints": fingerprints,
@@ -189,8 +264,21 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "orphans": coverage["orphans"],
         "changed": {"zips": zips_changed, "data_points": points_changed},
         "validation": validation,
+        "changes": changes_report,
         "gate": gate_report,
         "snapshot": written,
+        # The lineage of every published statistic. `noise` carries the K fit the
+        # reliability tiers come out of, `classing` the breaks the legend renders,
+        # and `assets.paint` the hashed filenames the frontend preloads — which is
+        # also what `vite.config.ts` inlines at build time, so a stale inline
+        # fails the deploy rather than shipping a 404 on the critical path.
+        "noise": noise_report,
+        "forecast": forecast_report,
+        "spatial": spatial_report,
+        "classes": class_report["classes"],
+        "diverging": bound,
+        "classing": class_report["classing"],
+        "assets": {"paint": paint_assets, "snapshot": "zip-data.json"},
     }
     (BUILD / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     (BUILD / "orphans.json").write_text(

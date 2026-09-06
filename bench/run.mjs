@@ -23,6 +23,27 @@ import { join } from "node:path";
 // Unpinned, tile traffic swamps every other signal and runs are not comparable.
 const PINNED_VIEW = "lat=39.5&lng=-98.35&zoom=4&metric=zhvi";
 
+// The artifacts that gate first colour. Measured, not timed: paint detection here
+// runs after a resource-stability loop, so by the time the map is known to have
+// painted everything has already downloaded and there is nothing left to attribute.
+// The claim being tracked is "how many bytes must land before a ZIP can be
+// coloured", and that is a property of WHICH FILE GATES THE PAINT, not a race.
+//
+// THE SET CHANGES WHEN THE ARCHITECTURE DOES, and that is the metric working
+// rather than the metric cheating. Before Phase 4 the whole 2.5 MB snapshot had to
+// land before anything could be coloured, so it was the gate. After Phase 4 the
+// paint table and the manifest are the gate: the snapshot is still fetched, but
+// nothing waits for it to paint — it backs hover, search and export. Leaving it in
+// this pattern would report 2.5 MB and claim the phase changed nothing, which is
+// false. Counting it was correct then and is wrong now.
+//
+// If a future change makes the snapshot gate paint again, put it back.
+const GATES_FIRST_COLOR = /\/paint\/[^/]+\.u8(\?|$)|\/manifest\.json(\?|$)/;
+
+// The pre-Phase-4 definition, kept so an old build can still be measured the way
+// its baseline was measured.
+const GATES_FIRST_COLOR_LEGACY = /zip-data\.json/;
+
 const NET = {
   slow4g: { downloadThroughput: (1.6 * 1024 * 1024) / 8, uploadThroughput: (750 * 1024) / 8, latency: 150 },
   cable:  { downloadThroughput: (5 * 1024 * 1024) / 8,   uploadThroughput: (1 * 1024 * 1024) / 8, latency: 28 },
@@ -170,11 +191,20 @@ async function measureOnce(browser) {
 
   const byKind = {};
   let transferTotal = 0;
+  let gatingBytes = 0;
+  let gatingBytesLegacy = 0;
   for (const r of responses) {
     let bytes = 0;
     try { bytes = (await r.request().sizes()).responseBodySize || 0; } catch { /* aborted */ }
     transferTotal += bytes;
     const u = r.url();
+    // Bytes that must arrive before any ZIP can be coloured. Today that is the
+    // whole of zip-data.json, because classes are computed in-process from the
+    // loaded records; after the paint table lands it is that file alone. The
+    // pattern matches both on purpose — the number is only useful if it stays
+    // comparable across that change.
+    if (GATES_FIRST_COLOR.test(u)) gatingBytes += bytes;
+    if (GATES_FIRST_COLOR_LEGACY.test(u)) gatingBytesLegacy += bytes;
     const kind = /\.pmtiles/.test(u) ? "pmtiles"
       : /geojson|topojson/.test(u) ? "data-geojson"
       : /zip-data|last_updated/.test(u) ? "data-json"
@@ -210,7 +240,8 @@ async function measureOnce(browser) {
   }
 
   await context.close();
-  return { ...metrics, transferTotal, byKind, requestCount, heapBytes, metricSwitchMs, wallMs, painted };
+  return { ...metrics, transferTotal, gatingBytes, gatingBytesLegacy, byKind, requestCount, heapBytes,
+           metricSwitchMs, wallMs, painted };
 }
 
 const browser = await chromium.launch();
@@ -234,7 +265,8 @@ for (let i = 0; i <= runs; i++) {
 await browser.close();
 
 const numeric = ["lcp", "tbt", "maxLongTask", "longTaskCount", "domContentLoaded", "loadEvent",
-                 "transferTotal", "requestCount", "heapBytes", "metricSwitchMs", "cls", "wallMs"];
+                 "transferTotal", "gatingBytes", "gatingBytesLegacy", "requestCount", "heapBytes", "metricSwitchMs",
+                 "cls", "wallMs"];
 const summary = {};
 for (const k of numeric) summary[k] = stats(samples.map((s) => s[k]));
 
@@ -276,6 +308,12 @@ console.log(`\n  LCP            ${Math.round(summary.lcp.median)} ms   (p95 ${Ma
 console.log(`  TBT            ${Math.round(summary.tbt.median)} ms   (p95 ${Math.round(summary.tbt.p95)})`);
 console.log(`  max long task  ${Math.round(summary.maxLongTask.median)} ms`);
 console.log(`  transfer       ${(summary.transferTotal.median / 1048576).toFixed(2)} MB`);
+console.log(`  gating bytes   ${summary.gatingBytes.median.toLocaleString("en-US")} B` +
+            `${summary.gatingBytes.median === 0 ? "   ! nothing matched GATES_FIRST_COLOR" : ""}`);
+// What the same page would have reported under the pre-Phase-4 definition, so the
+// two eras are legible side by side rather than only through their baselines.
+console.log(`  (snapshot)     ${summary.gatingBytesLegacy.median.toLocaleString("en-US")} B` +
+            ` — fetched, but no longer gates paint`);
 if (summary.heapBytes) console.log(`  JS heap        ${(summary.heapBytes.median / 1048576).toFixed(1)} MB`);
 if (summary.metricSwitchMs) console.log(`  metric switch  ${Math.round(summary.metricSwitchMs.median)} ms`);
 for (const w of result.warnings) console.log(`  ! ${w}`);

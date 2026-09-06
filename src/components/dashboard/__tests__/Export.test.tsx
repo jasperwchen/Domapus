@@ -138,6 +138,23 @@ function makeZip(overrides: Partial<ZipData> = {}): ZipData {
     avg_sale_to_list_ratio: null, avg_sale_to_list_ratio_yoy: null,
     sold_above_list: null, sold_above_list_yoy: null,
     off_market_in_two_weeks: null, off_market_in_two_weeks_yoy: null,
+
+    // Statistics columns. Phase 5 fills four of these; the rest ship real.
+    msp_rse: null,
+    dom_rse: null,
+    rel: null,
+    msp_yoy_se: null,
+    f_h12: null,
+    f_sigma: null,
+    f_tier: null,
+    lisa: null,
+
+    // Real polygon bbox, as offsets from the anchor.
+    bw: null,
+    bs: null,
+    be: null,
+    bn: null,
+    cov: null,
     ...overrides,
   };
 }

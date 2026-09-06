@@ -5,14 +5,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Search } from 'lucide-react';
 import { ZipData } from './map/types';
+import type { ZipTable } from '@/lib/zip-table';
 import { formatMetricValue, getComparison, METRIC_DEFINITIONS, FormatType } from './map/utils';
 
 interface ZipComparisonProps {
   currentZip: ZipData;
-  allZipData: Record<string, ZipData>;
+  store: ZipTable | null;
 }
 
-export function ZipComparison({ currentZip, allZipData }: ZipComparisonProps) {
+export function ZipComparison({ currentZip, store }: ZipComparisonProps) {
   const [searchZip, setSearchZip] = useState('');
   const [compareZip, setCompareZip] = useState<ZipData | null>(null);
   const [error, setError] = useState('');
@@ -21,7 +22,7 @@ export function ZipComparison({ currentZip, allZipData }: ZipComparisonProps) {
     if (!searchZip.trim()) return;
 
     setError('');
-    const foundZip = allZipData[searchZip.trim()];
+    const foundZip = store?.get(searchZip.trim()) ?? null;
 
     if (foundZip) {
       setCompareZip(foundZip);

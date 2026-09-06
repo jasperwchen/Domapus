@@ -142,7 +142,51 @@ export function createMetricPopupContent(data: ZipData, selectedMetric: string):
   metricRow.append(label, val);
   root.appendChild(metricRow);
 
+  // The uncertainty line. This is the difference between this map and every
+  // other choropleth: a median over 4 sales and a median over 400 are not the
+  // same kind of number, and the popup is where that stops being invisible.
+  //
+  // `msp_rse` is the relative standard error of the MEDIAN SALE PRICE, and it is
+  // shown against that metric only. It would be wrong against `median_dom`, which
+  // has its own K and its own `dom_rse`, and meaningless against a listings count.
+  const rse = uncertaintyFor(data, selectedMetric);
+  if (rse !== null && typeof data.homes_sold === "number") {
+    const sales = data.homes_sold;
+    add(
+      "text-xs text-gray-500 mt-1",
+      `±${(rse * 100).toFixed(1)}% (${sales.toLocaleString()} ${sales === 1 ? "sale" : "sales"})`,
+    );
+  }
+
+  if (data.lisa) {
+    const label = LISA_LABELS[data.lisa];
+    if (label) add("text-xs text-gray-500", label);
+  }
+
   add("text-[10px] text-gray-400 mt-1 flex items-center", "Click ZIP code to view details");
 
   return root;
 }
+
+/** Which relative standard error, if any, describes THIS metric.
+ *
+ *  Deliberately a whitelist rather than a fallback. `msp_rse` describes the sale
+ *  price sample; attaching it to a listings count or a supply ratio would put a
+ *  precise-looking number next to a quantity it does not measure. */
+function uncertaintyFor(data: ZipData, metric: string): number | null {
+  const key = metric === "median_sale_price" ? "msp_rse"
+    : metric === "median_dom" ? "dom_rse"
+    : null;
+  if (!key) return null;
+  const v = data[key as keyof ZipData];
+  return typeof v === "number" && isFinite(v) ? v : null;
+}
+
+/** LISA classes. Descriptive clustering with a permutation screen — NOT a
+ *  hypothesis test, so the wording avoids "significant". */
+const LISA_LABELS: Record<number, string> = {
+  1: "In a cluster of higher-priced ZIPs",
+  2: "In a cluster of lower-priced ZIPs",
+  3: "Lower-priced than its neighbours",
+  4: "Higher-priced than its neighbours",
+};

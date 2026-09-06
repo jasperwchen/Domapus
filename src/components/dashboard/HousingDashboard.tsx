@@ -3,9 +3,16 @@ import { useDataWorker } from "@/hooks/useDataWorker";
 import { ZipData } from "./map/types";
 import { MapExport } from "@/components/MapExport";
 import { dataUrl } from "@/lib/data-url";
-import { buildSpatialIndex, queryZipsInBounds } from "@/lib/spatial-index";
-import { getMetricValue } from "./map/utils";
-import { LegacyClassSource, ViewportClassSource, type ClassSource } from "@/lib/class-source";
+import {
+  PaintTableSource,
+  ViewportClassSource,
+  visibleZipRows,
+  type ClassSource,
+} from "@/lib/class-source";
+import { CHOROPLETH_COLORS } from "@/lib/choropleth";
+import { boot, fetchManifest, fetchPaint, type Manifest } from "@/lib/manifest";
+import { PaintTable } from "@/lib/paint-table";
+import { ZipTable, WIRE_OF } from "@/lib/zip-table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { TopBar } from "./TopBar";
 import { MapLibreMap } from "./MapLibreMap";
@@ -15,13 +22,6 @@ import { Sidebar } from "./Sidebar";
 import { MetricType } from "./MetricSelector";
 import { useUrlState } from "@/hooks/useUrlState";
 import { MobileBottomSheet } from "./MobileBottomSheet";
-
-
-interface DataPayload {
-  last_updated_utc: string;
-  zip_codes: Record<string, ZipData>;
-  bounds: { min: number; max: number; };
-}
 
 function getInitialUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -40,87 +40,104 @@ export function HousingDashboard() {
   const isMobile = useIsMobile();
   const { setUrlState } = useUrlState();
   const initialUrlStateRef = useRef(initialUrlParams);
-  
-  // Initialize selectedMetric from URL or default to 'zhvi'
+
   const [selectedMetric, setSelectedMetric] = useState<MetricType>((initialUrlStateRef.current.metric as MetricType) || "zhvi");
   const [selectedZip, setSelectedZip] = useState<ZipData | null>(null);
   const [searchZip, setSearchZip] = useState<string>(initialUrlStateRef.current.zip || "");
   const [searchTrigger, setSearchTrigger] = useState<number>(0);
-  const [zipData, setZipData] = useState<Record<string, ZipData>>({});
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSponsorBanner, setShowSponsorBanner] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [visibleZipCodes, setVisibleZipCodes] = useState<string[] | null>(null);
   const [autoScale, setAutoScale] = useState(false);
-  const [isIndexReady, setIsIndexReady] = useState(false);
-  const lastBoundsRef = useRef<[[number, number], [number, number]] | null>(null);
+  const [showLisa, setShowLisa] = useState(false);
+
+  // Two independent artifacts, and the whole point is that they arrive
+  // independently. The paint table colours the map; the snapshot backs hover,
+  // search, the sidebar and export. Nothing waits for the snapshot to paint.
+  const [manifest, setManifest] = useState<Manifest | null>(null);
+  const [paint, setPaint] = useState<PaintTable | null>(null);
+  const [store, setStore] = useState<ZipTable | null>(null);
+  const [visibleRows, setVisibleRows] = useState<Int32Array | null>(null);
+
+  const lastBoundsRef = useRef<maplibregl.LngLatBounds | null>(null);
   const initialLoadRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
 
   const { processData, isLoading, progress } = useDataWorker();
 
+  // --- The paint path: manifest + one 100,000-byte table ---------------------
   useEffect(() => {
-    let isMounted = true;
-    let hasRun = false;
+    let alive = true;
 
-    const loadInitialData = async () => {
-      if (hasRun) return;
-      hasRun = true;
-
-      // index.html starts this fetch in <head>, before the bundle parses, so the
-      // buffer is usually already in flight by the time we get here.
-      const url = dataUrl("zip-data.json");
-      const earlyBuffer: ArrayBuffer | null = await ((window as unknown as Record<string, unknown>).__zipDataPromise as Promise<ArrayBuffer | null> | undefined ?? Promise.resolve(null));
-
+    (async () => {
       try {
-        setLoadError(null);
+        // index.html started both fetches in one tick before the bundle parsed.
+        const booted = await boot();
+        const mf = booted?.manifest ?? (await fetchManifest());
+        if (!alive) return;
+        setManifest(mf);
 
-        const transfer: Transferable[] = earlyBuffer ? [earlyBuffer] : [];
-        const result = await processData({
-          type: 'LOAD_AND_PROCESS_DATA',
-          data: { url, selectedMetric: 'zhvi', prefetchedBuffer: earlyBuffer ?? undefined }
-        }, { transfer }) as DataPayload;
+        const buf =
+          booted && booted.metric === selectedMetric
+            ? booted.paint
+            : await fetchPaint(mf, selectedMetric);
+        if (!alive) return;
 
-        if (!isMounted) return;
-
-        if (result) {
-          setZipData(result.zip_codes);
-
-          // Build spatial index during idle time
-          const scheduleIndexBuild = () => {
-            buildSpatialIndex(result.zip_codes);
-            setIsIndexReady(true);
-          };
-
-          if (typeof window.requestIdleCallback === 'function') {
-            window.requestIdleCallback(scheduleIndexBuild, { timeout: 2000 });
-          } else {
-            setTimeout(scheduleIndexBuild, 100);
-          }
-        }
-      } catch (error: unknown) {
-        console.error("[HousingDashboard] Failed to load housing data:", error);
-        if (isMounted) {
+        // Refuses to paint rather than painting a lie: a wrong byteLength or a
+        // class count the ramp cannot render means the legend and the map would
+        // disagree about what a colour means.
+        setPaint(PaintTable.from(buf, selectedMetric, mf.classes, CHOROPLETH_COLORS.length));
+      } catch (err) {
+        console.error("[HousingDashboard] paint table failed:", err);
+        if (alive) {
           setLoadError(
-            error instanceof Error && error.message
-              ? error.message
-              : "Could not load housing data. Check your connection and try again."
+            err instanceof Error && err.message
+              ? err.message
+              : "Could not load the map colours. Check your connection and try again.",
           );
         }
       }
-    };
-    loadInitialData();
-    ///const timer = setTimeout(() => setShowSponsorBanner(true), 30000);
+    })();
 
-    return () => {
-      isMounted = false;
-      ///clearTimeout(timer);
-    };
+    return () => { alive = false; };
+  }, [selectedMetric]);
+
+  // --- The interaction path: the snapshot, off the critical path -------------
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const url = dataUrl("zip-data.json");
+      const early: ArrayBuffer | null = await ((window as unknown as Record<string, unknown>)
+        .__zipDataPromise as Promise<ArrayBuffer | null> | undefined ?? Promise.resolve(null));
+
+      try {
+        const result = await processData(
+          { type: "LOAD_SNAPSHOT", data: { url, prefetchedBuffer: early ?? undefined } },
+          { transfer: early ? [early] : [] },
+        );
+        if (!alive) return;
+        setStore(ZipTable.from(result.header, result.buffers));
+      } catch (error: unknown) {
+        console.error("[HousingDashboard] Failed to load housing data:", error);
+        // A failed snapshot degrades hover and search; it does NOT blank the map,
+        // because the paint table is what colours it. Only surface a full-page
+        // error if the paint path also failed.
+        if (alive) {
+          setLoadError((prev) => prev ?? (
+            error instanceof Error && error.message
+              ? error.message
+              : "Could not load ZIP details. The map still works; try refreshing."
+          ));
+        }
+      }
+    })();
+
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Search handler - also updates URL
   const handleSearch = useCallback((zip: string, trigger: number) => {
     setSearchZip(zip);
     setSearchTrigger(trigger);
@@ -135,143 +152,118 @@ export function HousingDashboard() {
     setUrlState({ zip: zip.zipCode, metric: selectedMetric });
   }, [selectedMetric, setUrlState]);
 
-  // Update URL when metric changes
   const handleMetricChange = useCallback((metric: MetricType) => {
     setSelectedMetric(metric);
     hasUserInteractedRef.current = true;
     setUrlState({ metric, zip: selectedZip?.zipCode });
   }, [selectedZip, setUrlState]);
 
-  // Use ref to always access latest autoScale state in callbacks
   const autoScaleRef = useRef(autoScale);
-  useEffect(() => {
-    autoScaleRef.current = autoScale;
-  }, [autoScale]);
+  useEffect(() => { autoScaleRef.current = autoScale; }, [autoScale]);
 
-  // Auto-load ZIP from URL on initial data load
+  // Auto-load ZIP from URL once the snapshot exists.
   useEffect(() => {
     const initialZip = initialUrlStateRef.current.zip;
-    if (!initialLoadRef.current && Object.keys(zipData).length > 0 && initialZip) {
+    if (!initialLoadRef.current && store && initialZip) {
       initialLoadRef.current = true;
-      const zipFromUrl = zipData[initialZip];
-      if (zipFromUrl) {
-        setSelectedZip(zipFromUrl);
+      const row = store.get(initialZip);
+      if (row) {
+        setSelectedZip(row);
         setSidebarOpen(true);
         setSearchZip(initialZip);
         setSearchTrigger(prev => prev + 1);
       }
     }
-  }, [zipData]);
+  }, [store]);
 
-  // Only the visible SET is tracked here now. Classing moved into ClassSource,
-  // so there is one authority for "which class is this ZIP in" rather than two
-  // that could disagree — the map used to compute its own buckets while the
-  // Legend computed different ones from a different sample.
-  const updateColors = useCallback((bounds: [[number, number], [number, number]] | null) => {
-    if (!autoScaleRef.current) {
-      setVisibleZipCodes(null);
+  // The viewport set, from REAL polygon bounds. There is no index to build and
+  // no `isIndexReady` gate: `visibleZipRows` is a flat scan of four comparisons
+  // over the loaded ZIPs, ~0.1 ms at this size, so it just runs. The old
+  // R-tree-plus-readiness-flag machinery existed to amortise a cost that was
+  // never there, and three effects used to wait on that flag.
+  const recomputeVisible = useCallback((
+    loaded: readonly string[], bounds: maplibregl.LngLatBounds | null,
+  ) => {
+    if (!autoScaleRef.current || !store || !bounds) {
+      setVisibleRows(null);
       return;
     }
-    if (!bounds) return;
-
-    // Still the centroid-box index. It under-counts large ZCTAs (its 0.01-degree
-    // box is ~1.1 km against a measured median ZCTA span of 7.45 km); Phase 4
-    // replaces it with real polygon bounds from zcta-geom.csv.
-    setVisibleZipCodes(queryZipsInBounds({
-      west: bounds[0][0], south: bounds[0][1], east: bounds[1][0], north: bounds[1][1],
-    }));
-  }, []);
+    setVisibleRows(visibleZipRows(loaded, store, bounds));
+  }, [store]);
 
   const handleMapMove = useCallback((
-    bounds: [[number, number], [number, number]],
-    view?: { lat: number; lng: number; zoom: number }
+    loaded: readonly string[],
+    bounds: maplibregl.LngLatBounds,
+    view?: { lat: number; lng: number; zoom: number },
   ) => {
     lastBoundsRef.current = bounds;
-    if (autoScaleRef.current) {
-      updateColors(bounds);
-    }
-    
-    // Update URL with map position (debounced)
+    recomputeVisible(loaded, bounds);
+
     if (!hasUserInteractedRef.current) return;
     if (view) {
       setUrlState({ lat: view.lat, lng: view.lng, zoom: view.zoom }, true);
       return;
     }
-
-    const fallbackCenter = {
-      lng: (bounds[0][0] + bounds[1][0]) / 2,
-      lat: (bounds[0][1] + bounds[1][1]) / 2,
-    };
-    const fallbackZoom = Math.log2(360 / Math.abs(bounds[1][0] - bounds[0][0]));
-    setUrlState({ lat: fallbackCenter.lat, lng: fallbackCenter.lng, zoom: fallbackZoom }, true);
-  }, [updateColors, setUrlState]);
+    setUrlState({
+      lat: (bounds.getSouth() + bounds.getNorth()) / 2,
+      lng: (bounds.getWest() + bounds.getEast()) / 2,
+      zoom: Math.log2(360 / Math.abs(bounds.getEast() - bounds.getWest())),
+    }, true);
+  }, [recomputeVisible, setUrlState]);
 
   const handleUserInteraction = useCallback(() => {
     hasUserInteractedRef.current = true;
   }, []);
 
+  // Turning auto-scale off drops the viewport sample immediately; turning it on
+  // waits for the next map move to supply one.
   useEffect(() => {
-    if (autoScale && lastBoundsRef.current && isIndexReady) {
-      updateColors(lastBoundsRef.current);
-    } else if (!autoScale) {
-      setVisibleZipCodes(null);
-    }
-  }, [autoScale, isIndexReady, updateColors]);
-
-  useEffect(() => {
-    setVisibleZipCodes(null);
-
-    if (autoScale && lastBoundsRef.current) {
-      const timer = setTimeout(() => {
-        updateColors(lastBoundsRef.current);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [selectedMetric, searchZip, autoScale, updateColors]);
-
-  useEffect(() => {
-    if (isIndexReady && autoScale && lastBoundsRef.current) {
-      updateColors(lastBoundsRef.current);
-    }
-  }, [isIndexReady, autoScale, updateColors]);
-
-  useEffect(() => {
-    const handleFocus = () => {
-      if (document.visibilityState === 'visible' && autoScale && lastBoundsRef.current) {
-        updateColors(lastBoundsRef.current);
-      }
-    };
-    document.addEventListener('visibilitychange', handleFocus);
-    return () => document.removeEventListener('visibilitychange', handleFocus);
-  }, [autoScale, updateColors]);
+    if (!autoScale) setVisibleRows(null);
+  }, [autoScale, selectedMetric]);
 
   // EXACTLY ONE class authority is live at a time. Constructing a source bumps
-  // its epoch; the painter sees a new epoch and rewrites the full ZIP set, so
-  // the two modes can never overlap or leave stale colours behind.
-  //
-  // In Phase 4 the fixed-scale branch becomes `PaintTable`, which is one line
-  // here — the painter never learns where classes come from.
+  // its epoch; the painter sees a new epoch and rewrites the full ZIP set, so the
+  // two modes can never overlap or leave stale colours behind.
   const classSource: ClassSource | null = useMemo(() => {
-    if (Object.keys(zipData).length === 0) return null;
-    if (autoScale && visibleZipCodes && visibleZipCodes.length > 0) {
-      return new ViewportClassSource(zipData, selectedMetric, visibleZipCodes);
+    if (!paint) return null;
+    const breaks = manifest?.classing?.[selectedMetric]?.breaks;
+
+    if (autoScale && store && visibleRows && visibleRows.length > 0) {
+      return new ViewportClassSource(store, paint, selectedMetric, visibleRows);
     }
-    return new LegacyClassSource(zipData, selectedMetric);
-  }, [zipData, selectedMetric, autoScale, visibleZipCodes]);
+    // The paint table can answer for every ZIP it has a byte for, which is the
+    // full national set — it does not need the snapshot to have arrived.
+    return new PaintTableSource(
+      paint, breaks, store ? store.zips : paint.zips(), selectedMetric,
+    );
+  }, [paint, manifest, store, selectedMetric, autoScale, visibleRows]);
 
   const legendValues = useMemo(() => {
-    const source = (visibleZipCodes && visibleZipCodes.length > 0)
-      ? visibleZipCodes.map(zip => zipData[zip]).filter(Boolean)
-      : Object.values(zipData);
-    return source.map(d => getMetricValue(d, selectedMetric)).filter(v => v > 0);
-  }, [visibleZipCodes, zipData, selectedMetric]);
+    if (!store) return [];
+    const wire = WIRE_OF[selectedMetric] ?? selectedMetric;
+    const out: number[] = [];
+    if (visibleRows && visibleRows.length > 0) {
+      for (let i = 0; i < visibleRows.length; i++) {
+        const v = store.valueAt(wire, visibleRows[i]);
+        if (v !== null && v > 0) out.push(v);
+      }
+      return out;
+    }
+    const col = store.col(wire);
+    if (!col) return out;
+    for (let row = 0; row < store.n; row++) {
+      const v = store.valueAt(wire, row);
+      if (v !== null && v > 0) out.push(v);
+    }
+    return out;
+  }, [visibleRows, store, selectedMetric]);
 
-  // Show error state if data failed to load
-  if (loadError) {
+  // Only a failure of BOTH paths is fatal. A dead snapshot with a live paint
+  // table still shows the map.
+  if (loadError && !paint) {
     return (
       <div className="w-full h-screen-safe bg-dashboard-bg flex items-center justify-center">
         <div className="bg-card p-8 rounded-lg shadow-lg max-w-md text-center">
-          <div className="text-destructive text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold text-foreground mb-2">Unable to Load Data</h2>
           <p className="text-muted-foreground mb-4">{loadError}</p>
           <button
@@ -287,14 +279,13 @@ export function HousingDashboard() {
 
   return (
     <div className="w-full h-screen-safe bg-dashboard-bg overflow-hidden flex flex-col">
-      {/* Skip Navigation Link */}
-      <a 
-        href="#main-map" 
+      <a
+        href="#main-map"
         className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[9999] focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded-md"
       >
         Skip to map
       </a>
-      
+
       {showSponsorBanner && <SponsorBanner onClose={() => setShowSponsorBanner(false)} />}
       <TopBar
         selectedMetric={selectedMetric}
@@ -303,34 +294,29 @@ export function HousingDashboard() {
         hideMobileControls={isMobile && (sidebarOpen || isExportMode)}
       >
         <MapExport
-          allZipData={zipData}
+          store={store}
           selectedMetric={selectedMetric}
           onExportModeChange={setIsExportMode}
         />
       </TopBar>
       <div className="flex flex-1 relative min-h-[400px] overflow-hidden">
-        {/* Mobile Bottom Sheet */}
         {isMobile && (
-          <MobileBottomSheet
-            isOpen={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-          >
+          <MobileBottomSheet isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)}>
             <Sidebar
               isOpen={sidebarOpen}
               zipData={selectedZip}
-              allZipData={zipData}
+              store={store}
               onClose={() => setSidebarOpen(false)}
             />
           </MobileBottomSheet>
         )}
-        
-        {/* Desktop Sidebar */}
+
         <div className="hidden md:flex absolute top-0 bottom-0 left-0 z-20 flex-col">
           <Sidebar
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
             zipData={selectedZip}
-            allZipData={zipData}
+            store={store}
           />
         </div>
         <div className="flex-1 relative">
@@ -340,12 +326,13 @@ export function HousingDashboard() {
               onZipSelect={handleZipSelect}
               searchZip={searchZip}
               searchTrigger={searchTrigger}
-              zipData={zipData}
+              store={store}
               isLoading={isLoading}
               loadingProgress={progress}
               classSource={classSource}
               onMapMove={handleMapMove}
               onUserInteraction={handleUserInteraction}
+              showLisa={showLisa}
               initialCenter={initialUrlStateRef.current.lng !== undefined && initialUrlStateRef.current.lat !== undefined ? [initialUrlStateRef.current.lng, initialUrlStateRef.current.lat] : undefined}
               initialZoom={initialUrlStateRef.current.zoom}
             />
@@ -358,7 +345,12 @@ export function HousingDashboard() {
                 breaks={classSource?.breaks ?? null}
                 autoScale={autoScale}
                 onAutoScaleChange={setAutoScale}
-                isIndexReady={isIndexReady}
+                showLisa={showLisa}
+                onShowLisaChange={store ? setShowLisa : undefined}
+                reliability={manifest ? {
+                  rankableShare: manifest.noise.rankable_zips / manifest.noise.reporting_zips,
+                  impliedN: manifest.noise.rankable_n_implied,
+                } : null}
               />
             </div>
           )}

@@ -103,6 +103,7 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
     panel_path.parent.mkdir(parents=True, exist_ok=True)
     rows = 0
     last_updated = set()
+    frequency = set()
     prev_period = None
     periods: set[str] = set()
     zips: set[str] = set()
@@ -118,6 +119,10 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
                 tbl = pa.Table.from_batches([batch])
                 assert_constants(tbl, "redfin_raw")
                 last_updated.update(pc.unique(tbl["LAST UPDATED"]).to_pylist())
+                # Verbatim, for the snapshot envelope. The UI labels the window
+                # with this string and never with a day count: the real window is
+                # 89-92 days, so "90 days" is false for most periods.
+                frequency.update(pc.unique(tbl["FREQUENCY"]).to_pylist())
 
                 names = tbl["REGION NAME"].to_pylist()
                 assert_zip_format(names, "redfin_raw REGION NAME")
@@ -176,6 +181,7 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
         "latest_period": latest_period,
         "latest_zips": len(latest_rows),
         "last_updated": last_updated.pop(),
+        "frequency": frequency.pop(),
         "panel_bytes": panel_path.stat().st_size,
     }
     log.info(

@@ -38,7 +38,30 @@ pytest==8.4.2
 # high-severity advisory open while satisfying the wheel requirement.
 pyarrow==25.0.1
 
-# numpy is deliberately NOT pinned here. Nothing in pipeline/ imports it — the
-# diff gate computes its own median so the gate has no numeric dependency of its
-# own — and it arrives transitively via pandas anyway. Phase 5 adds it explicitly
-# alongside scipy and statsmodels, when there is finally something importing it.
+# numpy was deliberately unpinned while nothing imported it directly. Phase 4's
+# `noise.py` is the something: it fits K on a 173 x 33,952 array and every
+# published relative standard error comes out of that fit.
+#
+# The version matters more here than it usually does. K is not a constant we
+# looked up, it is a number this file's numpy produces from the panel, and it is
+# then baked into every reliability tier and every paint byte. Pinning a version
+# other than the one K was derived under would mean the committed constant and
+# the running code disagree about a published number. K = 0.5598 was derived
+# under 2.5.2 on Python 3.14; that is what is pinned.
+#
+# cp314 wheels start at 2.3.2, so anything older would build from source on CI.
+numpy==2.5.2
+
+# scipy is Phase 5's, for `spatial.py`'s KNN (cKDTree over ~10k inner points).
+# It is NOT here to bring in a spatial-statistics library: libpysal and esda are
+# deliberately refused (spec section 6.11). Local Moran's I is ~15 lines of numpy
+# and is more explainable hand-written, and KNN weights are the right choice on
+# their own merits — ZCTA islands and disjoint parts produce zero-neighbour units
+# for which contiguity-based Moran's I is undefined.
+scipy==1.18.1
+
+# TEST-ONLY. `forecast.py` never imports it. It exists so a test can assert that
+# the hand-written closed-form AR(1) agrees with ETS(A,Ad,N) to 4 dp — which is
+# the whole justification for not shipping statsmodels in the hot path, where it
+# measured 1,245x slower per series.
+statsmodels==0.15.0

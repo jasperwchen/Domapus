@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import DataProcessorWorker from '@/workers/data-processor.ts?worker';
 import { trackError } from "@/lib/analytics";
-import { LoadDataRequest, DataProcessedResponse, ProgressData } from "@/workers/worker-types";
+import { LoadSnapshotRequest, SnapshotReadyResponse, ProgressData } from "@/workers/worker-types";
 
 interface PendingRequest {
-  resolve: (value: DataProcessedResponse) => void;
+  resolve: (value: SnapshotReadyResponse) => void;
   reject: (reason?: Error) => void;
 }
 
@@ -57,7 +57,7 @@ export function useDataWorker() {
           setIsLoading(false);
           const pending = requestsRef.current.get(id);
           if (pending) {
-            pending.resolve(data as DataProcessedResponse);
+            pending.resolve(data as SnapshotReadyResponse);
             requestsRef.current.delete(id);
           }
           break;
@@ -82,7 +82,7 @@ export function useDataWorker() {
     };
   }, []);
 
-  const processData = useCallback((message: { type: string; data?: LoadDataRequest }, options: { timeout?: number; retries?: number; transfer?: Transferable[] } = {}): Promise<DataProcessedResponse> => {
+  const processData = useCallback((message: { type: string; data?: LoadSnapshotRequest }, options: { timeout?: number; retries?: number; transfer?: Transferable[] } = {}): Promise<SnapshotReadyResponse> => {
     const { timeout = 30000, retries = 2, transfer = [] } = options;
     const worker = workerRef.current;
 
@@ -92,7 +92,7 @@ export function useDataWorker() {
       return Promise.reject(new Error("Worker is not initialized"));
     }
 
-    const attemptRequest = async (attempt: number): Promise<DataProcessedResponse> => {
+    const attemptRequest = async (attempt: number): Promise<SnapshotReadyResponse> => {
       return new Promise((resolve, reject) => {
         const id = `${Date.now()}-${Math.random()}`;
 

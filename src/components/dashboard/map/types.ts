@@ -65,4 +65,35 @@ export interface ZipData {
   sold_above_list_yoy: number | null;
   off_market_in_two_weeks: number | null;
   off_market_in_two_weeks_yoy: number | null;
+
+  // --- Statistics, computed by the pipeline ---------------------------------
+  /** Relative standard error of the median sale price: K / sqrt(homes_sold),
+   *  as a FRACTION (0.046 = 4.6%). See pipeline/noise.py. */
+  msp_rse: number | null;
+  /** The same, for median days on market, with its own fitted K. */
+  dom_rse: number | null;
+  /** Reliability tier 0..3 of the SALE SAMPLE — a property of the transaction
+   *  count, not of the painted metric. This is what the paint byte's high nibble
+   *  carries, which is why it is metric-invariant. */
+  rel: number | null;
+  /** Standard error of the year-over-year change, propagated. */
+  msp_yoy_se: number | null;
+  /** 12-month-ahead ZHVI forecast, in dollars. */
+  f_h12: number | null;
+  /** One-step residual sd. The client reconstructs any confidence band as
+   *  `exp(log(f_h12) + q[h][p] * f_sigma)` — two multiplies and an exp. */
+  f_sigma: number | null;
+  /** 3 full AR(1) fit · 2 short history · 1 metro path · 0 no forecast. */
+  f_tier: number | null;
+  /** Local Moran's I class: 0 ns · 1 HH · 2 LL · 3 LH · 4 HL. Computed only over
+   *  the rankable set — ungated it is a low-sample detector, not a statistic. */
+  lisa: number | null;
+
+  /** Bbox offsets from the anchor, x1e4 degrees. Real polygon bounds. */
+  bw: number | null;
+  bs: number | null;
+  be: number | null;
+  bn: number | null;
+  /** Coverage: 0 none · 1 zhvi only · 2 redfin only · 3 both. */
+  cov: number | null;
 }

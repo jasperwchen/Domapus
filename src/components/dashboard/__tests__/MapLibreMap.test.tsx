@@ -39,12 +39,21 @@ const mocks = vi.hoisted(() => {
       return { lat: 0, lng: 0 };
     }
     getBounds() {
+      // `onMapMove` now takes real LngLatBounds: the viewport filter compares
+      // against per-ZIP polygon bounds rather than a centroid box.
       return {
         toArray: () => [
           [-1, -1],
           [1, 1],
         ] as [[number, number], [number, number]],
+        getWest: () => -1,
+        getSouth: () => -1,
+        getEast: () => 1,
+        getNorth: () => 1,
       };
+    }
+    querySourceFeatures() {
+      return [] as Array<{ id?: string }>;
     }
     getZoom() {
       return 5;
@@ -132,7 +141,7 @@ describe("MapLibreMap", () => {
       <MapLibreMap
         selectedMetric="zhvi"
         onZipSelect={() => undefined}
-        zipData={{}}
+        store={null}
         isLoading={false}
         classSource={null}
         onMapMove={() => undefined}
@@ -157,7 +166,7 @@ describe("MapLibreMap", () => {
       <MapLibreMap
         selectedMetric="zhvi"
         onZipSelect={() => undefined}
-        zipData={{}}
+        store={null}
         isLoading={false}
         classSource={null}
         onMapMove={() => undefined}

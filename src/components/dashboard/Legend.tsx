@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Checkbox } from "@/components/ui/checkbox";
-import { HelpCircle, Loader2 } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { METRICS, getMetricLabel } from "@/lib/metrics";
 import { computeQuantiles } from "@/lib/quantiles";
@@ -16,7 +16,11 @@ interface LegendProps {
   breaks?: readonly number[] | null;
   autoScale?: boolean;
   onAutoScaleChange?: (value: boolean) => void;
-  isIndexReady?: boolean;
+  showLisa?: boolean;
+  onShowLisaChange?: (value: boolean) => void;
+  /** How many ZIPs are faded because their median rests on too few sales, and
+   *  what the threshold is. Null until the manifest lands. */
+  reliability?: { rankableShare: number; impliedN: number } | null;
 }
 
 // Formatted from the metric registry rather than by sniffing the key name. The
@@ -39,7 +43,8 @@ function formatLegendValue(value: number, metric: string): string {
 }
 
 export function Legend({
-  selectedMetric, metricValues, breaks, autoScale, onAutoScaleChange, isIndexReady = true,
+  selectedMetric, metricValues, breaks, autoScale, onAutoScaleChange,
+  showLisa, onShowLisaChange, reliability,
 }: LegendProps) {
   const isMobile = useIsMobile();
 
@@ -72,13 +77,6 @@ export function Legend({
   if (isMobile) {
     return (
       <div className="bg-card/95 backdrop-blur-sm shadow-lg border border-border rounded-lg p-3 w-[155px]">
-        {!isIndexReady && (
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-2">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Optimizing search...</span>
-          </div>
-        )}
-
         <div className="flex items-stretch gap-2 h-20">
           <div
             className="w-3 rounded-sm border border-border"
@@ -123,13 +121,6 @@ export function Legend({
         {getMetricLabel(selectedMetric)}
       </h3>
 
-      {!isIndexReady && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3 px-1">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          <span>Optimizing search...</span>
-        </div>
-      )}
-
       {onAutoScaleChange && (
         <div className="flex items-center gap-2 mb-3 px-1">
           <Checkbox
@@ -152,6 +143,38 @@ export function Legend({
               <TooltipContent side="top">
                 <p className="w-[180px] text-xs">
                   When enabled, the color scale automatically adjusts to the range of values currently visible on the map.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      )}
+
+      {onShowLisaChange && (
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <Checkbox
+            id="legend-lisa"
+            checked={showLisa}
+            onCheckedChange={(c) => onShowLisaChange(c === true)}
+            className="h-3.5 w-3.5"
+          />
+          <label
+            htmlFor="legend-lisa"
+            className="text-[10px] font-medium leading-none cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Show price clusters
+          </label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-3 w-3 text-muted-foreground/70 cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="w-[220px] text-xs">
+                  Marks ZIPs that sit inside a cluster of similarly priced
+                  neighbours, and the ones that stand apart from theirs. Shown only
+                  for ZIPs with enough sales to rank — below that, the pattern is
+                  sampling noise rather than geography.
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -208,6 +231,30 @@ export function Legend({
           />
           <span>No data reported</span>
         </div>
+
+        {/* The reliability channel, and the selection effect it causes.
+            Restricting the colour scale to ZIPs with enough sales to rank is the
+            honest choice, and it has a measurable cost: those ZIPs are more
+            expensive on average, so thin and rural markets are painted against a
+            scale set without them. Saying so is the point — an unlabelled fade
+            reads as a rendering artifact rather than as uncertainty. */}
+        {reliability && (
+          <div className="flex items-start gap-2 pt-1 text-[10px] text-muted-foreground">
+            <span
+              className="inline-block h-3 w-3 rounded-sm border border-border shrink-0 mt-[1px]"
+              style={{ background: CHOROPLETH_COLORS[4], opacity: 0.38 }}
+              aria-hidden="true"
+            />
+            <span>
+              Faded: fewer than {reliability.impliedN} sales, so the median is
+              too noisy to rank. {Math.round((1 - reliability.rankableShare) * 100)}% of
+              reporting ZIPs. The colour scale is set without them.{" "}
+              <a href="methodology" className="underline hover:text-foreground">
+                How this works
+              </a>
+            </span>
+          </div>
+        )}
       </div>
 
     </div>

@@ -25,13 +25,23 @@ export const ATTRIBUTION_FONT = "32px sans-serif";
 export const ATTRIBUTION_BASELINE_Y = EXPORT_CANVAS_PAD + 48;
 export const ATTRIBUTION_RIGHT_X = EXPORT_CANVAS_W - EXPORT_CANVAS_PAD;
 
-// Alaska bbox is bounded by what fits the inset at PMTILES_MIN_ZOOM (=3, the lowest
-// zoom level the tileset publishes). At zoom 3, a 224×144 px inset can fit ~9° of
-// latitude after Mercator stretching at lat 60°+, so we focus on the populated
-// Anchorage / Fairbanks / Juneau corridor and accept that the Aleutians and arctic
-// communities fall outside the frame. Lower minzooms would require regenerating the
-// tileset, which we don't want to do.
-const ALASKA_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-156.0, 56.5], [-130.0, 65.5]];
+// The offscreen insets render at the size they are DRAWN at.
+//
+// They used to render at 224x144 (`w-56 h-36`) and get upscaled into the 400x260
+// slot below, which is a 1.79x blur on the one part of the export a reader has to
+// squint at anyway. Rendering at the destination size costs nothing — it is the
+// same map, just not resampled.
+//
+// The bounds widen with the pixels. The old window was cut to the populated
+// Anchorage / Fairbanks / Juneau corridor because that was what fitted 224x144 at
+// PMTILES_MIN_ZOOM; at 400x260 there is room for most of the mainland state, so
+// Alaska stops being a map of three cities. The Aleutians still fall outside —
+// they cross the antimeridian, which is a projection problem rather than a
+// framing one — and the far arctic coast is still cut. `-Z2` in the geometry
+// rebuild is the durable fix; this needs no tileset change.
+const INSET_RENDER_W = 400;
+const INSET_RENDER_H = 260;
+const ALASKA_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-168.0, 54.5], [-130.0, 70.0]];
 const HAWAII_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-160.5, 18.9], [-154.8, 22.3]];
 const PMTILES_MIN_ZOOM = 3;
 const MAP_READY_TIMEOUT_MS = 10_000;
@@ -308,8 +318,9 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     }
 
     if (regionScopeRef.current === "national") {
-      const INSET_W = 400;
-      const INSET_H = 260;
+      // Same numbers the offscreen maps render at, so `drawImage` is 1:1.
+      const INSET_W = INSET_RENDER_W;
+      const INSET_H = INSET_RENDER_H;
       const INSET_LABEL_H = 32;
       const insetY = mapBottom - INSET_H - INSET_LABEL_H - 12;
       let insetX = mapLeft + 12;
@@ -651,7 +662,10 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
                   <span className="text-[10px] uppercase tracking-wider font-semibold py-0.5 px-2 bg-slate-50 text-slate-500 border-b">
                     Alaska
                   </span>
-                  <div className="w-56 h-36 relative">
+                  <div
+                    className="relative"
+                    style={{ width: INSET_RENDER_W, height: INSET_RENDER_H }}
+                  >
                     <div ref={alaskaMapRef} className="absolute inset-0" />
                   </div>
                 </div>
@@ -661,7 +675,10 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
                   <span className="text-[10px] uppercase tracking-wider font-semibold py-0.5 px-2 bg-slate-50 text-slate-500 border-b">
                     Hawaii
                   </span>
-                  <div className="w-56 h-36 relative">
+                  <div
+                    className="relative"
+                    style={{ width: INSET_RENDER_W, height: INSET_RENDER_H }}
+                  >
                     <div ref={hawaiiMapRef} className="absolute inset-0" />
                   </div>
                 </div>

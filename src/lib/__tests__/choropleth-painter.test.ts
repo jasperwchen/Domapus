@@ -2,9 +2,54 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   CHUNK, ChoroplethPainter, classOpacityExpression, classPaintExpression,
 } from "../choropleth-painter";
-import { LegacyClassSource, ViewportClassSource, classify } from "../class-source";
+import { PaintTableSource, ViewportClassSource, classify } from "../class-source";
 import { CHOROPLETH_COLORS, CLASSES, NO_DATA_COLOR } from "../choropleth";
+import { PaintTable } from "../paint-table";
+import { computeQuantileBuckets } from "../quantiles";
+import { ZipTable } from "../zip-table";
+import { NULL_SENTINEL } from "../snapshot";
 import type { ZipData } from "@/components/dashboard/map/types";
+
+// Encodes a paint table exactly the way `pipeline/paint.py` does, so these tests
+// exercise the SHIPPED byte layout rather than a stand-in:
+//   byte = (reliability_tier << 4) | (class_index + 1),  0 = no data for this ZIP.
+function encodePaint(values: Record<string, number | null>, tier = 3) {
+  const present = Object.values(values).filter((v): v is number => v !== null);
+  const breaks = computeQuantileBuckets(present, CLASSES);
+  const bytes = new Uint8Array(100_000);
+  for (const [zip, v] of Object.entries(values)) {
+    if (v === null) continue;
+    bytes[+zip] = (tier << 4) | (classify(v, breaks) + 1);
+  }
+  return {
+    table: PaintTable.from(bytes.buffer, "test", CLASSES, CHOROPLETH_COLORS.length),
+    breaks,
+  };
+}
+
+/** A `PaintTableSource` over `data`, the way the app builds one after a fetch. */
+function sourceFor(data: Record<string, ZipData>, metric: keyof ZipData) {
+  const values: Record<string, number | null> = {};
+  for (const [zip, row] of Object.entries(data)) {
+    const v = row[metric];
+    values[zip] = typeof v === "number" ? v : null;
+  }
+  const { table, breaks } = encodePaint(values);
+  return new PaintTableSource(table, breaks, Object.keys(data));
+}
+
+/** A minimal single-column `ZipTable`, for the viewport-scale tests. */
+function storeFor(zips: string[], values: (number | null)[], scale = 1): ZipTable {
+  const header = {
+    format: "domapus-snapshot" as const, version: 3, null_sentinel: NULL_SENTINEL,
+    built_utc: "", period_start: null, period_end: null, frequency: "Rolling 3 Months",
+    vintage: "", zhvi_month: null, classes: CLASSES,
+    dicts: {}, scales: { zhvi: scale }, breaks: {}, classing: {},
+    f: ["zhvi"], z: zips,
+  };
+  const col = new Int32Array(values.map((v) => (v === null ? NULL_SENTINEL : v * scale)));
+  return ZipTable.from(header, { zhvi: col.buffer });
+}
 
 // A MapLibre stand-in that behaves like the real thing in the two ways this
 // test depends on: feature-state accumulates per feature id, and it is re-applied
@@ -95,7 +140,7 @@ describe("ChoroplethPainter", () => {
   it("writes every ZIP, not only the visible ones", () => {
     const data = makeData(50, (i) => ({ zhvi: 100_000 + i * 10_000 }));
     const map = fakeMap();
-    new ChoroplethPainter(map as never).schedule(new LegacyClassSource(data, "zhvi"));
+    new ChoroplethPainter(map as never).schedule(sourceFor(data, "zhvi"));
     drain();
     expect(map.state.size).toBe(50);
   });
@@ -104,9 +149,9 @@ describe("ChoroplethPainter", () => {
     const data = makeData(50, (i) => ({ zhvi: 100_000 + i * 10_000 }));
     const map = fakeMap();
     const painter = new ChoroplethPainter(map as never);
-    painter.schedule(new LegacyClassSource(data, "zhvi"));
+    painter.schedule(sourceFor(data, "zhvi"));
     drain();
-    painter.schedule(new LegacyClassSource(data, "median_sale_price"));
+    painter.schedule(sourceFor(data, "median_sale_price"));
     drain();
     // The regression tripwire. Any write here is a full source reload.
     expect(map.paintWrites).toHaveLength(0);
@@ -123,13 +168,13 @@ describe("ChoroplethPainter", () => {
     const map = fakeMap();
     const painter = new ChoroplethPainter(map as never);
 
-    painter.schedule(new LegacyClassSource(data, "zhvi"));
+    painter.schedule(sourceFor(data, "zhvi"));
     drain();
     const offscreen = "10000"; // lowest zhvi, so the lowest class
     expect(map.state.get(offscreen)!.k).toBe(0);
 
     // Switch metric while that ZIP is off screen.
-    const swapped = new LegacyClassSource(data, "median_sale_price");
+    const swapped = sourceFor(data, "median_sale_price");
     painter.schedule(swapped);
     drain();
 
@@ -150,13 +195,13 @@ describe("ChoroplethPainter", () => {
     const painter = new ChoroplethPainter(map as never);
 
     // One frame only, so the first epoch is deliberately left half applied.
-    painter.schedule(new LegacyClassSource(data, "zhvi"));
+    painter.schedule(sourceFor(data, "zhvi"));
     drain(1);
     expect(map.state.size).toBeLessThan(N);
     expect(map.state.size).toBeGreaterThan(0);
 
     // The metric changes while that partial write is still in flight.
-    const next = new LegacyClassSource(data, "median_sale_price");
+    const next = sourceFor(data, "median_sale_price");
     painter.schedule(next);
     drain();
 
@@ -167,10 +212,41 @@ describe("ChoroplethPainter", () => {
     }
   });
 
+  it("applies a reliability change even when the class is unchanged", () => {
+    // The regression this guards against, which shipped and was caught in the
+    // browser: the write-skip cache keyed on the class index alone, because
+    // reliability used to be the same for every metric. It is not any more —
+    // ACTIVE_LISTINGS is exempt from the fade and expresses that by reporting
+    // every ZIP as tier 3 — so a ZIP whose class happened to match under both
+    // metrics kept the previous metric's tier and stayed faded on a map that
+    // must not fade anything.
+    const data = makeData(20, (i) => ({ zhvi: 100_000 + i * 10_000 }));
+    const map = fakeMap();
+    const painter = new ChoroplethPainter(map as never);
+
+    const values = Object.fromEntries(
+      Object.entries(data).map(([zip, r]) => [zip, r.zhvi as number]),
+    );
+    // Same values, so IDENTICAL classes; only the tier differs.
+    const low = encodePaint(values, 0);
+    const high = encodePaint(values, 3);
+    const zips = Object.keys(data);
+
+    painter.schedule(new PaintTableSource(low.table, low.breaks, zips));
+    drain();
+    expect(map.state.get(zips[0])!.rel).toBe(0);
+    const classBefore = map.state.get(zips[0])!.k;
+
+    painter.schedule(new PaintTableSource(high.table, high.breaks, zips));
+    drain();
+    expect(map.state.get(zips[0])!.k).toBe(classBefore); // class really is unchanged
+    expect(map.state.get(zips[0])!.rel).toBe(3);         // ...and the tier still updated
+  });
+
   it("paints no-data ZIPs grey rather than transparent", () => {
     const data = makeData(10, (i) => (i < 5 ? { zhvi: 100_000 * (i + 1) } : { zhvi: null }));
     const map = fakeMap();
-    new ChoroplethPainter(map as never).schedule(new LegacyClassSource(data, "zhvi"));
+    new ChoroplethPainter(map as never).schedule(sourceFor(data, "zhvi"));
     drain();
     expect(map.state.get("10009")!.k).toBe(-1);
     expect(map.colorOf("10009")).toBe(NO_DATA_COLOR);
@@ -180,12 +256,12 @@ describe("ChoroplethPainter", () => {
 describe("class sources", () => {
   it("produce CLASSES - 1 breaks", () => {
     const data = makeData(500, (i) => ({ zhvi: 100_000 + i * 1000 }));
-    expect(new LegacyClassSource(data, "zhvi").breaks).toHaveLength(CLASSES - 1);
+    expect(sourceFor(data, "zhvi").breaks).toHaveLength(CLASSES - 1);
   });
 
   it("assign every class index in range", () => {
     const data = makeData(500, (i) => ({ zhvi: 100_000 + i * 1000 }));
-    const src = new LegacyClassSource(data, "zhvi");
+    const src = sourceFor(data, "zhvi");
     for (const zip of src.zips) {
       const k = src.classOf(zip);
       expect(k).toBeGreaterThanOrEqual(0);
@@ -195,8 +271,8 @@ describe("class sources", () => {
 
   it("give each source a distinct epoch, so a redraw is never skipped", () => {
     const data = makeData(10, (i) => ({ zhvi: 1000 + i }));
-    const a = new LegacyClassSource(data, "zhvi");
-    const b = new LegacyClassSource(data, "zhvi");
+    const a = sourceFor(data, "zhvi");
+    const b = sourceFor(data, "zhvi");
     expect(a.epoch).not.toBe(b.epoch);
   });
 
@@ -211,11 +287,45 @@ describe("class sources", () => {
     // Correct rather than a gap: a ZIP outside the viewport has no place on a
     // viewport-derived scale, and the painter still writes the full set so
     // nothing keeps a stale colour.
-    const data = makeData(100, (i) => ({ zhvi: 100_000 + i * 1000 }));
-    const visible = Object.keys(data).slice(0, 40);
-    const src = new ViewportClassSource(data, "zhvi", visible);
-    expect(src.classOf(visible[0])).toBeGreaterThanOrEqual(0);
+    const zips = Array.from({ length: 100 }, (_, i) => String(10_000 + i));
+    const store = storeFor(zips, zips.map((_, i) => 100_000 + i * 1000));
+    const { table } = encodePaint(
+      Object.fromEntries(zips.map((z, i) => [z, 100_000 + i * 1000])),
+    );
+    const visibleRows = new Int32Array(Array.from({ length: 40 }, (_, i) => i));
+
+    const src = new ViewportClassSource(store, table, "zhvi", visibleRows);
+    expect(src.classOf(zips[0])).toBeGreaterThanOrEqual(0);
     expect(src.classOf("10099")).toBe(-1);
     expect(src.zips).toHaveLength(100);
+  });
+
+  it("PaintTableSource reads the class and tier out of one byte", () => {
+    // The layout contract, asserted from the client side. The pipeline asserts
+    // the same thing from the other side, against the same bytes.
+    const bytes = new Uint8Array(100_000);
+    bytes[10001] = (3 << 4) | 7;   // tier 3, class 6 — the legal maximum, 0x37
+    bytes[10002] = (0 << 4) | 1;   // tier 0, class 0
+    bytes[10003] = 0;              // no data
+    const table = PaintTable.from(bytes.buffer, "zhvi", CLASSES, CHOROPLETH_COLORS.length);
+
+    expect(bytes[10001]).toBe(0x37);
+    expect(table.classOf("10001")).toBe(6);
+    expect(table.reliabilityOf("10001")).toBe(3);
+    expect(table.classOf("10002")).toBe(0);
+    expect(table.reliabilityOf("10002")).toBe(0);
+    expect(table.classOf("10003")).toBe(-1);
+    expect(table.reliabilityOf("10003")).toBe(-1);
+    // Leading zeros survive: the ZIP is parsed as a base-10 integer index.
+    bytes[501] = (2 << 4) | 3;
+    expect(table.classOf("00501")).toBe(2);
+    expect(table.reliabilityOf("00501")).toBe(2);
+  });
+
+  it("PaintTable refuses to construct rather than painting a lie", () => {
+    expect(() => PaintTable.from(new ArrayBuffer(99_999), "zhvi", CLASSES, 7))
+      .toThrow(/99999 bytes/);
+    expect(() => PaintTable.from(new ArrayBuffer(100_000), "zhvi", 12, 7))
+      .toThrow(/12 classes/);
   });
 });
