@@ -60,13 +60,19 @@ def _require(stage: str) -> dict:
     return r
 
 
-def _live_fingerprints() -> dict:
+def _live_manifest() -> dict:
+    """The published manifest, or {} if there is none we can read."""
     if not LIVE_MANIFEST.exists():
         return {}
     try:
-        return json.loads(LIVE_MANIFEST.read_text(encoding="utf-8")).get("fingerprints", {})
-    except (OSError, ValueError):
+        return json.loads(LIVE_MANIFEST.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        log.warning("Could not read the live manifest %s: %s", LIVE_MANIFEST, e)
         return {}
+
+
+def _live_fingerprints() -> dict:
+    return _live_manifest().get("fingerprints", {})
 
 
 def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
@@ -163,19 +169,14 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         (r.get("period_begin") for r in redfin_records.values() if r.get("period_begin")), None
     )
 
-    prev_ts, live = serialize.load_live(LIVE_SNAPSHOT)
-    zips_changed, points_changed = serialize.count_changes(live, records)
-    changed = zips_changed > 0 or points_changed > 0
+    live_payload = serialize.read_live(LIVE_SNAPSHOT)
+    prev_ts, live = serialize.decode_live(live_payload)
 
     # --- S4 GATE ------------------------------------------------------------
     # Runs BEFORE anything is written, so a refused build leaves no artifact a
     # later step could mistake for a good one.
-    live_coverage = None
-    if LIVE_MANIFEST.exists():
-        try:
-            live_coverage = json.loads(LIVE_MANIFEST.read_text(encoding="utf-8")).get("coverage")
-        except (OSError, ValueError):
-            live_coverage = None
+    live_manifest = _live_manifest()
+    live_coverage = live_manifest.get("coverage")
     gate_report = gate.gate(
         records, live, gate.load_thresholds(GATE_BASELINE),
         coverage={k: coverage[k] for k in serialize.COVERAGE},
@@ -238,9 +239,15 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     )
     _report("s8_history", "ok", **history_report)
 
+    # The change report runs HERE, on a finished build, and not back at S3 where
+    # the gate reads the same live snapshot. Seven wire columns are written by
+    # S5/S5b/S5c; diffing before them compares this build's empty statistics
+    # against the live snapshot's real ones and calls every ZIP changed.
+    change_report = serialize.diff(live_payload, records)
+
     out = BUILD / "zip-data.json"
     written = serialize.write_snapshot(records, out, {
-        "built_utc": now if (prev_ts is None or changed) else prev_ts,
+        "built_utc": now,
         "period_start": period_begin,
         "period_end": redfin_period,
         "frequency": redfin_report["frequency"],
@@ -252,8 +259,22 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
                      for m, c in class_report["classing"].items()},
     })
 
+    # THE PUBLISH DECISION. Not a count of moved cells — the identity of the bytes
+    # this release would serve, snapshot and paint tables together. Re-running the
+    # pipeline over unchanged input reproduces the digest exactly, so the run
+    # publishes nothing whatever a developer has left lying in `public/data/`.
+    # A missing or unreadable live digest means PUBLISH: the direction that costs
+    # a redundant deploy is safe, and the direction that silently skips one is the
+    # bug this replaces.
+    digest = serialize.release_digest(written["payload_digest"], paint_assets)
+    live_digest = live_manifest.get("content_digest")
+    content_changed = live_digest is None or digest != live_digest
+
     manifest = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "content_digest": digest,
+        "previous_content_digest": live_digest,
+        "content_changed": content_changed,
         "redfin": {
             "period_end": redfin_period,
             "period_begin": period_begin,
@@ -273,7 +294,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
                   "rows": panel_report["rows"]},
         "coverage": {k: coverage[k] for k in serialize.COVERAGE},
         "orphans": coverage["orphans"],
-        "changed": {"zips": zips_changed, "data_points": points_changed},
+        "changed": {**change_report, "compared_against_built_utc": prev_ts},
         "validation": validation,
         "changes": changes_report,
         "gate": gate_report,
@@ -298,24 +319,44 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         json.dumps({"count": coverage["orphans"], "zips": coverage["orphan_zips"]}, indent=2),
         encoding="utf-8",
     )
+    # The frontend reads only the three date fields here. The rest is the publish
+    # decision in the smallest file the workflow can `jq` — `content_changed` is
+    # what gates the commit and the deploy, and `change_status` is what tells a
+    # reader whether `data_points_changed` is a movement count or a structural one.
     (BUILD / "last_updated.json").write_text(
         json.dumps({
             "last_updated_utc": datetime.now(timezone.utc).isoformat(),
             "period_end": redfin_period,
             "zhvi_period_end": zhvi_period,
             "total_zip_codes": len(records),
-            "zip_codes_changed": zips_changed,
-            "data_points_changed": points_changed,
+            "content_changed": content_changed,
+            "content_digest": digest,
+            "change_status": change_report["status"],
+            "zip_codes_changed": change_report["zips"]["changed"],
+            "data_points_changed": change_report["data_points"],
         }, indent=2),
         encoding="utf-8",
     )
     _report("s3_assemble", "ok", **manifest)
 
     log.info(
-        "Build complete: %s ZIPs, %s changed, %s data points; %s",
-        f"{len(records):,}", f"{zips_changed:,}", f"{points_changed:,}", BUILD,
+        "Build complete: %s ZIPs, %s; content %s (%s); %s",
+        f"{len(records):,}", _change_summary(change_report),
+        "CHANGED" if content_changed else "unchanged", digest[:12], BUILD,
     )
     return 0
+
+
+def _change_summary(report: dict) -> str:
+    """One line a human can read without opening the manifest."""
+    if report["status"] != serialize.DIFF_COMPARED:
+        return f"{report['status']} ({report.get('note', '')})"
+    z, top = report["zips"], list(report["by_column"])[:3]
+    return (
+        f"{z['changed']:,} ZIPs moved (+{z['added']:,} new, -{z['removed']:,} gone), "
+        f"{report['data_points']:,} cells"
+        + (f"; busiest columns {', '.join(top)}" if top else "")
+    )
 
 
 def main() -> int:

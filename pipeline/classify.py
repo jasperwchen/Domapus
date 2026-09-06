@@ -176,11 +176,20 @@ def _equal_anchored_100_breaks(v: np.ndarray) -> list[float]:
 def _diverging_breaks(bound: float) -> list[float]:
     """Six edges symmetric about zero, so the middle class straddles no change.
 
-    With 7 classes the centre class is centred on 0 and the outer edges land on
-    +-bound, which makes the step `bound / 2.5`: at B = 20 the edges are
-    -20 -12 -4 +4 +12 +20 and the neutral class is -4%..+4%.
+    With 7 classes there are 6 edges, the outer two land ON +-bound, and the five
+    gaps between them are equal — so the step is `2 * bound / (EDGES - 1)`. At
+    B = 20 the edges are -20 -12 -4 +4 +12 +20 and the neutral class is -4%..+4%.
+
+    THE DIVISOR IS `EDGES - 1`, NOT `EDGES`, and getting that wrong is silent.
+    It shipped as `bound / (EDGES / 2 + 0.5)` = `bound / 3.5`, which put the edges
+    at -20 -14.29 -8.57 -2.86 +2.86 +8.57: still six edges, still increasing,
+    still passing every assertion in `compute()`, and asymmetric. The top class
+    then meant ">= +8.57%" while the legend's own reasoning ("p95 of |yoy| is
+    18.85, round to 20") described a +-20 scale, and 8.75% of ZIPs saturated at
+    the top against 0.22% at the bottom on a scale whose entire purpose is that
+    the two sides are comparable.
     """
-    step = bound / (EDGES / 2.0 + 0.5)
+    step = 2.0 * bound / (EDGES - 1)
     return [round(-bound + step * i, 4) for i in range(EDGES)]
 
 

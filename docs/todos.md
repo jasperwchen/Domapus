@@ -81,11 +81,15 @@ deploy footprint (92.6 -> 46.9 MB) and the coverage fix itself.
 
 ## Phase 7 — remaining
 
-- [ ] **Run the real pipeline end to end so S8 emits from `forecast.py`'s own horizons.**
-      `build/history/` was produced by driving `history.write()` with `f_h12` standing in for
-      h1/h3/h6, because a full run needs the source CSVs. The shipped `f` array is therefore
-      four copies of the h12 value until `py -3.14 -m pipeline` runs. Everything else — axes,
-      series, sigma, the q table, bucket sizes — is real.
+- [ ] **The history buckets are not on the `data-2026-07` release, so a standalone deploy
+      ships a broken sidebar chart.** `public/data/history/` is gitignored, so a CI checkout
+      has none of it. `update_data.yml` tars it onto the release and `deploy.yml` unpacks it —
+      that path is whole, but the release predates Phase 7 and carries no `history-*.tar.gz`.
+      `deploy.yml` *warns* rather than fails here (deliberately, unlike the geometry asset), so
+      a `workflow_dispatch` deploy today would publish silently without history. Either run
+      `update_data.yml` (which builds and uploads it) or upload
+      `tar -czf history-2026-07-31.tar.gz -C public/data/history .` to `data-2026-07` by hand
+      before deploying.
 
 ## Blocked on user
 
@@ -222,3 +226,66 @@ publishing 16 days behind `housing_market`, so a shared staleness contract would
 
 Timeline, verified online: the new Data Center launched 2026-05-12, the old feed kept publishing
 for three more weeks and stopped 2026-06-02 — no deprecation notice, no 404.
+
+---
+
+## Change detection and the publish gate — LANDED 2026-09-06. Rationale in CHANGES.md.
+
+Verified by a full offline run: 33,771 ZIPs, **0 moved, 0 cells**, where the old code
+reported a constant 28,919. Content correctly reported CHANGED, because the `zhvi_yoy`
+paint table moved (the diverging fix below).
+
+`[ ]` **The diverging fix is not published.** `public/data/` still carries the asymmetric
+scale (`-20 -14.29 -8.57 -2.86 +2.86 +8.57`, top class saturating 2,298 ZIPs against 31
+now). The data itself is unchanged — 8 of the 9 paint hashes are byte-identical — so this
+is purely a colour change. It reaches the site either on the next monthly run or
+immediately via a **`force_rebuild`** workflow dispatch. Decide which.
+
+`[ ]` **Acceptance-test the workflow changes on a dispatch before trusting them.** Three
+of the four are step-ordering or `if:` guards that CI cannot exercise:
+- the `Did upstream change?` short-circuit (dispatch with nothing changed upstream),
+- the `sha256sum -c` paint verification (should pass; corrupt a table locally to see it
+  fail — done locally, not in CI),
+- `git add -A public/data/paint` staging last month's hashed files as deletions.
+
+---
+
+## Reviewed but not actioned — pipeline and scripts
+
+Findings from the 2026-09-06 read of every Python file. None is a shipped defect; each is
+a judgement call worth making deliberately rather than by neglect.
+
+`[ ]` **`scripts/calibrate_diff_gate.py:from_panel` materialises the whole panel as Python
+objects.** It builds one three-key dict per (period, ZIP) cell over 4.9M rows, plus three
+`to_pylist()` copies of the same data — roughly 3 GB peak and several minutes. It survives
+on a 16 GB runner and it is a manual script, so this is cost, not risk. `noise._pivot`
+already does the same reshape in numpy in a few seconds; reusing that pattern would make it
+a ~10-line function.
+
+`[ ]` **Four near-identical dense-pivot implementations.** `noise._pivot`,
+`forecast.run`, `zhvi.pooled_yoy` and `history._dense` each turn a long parquet panel into
+a dense `[T x Z]` float array, and each does the index-mapping slightly differently
+(`np.fromiter` over a dict in three of them, `pc.index_in` in the fourth). One shared
+helper would remove ~60 lines and one class of index bug.
+
+`[ ]` **`zhvi.py` parses the ZHVI CSV twice** — `write_panel` and `process` each call
+`pd.read_csv` on the same bytes — and `process` then walks ~26k rows with `iterrows()`,
+which is the slowest way pandas offers to read a frame. Parsing once and vectorising the
+three columns would cut a few seconds and a copy of a 123 MB file.
+
+`[ ]` **`forecast.fit` emits `RuntimeWarning: Mean of empty slice` on every run.** The
+`np.errstate(invalid="ignore")` around it suppresses *floating-point error states*, not the
+`RuntimeWarning` that `nanmean` raises on an all-NaN column. The results are NaN, which the
+tier ladder already handles, so this is log noise — but it is noise that would hide a real
+warning. `warnings.catch_warnings()` is the matching tool.
+
+`[ ]` **`DIVERGING_BOUND_PCT` in `src/lib/choropleth.generated.ts` is exported and unused.**
+It duplicates `classify.DIVERGING_BOUND` on the frontend side. Nothing reads it today — the
+legend takes its edges from the manifest, which is right — but it is a second authority
+sitting there waiting to be used, which is the exact hazard `class-source.ts` exists to
+prevent. Delete it, or wire it to an assertion against the manifest.
+
+`[ ]` **`changes.py` reads `panel.parquet` three times** (`_period_map` for the base period,
+then twice more inside `_reconcile`), each time loading all 4.9M rows of 14-30 columns and
+filtering to one period in Python. Parquet row-group predicate pushdown via the dataset API
+would read a fraction of that. Measured cost is a few seconds, so this is low priority.

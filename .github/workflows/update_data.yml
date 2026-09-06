@@ -27,6 +27,14 @@ on:
           after a frontend-only change.
         type: boolean
         default: false
+      force_rebuild:
+        description: >-
+          Rebuild even when the upstream fingerprint is unchanged. Needed after a
+          PIPELINE change: S0 exits without downloading when upstream has not
+          moved, so a code fix that changes what we compute would otherwise not
+          reach the site until Redfin happens to publish.
+        type: boolean
+        default: false
 
 concurrency:
   group: data-pipeline
@@ -70,9 +78,28 @@ jobs:
         if [ "${{ inputs.override_diff_gate }}" = "true" ]; then
           ARGS="--override-diff-gate --override-reason ${{ toJSON(inputs.override_reason) }}"
         fi
+        if [ "${{ inputs.force_rebuild }}" = "true" ]; then
+          ARGS="$ARGS --force"
+        fi
         python -u -m pipeline $ARGS
 
+    - name: Did upstream change?
+      id: upstream
+      # S0 exits 0 without downloading when the upstream fingerprint matches the
+      # live manifest. That is a SUCCESS, not a failure — but it writes no
+      # build/manifest.json, so every step after this one used to fail on a
+      # missing file and the run went red for doing exactly the right thing.
+      run: |
+        set -euo pipefail
+        UNCHANGED=$(jq -r '.unchanged // false' build/s0_probe_report.json 2>/dev/null || echo false)
+        echo "unchanged=$UNCHANGED" >> "$GITHUB_OUTPUT"
+        if [ "$UNCHANGED" = "true" ]; then
+          echo "Upstream fingerprint is unchanged. Nothing was downloaded or built."
+          echo "Re-run with force_rebuild if a pipeline change needs to reach the site."
+        fi
+
     - name: Report upstream staleness
+      if: steps.upstream.outputs.unchanged != 'true'
       # A WARNING, never a failure. A hard fail refuses to publish, so the
       # manifest carrying the outage banner is never written and the banner can
       # never render — the hard fail and the banner cancel each other out. Stale
@@ -86,6 +113,7 @@ jobs:
         fi
 
     - name: Publish the verified build
+      if: steps.upstream.outputs.unchanged != 'true'
       # Copies into public/data/ only after both gates report ok, so a refused
       # build leaves the last known-good published data untouched. The archive
       # half of phase 2 is no longer blocked — releases exist now, and the next
@@ -95,11 +123,32 @@ jobs:
         jq -e '.status == "ok"' build/s3_assemble_report.json > /dev/null
         cp build/zip-data.json build/last_updated.json build/manifest.json \
            build/orphans.json public/data/
+        # The paint tables are the FIRST-PAINT artifact and they are committed,
+        # unlike history. Their filenames carry a content hash, so a data change
+        # renames every one of them; replacing the directory wholesale is what
+        # makes the stale ones disappear instead of accumulating.
+        rm -rf public/data/paint
+        cp -r build/paint public/data/paint
         # ~6,100 files, ~121 MB. Gitignored — the next step puts them on the release.
         rm -rf public/data/history
         cp -r build/history public/data/history
 
+    - name: Verify the paint tables the manifest names actually exist
+      if: steps.upstream.outputs.unchanged != 'true'
+      # `vite.config.ts` inlines `manifest.assets.paint` into index.html at BUILD
+      # time so the 24 KB paint fetch starts in the same tick as the manifest
+      # fetch. A manifest naming a file that was not published is therefore not a
+      # 404 on a background asset — it is a 404 on the critical path, and the map
+      # renders grey. Fail here, before the commit, rather than on the live site.
+      run: |
+        set -euo pipefail
+        jq -r '.assets.paint[] | "\(.sha256)  public/data/\(.file)"' \
+          public/data/manifest.json > "$RUNNER_TEMP/paint.sha256"
+        cat "$RUNNER_TEMP/paint.sha256"
+        sha256sum -c "$RUNNER_TEMP/paint.sha256"
+
     - name: Archive the snapshot to the data release
+      if: steps.upstream.outputs.unchanged != 'true'
       # The archive used to be committed as LFS objects, which put 14.45 MiB of
       # data no code path reads behind every checkout (prune-dist.mjs already
       # strips data/archive from dist). Releases hold it now, so this uploads
@@ -141,6 +190,7 @@ jobs:
         rm -f "$ASSET"
 
     - name: Archive the history buckets to the data release
+      if: steps.upstream.outputs.unchanged != 'true'
       # Same reasoning as the snapshot above, and more so: S8 emits ~6,100 files and
       # ~121 MB every month. One tarball per period; deploy.yml unpacks it back into
       # public/data/history before building.
@@ -167,26 +217,49 @@ jobs:
         rm -f "$ASSET"
 
     - name: Check for changes to commit
+      if: steps.upstream.outputs.unchanged != 'true'
       id: check_changes
+      # The gate is the RELEASE DIGEST, not a count of moved cells. The digest is
+      # a sha256 over the snapshot's content columns plus every paint table's own
+      # hash, with timestamps excluded, so a rebuild over unchanged upstream data
+      # reproduces it exactly and this step correctly says "no".
+      #
+      # It used to gate on `data_points_changed > 0`. That number was structurally
+      # unable to be zero (it counted a `period_end` key with no wire column, so
+      # every reporting ZIP was "changed" every run) and, had it ever been fixed
+      # naively, a missing baseline returned 0 and would have silently skipped
+      # publication. A missing digest therefore means CHANGED here: a redundant
+      # deploy is cheap, a skipped one looks exactly like the deploy bug.
       run: |
-        DATA_POINTS_CHANGED=$(jq '.data_points_changed' public/data/last_updated.json || echo 0)
-        if [ "$DATA_POINTS_CHANGED" -gt 0 ]; then
-          echo "changes=true" >> $GITHUB_OUTPUT
-        else
-          echo "changes=false" >> $GITHUB_OUTPUT
-        fi
+        set -euo pipefail
+        # NOT `.content_changed // true`. jq's `//` treats `false` as empty just
+        # like `null`, so the alternative form turns "unchanged" into "publish"
+        # and the gate can never say no — which is the bug this step replaces,
+        # rebuilt out of a different mistake.
+        CHANGED=$(jq -r 'if .content_changed == null then true else .content_changed end'           public/data/last_updated.json)
+        echo "change_status  : $(jq -r '.change_status // "?"' public/data/last_updated.json)"
+        echo "zips changed   : $(jq -r '.zip_codes_changed // "?"' public/data/last_updated.json)"
+        echo "cells changed  : $(jq -r '.data_points_changed // "n/a"' public/data/last_updated.json)"
+        echo "content digest : $(jq -r '.content_digest // "?"' public/data/last_updated.json)"
+        echo "publishing     : $CHANGED"
+        echo "changes=$CHANGED" >> "$GITHUB_OUTPUT"
 
     - name: Commit and push if changed
       id: commit
-      if: steps.check_changes.outputs.changes == 'true'
+      if: steps.upstream.outputs.unchanged != 'true' && steps.check_changes.outputs.changes == 'true'
       run: |
+        set -euo pipefail
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        # `-A` on the paint directory so the PREVIOUS release's hashed filenames
+        # are staged as deletions. Without it the tree accumulates one dead 100 KB
+        # table per metric per month.
         git add public/data/zip-data.json public/data/last_updated.json \
                 public/data/manifest.json public/data/orphans.json
+        git add -A public/data/paint
         git commit -m "Update market data - $(date +'%Y-%m-%d %H:%M:%S' --utc)"
         git push
-        echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+        echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

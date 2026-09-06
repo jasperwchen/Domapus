@@ -365,3 +365,207 @@ def test_every_fixture_zip_has_exactly_one_row_per_period():
     )
     dupes = {k: v for k, v in counts.items() if v > 1}
     assert not dupes, f"duplicate (ZIP, period) keys: {dupes}"
+
+
+# --- The change report -----------------------------------------------------
+# What the old `count_changes` reported was a constant: it iterated SOURCE_KEYS,
+# which contains `period_end` — a key with NO wire column — so `live[z]` had
+# None there for every ZIP on every run and every Redfin-reporting ZIP read as
+# changed by exactly one point. Published forever as 28,919 zips AND 28,919 data
+# points, which is the tell: those two can only be equal by accident.
+
+def _published(records, tmp_path):
+    """`records` as the live snapshot would come back on the next run."""
+    out = tmp_path / "live.json"
+    serialize.write_snapshot(records, out, _envelope())
+    return serialize.read_live(out)
+
+
+def _sample_records(latest):
+    """A FINISHED build: assembled, then carrying the statistics S5-S5c write.
+
+    `diff` refuses an unfinished one on purpose — seven wire columns have no
+    producer until after the diff gate, so diffing at S3 reports them as moved
+    for every ZIP."""
+    meta = {z: {"city": "X", "county": "Y", "state": "NY", "metro": None,
+                "lat": 1.0, "lng": -2.0} for z in latest}
+    records, _, _ = serialize.assemble(meta, _zhvi_for(latest), latest)
+    for i, rec in enumerate(records.values()):
+        rec["msp_rse"] = 0.05
+        rec["rel"] = 2
+        rec["lisa"] = i % 5
+        rec["f_h12"] = 500_000
+        rec["f_sigma"] = 0.01
+        rec["f_tier"] = 3
+    return records
+
+
+def test_diff_refuses_a_build_whose_statistics_have_not_run(latest):
+    """The ordering trap: `rel`, `msp_rse`, `dom_rse`, `f_h12`, `f_sigma`,
+    `f_tier` and `lisa` are wire columns written AFTER the diff gate. Diffing
+    before them reports seven columns as moved for every ZIP, which reads as a
+    plausible data change rather than a staging mistake."""
+    meta = {z: {"city": "X", "county": "Y", "state": "NY", "metro": None,
+                "lat": 1.0, "lng": -2.0} for z in latest}
+    unfinished, _, _ = serialize.assemble(meta, _zhvi_for(latest), latest)
+    with pytest.raises(PipelineError, match="statistics stages have not run"):
+        serialize.diff(None, unfinished)
+
+
+def test_rebuilding_the_same_data_reports_no_change(tmp_path, latest):
+    """The regression that matters. The snapshot quantises; the records do not.
+    Comparing one against the other made quantisation look like movement, and
+    `period_end` made it look like movement for every reporting ZIP."""
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+    _, decoded = serialize.decode_live(live)
+
+    report = serialize.diff(live, decoded)
+    assert report["status"] == serialize.DIFF_COMPARED
+    assert report["zips"]["changed"] == 0
+    assert report["data_points"] == 0
+    assert report["by_column"] == {}
+
+
+def test_period_end_cannot_inflate_the_change_count(tmp_path, latest):
+    """`period_end` has no wire column, so it must not be compared at all."""
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+    _, decoded = serialize.decode_live(live)
+    assert all("period_end" not in r for r in decoded.values())
+
+    for r in decoded.values():
+        r["period_end"] = "1999-12-31"
+    assert serialize.diff(live, decoded)["data_points"] == 0
+
+
+def test_one_moved_cell_is_one_zip_and_one_point(tmp_path, latest):
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+    _, decoded = serialize.decode_live(live)
+
+    victim = sorted(decoded)[0]
+    decoded[victim]["median_sale_price"] = (decoded[victim]["median_sale_price"] or 0) + 1000
+    decoded[victim]["city"] = "Renamed"
+
+    report = serialize.diff(live, decoded)
+    assert report["zips"]["changed"] == 1
+    assert report["data_points"] == 2
+    assert report["by_column"] == {"ci": 1, "msp": 1}
+
+
+def test_added_and_removed_zips_are_counted_separately(tmp_path, latest):
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+    _, decoded = serialize.decode_live(live)
+
+    del decoded[sorted(decoded)[0]]
+    decoded["99999"] = {k: None for k in serialize.SOURCE_KEYS}
+
+    report = serialize.diff(live, decoded)
+    assert report["zips"]["added"] == 1
+    assert report["zips"]["removed"] == 1
+    assert report["zips"]["changed"] == 2
+
+
+def test_a_lost_scale_shows_up_as_one_column_moving_everywhere(tmp_path, latest):
+    """The diagnostic the `by_column` map exists for. One column moving for every
+    ZIP while nothing else moved is a broken scale, not a market."""
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+    _, decoded = serialize.decode_live(live)
+    for r in decoded.values():
+        if r.get("median_ppsf") is not None:
+            r["median_ppsf"] *= 100
+
+    report = serialize.diff(live, decoded)
+    assert list(report["by_column"]) == ["ppsf"]
+    assert report["by_column"]["ppsf"] == report["data_points"]
+
+
+def test_no_baseline_is_not_reported_as_unchanged(latest):
+    """The old version returned (0, 0) here, and update_data.yml gates both the
+    commit and the deploy on that number being positive — so an unreadable live
+    snapshot silently skipped publication."""
+    report = serialize.diff(None, _sample_records(latest))
+    assert report["status"] == serialize.DIFF_NO_BASELINE
+    assert report["zips"]["changed"] == report["zips"]["total"] > 0
+    assert report["data_points"] is None
+
+
+def test_a_format_change_is_not_reported_as_movement(tmp_path, latest):
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+    live["version"] = serialize.VERSION - 1
+    report = serialize.diff(live, records)
+    assert report["status"] == serialize.DIFF_FORMAT_CHANGE
+    assert report["data_points"] is None
+
+
+def test_unreadable_live_snapshot_is_absent_not_empty(tmp_path):
+    assert serialize.read_live(tmp_path / "nope.json") is None
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json", encoding="utf-8")
+    assert serialize.read_live(broken) is None
+    truncated = tmp_path / "truncated.json"
+    truncated.write_text('{"format":"domapus-snapshot"}', encoding="utf-8")
+    assert serialize.read_live(truncated) is None
+
+
+# --- Release identity ------------------------------------------------------
+
+PAINT = {"zhvi": {"sha256": "a" * 64}, "median_sale_price": {"sha256": "b" * 64}}
+
+
+def test_release_digest_ignores_timestamps_but_not_values(tmp_path, latest):
+    records = _sample_records(latest)
+    live = _published(records, tmp_path)
+
+    base = serialize.payload_digest(live)
+    restamped = {**live, "built_utc": "2099-01-01T00:00:00+00:00"}
+    assert serialize.payload_digest(restamped) == base, \
+        "a rebuild over identical data must reproduce the digest, or every run publishes"
+
+    moved = {**live, "d": [list(c) for c in live["d"]]}
+    moved["d"][live["f"].index("msp")][0] += 1
+    assert serialize.payload_digest(moved) != base
+
+
+def test_release_digest_covers_the_paint_tables(tmp_path, latest):
+    """The paint tables are half of what the map renders and are hashed
+    separately, so a digest over the snapshot alone would call a release
+    unchanged when the colours moved."""
+    snap = serialize.payload_digest(_published(_sample_records(latest), tmp_path))
+    other = {**PAINT, "zhvi": {"sha256": "c" * 64}}
+    assert serialize.release_digest(snap, PAINT) != serialize.release_digest(snap, other)
+    assert serialize.release_digest(snap, PAINT) == serialize.release_digest(snap, dict(PAINT))
+
+
+# --- The diverging scale ---------------------------------------------------
+
+def test_diverging_breaks_are_symmetric_and_reach_the_bound():
+    """Shipped as `bound / (EDGES / 2 + 0.5)`, which put the edges at
+    -20 -14.29 -8.57 -2.86 +2.86 +8.57: six edges, strictly increasing, passing
+    every assertion in `compute()`, and asymmetric. The top class then meant
+    ">= +8.57%" on a scale whose whole purpose is that the two sides compare."""
+    from pipeline import classify
+
+    edges = classify._diverging_breaks(20.0)
+    assert edges == [-20.0, -12.0, -4.0, 4.0, 12.0, 20.0]
+    assert edges[0] == -20.0 and edges[-1] == 20.0
+    assert [-e for e in reversed(edges)] == edges, "the scale is not symmetric about zero"
+    # The neutral class straddles zero and nothing else does.
+    assert classify.class_of(0.0, edges) == classify.CLASSES // 2
+    steps = [round(b - a, 6) for a, b in zip(edges, edges[1:])]
+    assert len(set(steps)) == 1, f"unequal steps {steps}"
+
+
+def test_diverging_bound_is_reached_at_both_ends():
+    """A value at +bound clamps to the top class and -bound to the bottom, which
+    is what makes the end swatches' ">= +B%" / "<= -B%" labels true."""
+    from pipeline import classify
+
+    edges = classify._diverging_breaks(20.0)
+    assert classify.class_of(-25.0, edges) == 0
+    assert classify.class_of(25.0, edges) == classify.CLASSES - 1
+    assert classify.class_of(19.9, edges) == classify.CLASSES - 2

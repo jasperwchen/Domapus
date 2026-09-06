@@ -30,6 +30,7 @@ already has to carry. What they must NOT have is an entry in `breaks` — none o
 them is painted.
 """
 
+import hashlib
 import json
 import logging
 from datetime import date, datetime, timezone
@@ -277,39 +278,54 @@ def validate(records: dict, redfin_period: str | None, zhvi_period: str | None) 
     return {"period_age_days": ages, "columns": len(SNAPSHOT_COLUMNS), "zips": len(records)}
 
 
-def load_live(path: Path) -> tuple[str | None, dict]:
-    """The published snapshot as (timestamp, {zip: {source_key: value}}).
+def read_live(path: Path) -> dict | None:
+    """The published snapshot, parsed, with nothing decoded. `None` if unusable.
 
-    Decoded back to LONG keys on native scales, so the diff gate and the change
-    report keep comparing like with like across the format change. Loaded ONCE per
-    run and passed to both.
-
-    Both shapes are read, and that is temporary. On the first run after this phase
-    the live file is still the 38-column row-major one, so refusing to read it
-    would blind the diff gate for exactly the release most likely to need it. The
-    row-major branch can be deleted once a v3 snapshot has been published.
+    Read ONCE per run. `decode_live` turns it into native-scale values for the
+    diff gate and `diff` compares its raw wire ints against this build's; those
+    two want different things out of the same file and neither should re-read it.
     """
     if not path.exists():
-        return None, {}
+        return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
-        log.warning("Could not read existing snapshot %s: %s", path, e)
+        log.warning("Could not read the live snapshot %s: %s", path, e)
+        return None
+    if not all(k in payload for k in ("f", "z", "d")):
+        log.warning("Live snapshot %s carries no f/z/d — treating it as absent", path)
+        return None
+    return payload
+
+
+def decode_live(payload: dict | None) -> tuple[str | None, dict]:
+    """The live snapshot as (timestamp, {zip: {source_key: value}}), native scales.
+
+    This is the DIFF GATE's view, and it is lossy on purpose: dividing by the wire
+    scale returns the published quantisation, not whatever precision the record it
+    came from held. That is fine for the gate, which asks whether a value moved
+    25%. It is wrong for the change report, which asks whether it moved at all —
+    which is why `diff` never calls this.
+    """
+    if payload is None:
         return None, {}
 
     ts = payload.get("last_updated_utc") or payload.get("built_utc")
-    if not all(k in payload for k in ("f", "z", "d")):
+    if payload.get("format") != FORMAT or payload.get("version") != VERSION:
+        # A snapshot in an older shape decodes to garbage here, not to an error:
+        # `d[j]` would be ZIP j's row rather than column j. The gate must see no
+        # baseline instead of a scrambled one, and `diff` reports it as a format
+        # change. This replaces a row-major compatibility branch that outlived the
+        # v3 rollout it was written for.
+        log.warning("Live snapshot is %s v%s, not %s v%s — no baseline for the gate",
+                    payload.get("format"), payload.get("version"), FORMAT, VERSION)
         return ts, {}
 
     fields, zips, data = payload["f"], payload["z"], payload["d"]
-
-    if payload.get("format") != FORMAT:
-        # Row-major legacy: d[i] is ZIP i's row, keyed by long names already.
-        return ts, {z: dict(zip(fields, data[i])) for i, z in enumerate(zips)}
-
     sentinel = payload.get("null_sentinel", NULL_SENTINEL)
     scales = payload.get("scales", {})
     dicts = payload.get("dicts", {})
+
     out: dict[str, dict] = {z: {} for z in zips}
     for j, short in enumerate(fields):
         col = data[j]
@@ -317,8 +333,7 @@ def load_live(path: Path) -> tuple[str | None, dict]:
         if short in dicts:
             table = dicts[short]
             for i, z in enumerate(zips):
-                code = col[i]
-                out[z][key] = table[code] if 0 <= code < len(table) else None
+                out[z][key] = _dict_at(col[i], table)
             continue
         scale = scales.get(short, 1) or 1
         for i, z in enumerate(zips):
@@ -327,23 +342,119 @@ def load_live(path: Path) -> tuple[str | None, dict]:
     return ts, out
 
 
-def count_changes(live: dict, records: dict) -> tuple[int, int]:
-    """(ZIPs changed, data points changed).
+# --- The change report ------------------------------------------------------
+# It answers "what moved", and it must not be able to answer that wrong in the
+# direction that looks like nothing happened. Three things the old
+# `count_changes` got wrong, each of which made the published number useless:
+#
+# **It compared source values against wire values.** This build's records against
+# a live snapshot decoded from rounded ints. It happened not to be firing —
+# `assemble()` runs `units.coerce`, which already rounds to the decimals the wire
+# scale carries — but it was one added statistics column away from doing so, and
+# it is not a property anything asserted. Both sides now go through the SAME
+# encoder, so quantisation cannot masquerade as movement by construction.
+#
+# **It iterated `SOURCE_KEYS`, which contains `period_end`** — a key with no wire
+# column, so the live side was `None` for every ZIP on every run. Every
+# Redfin-reporting ZIP therefore read as changed by exactly one point, forever.
+# That is the entire content of the 28,919 this site has been publishing: it
+# equals coverage `both` + `redfin_only`, it is the same number every month, and
+# `zip_codes_changed == data_points_changed` was the tell.
+#
+# **A missing baseline returned (0, 0).** `update_data.yml` gates both the commit
+# and the deploy on that number being positive, so an unreadable live snapshot
+# silently skipped publication. The three outcomes are distinct states now, and
+# the publish decision reads the release digest rather than a count.
+DIFF_COMPARED = "compared"
+DIFF_NO_BASELINE = "no_baseline"
+DIFF_FORMAT_CHANGE = "format_change"
 
-    On the first run after a format change the field list changes, so every ZIP
-    reads as changed. That is expected once and is the change REPORT, not the diff
-    gate — the gate never looks at the field list.
+
+def _dict_at(code: int, table: list):
+    """One dictionary-coded cell to its string. Codes index a PER-RELEASE table."""
+    return table[code] if 0 <= code < len(table) else None
+
+
+def diff(live: dict | None, records: dict) -> dict:
+    """What moved between the live snapshot and this build, on the wire columns.
+
+    RUN THIS ON A FINISHED BUILD. Seven wire columns (`rel`, `msp_rse`, `dom_rse`,
+    `f_h12`, `f_sigma`, `f_tier`, `lisa`) are written by S5, S5b and S5c, which is
+    after the diff gate. Diffing between assembly and the gate compares this
+    build's un-filled statistics against the live snapshot's real ones and reports
+    every ZIP as changed in seven columns — the same shape of false positive the
+    old `count_changes` had, in a new place. The assertion below is what makes
+    that a stop rather than a plausible-looking number.
     """
-    if not live:
-        return 0, 0
-    changed = set(records) ^ set(live)
+    if records and all(r.get("rel") is None for r in records.values()):
+        raise PipelineError(
+            "changes: every record has a null `rel`, so the statistics stages have "
+            "not run yet. Diffing here would report seven columns as moved for "
+            "every ZIP. Call diff() after S5c, next to the snapshot write."
+        )
+
+    zips, dicts, columns = encode_columns(records)
+    empty = {"total": len(zips), "added": 0, "removed": 0, "changed": 0}
+
+    if live is None:
+        return {
+            "status": DIFF_NO_BASELINE,
+            "zips": {**empty, "added": len(zips), "changed": len(zips)},
+            "data_points": None,
+            "by_column": {},
+            "note": "no readable live snapshot to compare against",
+        }
+
+    if live.get("f") != SNAPSHOT_COLUMNS or live.get("version") != VERSION:
+        return {
+            "status": DIFF_FORMAT_CHANGE,
+            "zips": {**empty, "changed": len(zips)},
+            "data_points": None,
+            "by_column": {},
+            "live_version": live.get("version"),
+            "live_columns": len(live.get("f") or []),
+            "note": "the wire format changed; every ZIP reads as changed for a "
+                    "structural reason, so a movement count would be a lie",
+        }
+
+    live_at = {z: i for i, z in enumerate(live["z"])}
+    pairs = [(i, live_at[z]) for i, z in enumerate(zips) if z in live_at]
+    live_dicts = live.get("dicts", {})
+
+    moved = bytearray(len(zips))
+    by_column: dict[str, int] = {}
     points = 0
-    for z in set(records) & set(live):
-        for k in SOURCE_KEYS:
-            if records[z].get(k) != live[z].get(k):
-                changed.add(z)
-                points += 1
-    return len(changed), points
+
+    for j, short in enumerate(SNAPSHOT_COLUMNS):
+        new_col, old_col = columns[j], live["d"][j]
+        n = 0
+        if short in DICT_COLUMNS:
+            new_table, old_table = dicts[short], live_dicts.get(short, [])
+            for i, k in pairs:
+                if _dict_at(new_col[i], new_table) != _dict_at(old_col[k], old_table):
+                    moved[i] = 1
+                    n += 1
+        else:
+            for i, k in pairs:
+                if new_col[i] != old_col[k]:
+                    moved[i] = 1
+                    n += 1
+        if n:
+            by_column[short] = n
+            points += n
+
+    added = len(zips) - len(pairs)
+    removed = len(live["z"]) - len(pairs)
+    return {
+        "status": DIFF_COMPARED,
+        "zips": {"total": len(zips), "added": added, "removed": removed,
+                 "changed": sum(moved) + added + removed},
+        "data_points": points,
+        # Descending, because the shape of this map is the diagnosis. One column
+        # moving for every ZIP while nothing else moved is a renamed column or a
+        # lost scale, not a market.
+        "by_column": dict(sorted(by_column.items(), key=lambda kv: (-kv[1], kv[0]))),
+    }
 
 
 def _encode(value, scale: float) -> int:
@@ -359,7 +470,7 @@ def _encode(value, scale: float) -> int:
     return v
 
 
-def _build_dicts(records: dict, zips: list[str]) -> dict[str, list[str]]:
+def _build_dicts(records: dict) -> dict[str, list[str]]:
     """Sorted value lists for the four string columns. Codes index into these."""
     out = {}
     for short in DICT_COLUMNS:
@@ -369,10 +480,15 @@ def _build_dicts(records: dict, zips: list[str]) -> dict[str, list[str]]:
     return out
 
 
-def write_snapshot(records: dict, out_path: Path, envelope: dict) -> dict:
-    """Write the column-major envelope. `envelope` supplies the period metadata."""
+def encode_columns(records: dict) -> tuple[list[str], dict[str, list[str]], list[list[int]]]:
+    """(zips, dicts, columns) — exactly the ints `write_snapshot` ships.
+
+    Factored out of the writer so the change report can encode this build the same
+    way the snapshot does. Two encoders would be two answers to "what is this
+    cell's wire value", and comparing wire values is the whole job of `diff`.
+    """
     zips = sorted(records)
-    dicts = _build_dicts(records, zips)
+    dicts = _build_dicts(records)
     code_of = {short: {v: i for i, v in enumerate(vals)} for short, vals in dicts.items()}
 
     columns: list[list[int]] = []
@@ -382,6 +498,49 @@ def write_snapshot(records: dict, out_path: Path, envelope: dict) -> dict:
             columns.append([table.get(records[z].get(key), NULL_SENTINEL) for z in zips])
         else:
             columns.append([_encode(records[z].get(key), scale) for z in zips])
+    return zips, dicts, columns
+
+
+# --- Release identity -------------------------------------------------------
+# "Should this run publish?" used to be "did any data point change", which is a
+# semantic question with a fuzzy answer and, as shipped, a constant one. This is
+# the identity of the BYTES the site would serve, so re-running the pipeline over
+# unchanged input produces an identical digest and correctly publishes nothing —
+# whatever a developer has left lying in `public/data/`.
+#
+# Timestamps are excluded on purpose. `built_utc` and `generated_utc` move every
+# run; including them would make every run look like a change, which is the
+# failure this replaces.
+DIGEST_KEYS = (
+    "version", "null_sentinel", "f", "z", "d", "dicts", "scales",
+    "classes", "breaks", "classing",
+    "period_start", "period_end", "frequency", "vintage", "zhvi_month",
+)
+
+
+def payload_digest(payload: dict) -> str:
+    """sha256 over the snapshot's content keys, canonically serialised."""
+    blob = json.dumps({k: payload[k] for k in DIGEST_KEYS if k in payload},
+                      sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def release_digest(snapshot_digest: str, paint_assets: dict) -> str:
+    """The identity of everything a release serves: the snapshot AND the paint tables.
+
+    The paint tables are half of what the map renders and they are hashed
+    independently, so a digest over the snapshot alone would call a release
+    unchanged when the colours moved.
+    """
+    h = hashlib.sha256(snapshot_digest.encode("utf-8"))
+    for metric in sorted(paint_assets):
+        h.update(f"|{metric}={paint_assets[metric]['sha256']}".encode("utf-8"))
+    return h.hexdigest()
+
+
+def write_snapshot(records: dict, out_path: Path, envelope: dict) -> dict:
+    """Write the column-major envelope. `envelope` supplies the period metadata."""
+    zips, dicts, columns = encode_columns(records)
 
     payload = {
         "format": FORMAT,
@@ -406,7 +565,8 @@ def write_snapshot(records: dict, out_path: Path, envelope: dict) -> dict:
     _assert_value_round_trip(back, records)
 
     return {"zips": len(zips), "columns": len(SNAPSHOT_COLUMNS),
-            "bytes": out_path.stat().st_size}
+            "bytes": out_path.stat().st_size,
+            "payload_digest": payload_digest(payload)}
 
 
 def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> None:

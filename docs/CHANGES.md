@@ -1574,3 +1574,147 @@ outside Phases 6-7 and touches the publish gate.
 cannot deploy a blank map through a silent fetch failure. Accepted cost: every geometry
 rebuild adds a permanent ~47 MB blob to history. `geometry.yml` still publishes a release when
 given a tag, so the §5.9 path stays available without rewriting anything.
+
+---
+
+## 2026-09-06, later still — the change report, the publish gate, and the paint hole
+
+Closes the "Pre-existing bug found by that comparison" note above, and finds three more
+things behind it. Verified by a full offline run against the same two local source files:
+**33,771 ZIPs, 0 moved, 0 cells changed** where the old code reported 28,919.
+
+### The 28,919 was a constant, and the earlier diagnosis named the wrong cause
+
+The note above blamed quantisation — full-precision `records[z][k]` against a `live[z][k]`
+that was decoded from a rounded int. That hazard is real but it was **not** what was firing.
+`assemble()` already runs `units.coerce`, which rounds every metric to the decimals the wire
+scale carries, so those cells compared equal.
+
+The actual cause: `count_changes` iterated `SOURCE_KEYS`, which contains **`period_end`** — a
+key with no wire column. `live[z].get("period_end")` was therefore `None` for every ZIP on
+every run, so every Redfin-reporting ZIP read as changed by exactly one point, forever.
+
+    28,919  =  coverage.both 25,604  +  coverage.redfin_only 3,315
+
+and the tell was in the published file the whole time: `zip_codes_changed` and
+`data_points_changed` were **equal**, which can only happen if exactly one field differs per
+ZIP. A real month cannot produce that.
+
+### What replaced it
+
+`serialize.count_changes` and `load_live` are gone. In their place:
+
+| | what it answers |
+|---|---|
+| `read_live` | the live snapshot, parsed, nothing decoded — read once per run |
+| `decode_live` | native-scale values for the **diff gate**, which asks "did this move 25%" |
+| `diff` | wire-int comparison for the **change report**, which asks "did this move at all" |
+| `encode_columns` | the one encoder, shared by `write_snapshot` and `diff` |
+| `payload_digest` / `release_digest` | the publish decision |
+
+Both sides of `diff` now go through `encode_columns`, so quantisation cannot masquerade as
+movement and a key with no column cannot be compared at all. It reports `added` / `removed` /
+`changed` separately, plus a **`by_column` map sorted descending** — which is the diagnostic
+that was missing. One column moving for every ZIP while nothing else moves is a lost scale or
+a renamed column, and it now says so instead of printing one large number.
+
+Three statuses replace one integer: `compared`, `no_baseline`, `format_change`. The old
+version returned `(0, 0)` for a missing baseline, and `update_data.yml` gated **both** the
+commit and the deploy on that number being positive — so an unreadable live snapshot would
+have silently skipped publication. That direction is now impossible.
+
+### The publish gate is a digest, not a count
+
+`manifest.content_digest` is a sha256 over the snapshot's content columns (`f`, `z`, `d`,
+`dicts`, `scales`, `breaks`, `classing`, the period fields) **plus every paint table's own
+hash**, with timestamps excluded. Rebuilding over unchanged input reproduces it exactly, so
+the answer no longer depends on what a developer last left lying in `public/data/`.
+
+That separates two questions the old count conflated, and the verification run demonstrates
+both at once: **0 cells moved** (the data is identical) and **content CHANGED** (the
+`zhvi_yoy` paint table and its breaks are not). A single count could not express that.
+
+A missing or unreadable live digest means CHANGED. A redundant deploy is cheap; a skipped one
+looks exactly like the deploy bug this repo already spent a phase fixing.
+
+### An ordering trap, found by running the thing
+
+The first draft called `diff` at S3, next to the gate. Seven wire columns — `rel`, `msp_rse`,
+`dom_rse`, `f_h12`, `f_sigma`, `f_tier`, `lisa` — are written by S5/S5b/S5c, which is *after*
+the gate, so the diff compared this build's empty statistics against the live snapshot's real
+ones and called every ZIP changed. The same shape of false positive as the bug it replaces, in
+a new place. `diff` now refuses a build whose records all carry a null `rel`, with a test.
+
+### `build/paint/` was never published — the worst of the four
+
+`update_data.yml` copied `zip-data.json`, `last_updated.json`, `manifest.json` and
+`orphans.json` into `public/data/`, and staged those four. It never touched `build/paint/`,
+and `public/data/paint` was not in the `git add` list.
+
+Paint filenames carry a content hash, so a data change renames all nine. The workflow was
+therefore committing a manifest naming files that were not in the repo. `vite.config.ts`
+inlines `manifest.assets.paint` into `index.html` at build time precisely so the 24 KB paint
+fetch starts in the same tick as the manifest fetch — so this is not a 404 on a background
+asset, it is a 404 on the critical path, and the map renders grey.
+
+It has not fired yet only because the count above could never say "unchanged" while the paint
+hashes happened to still match a hand-copied local build.
+
+Fixed three ways: the publish step replaces `public/data/paint` wholesale (so last month's
+hashed files disappear rather than accumulating), a new step runs `sha256sum -c` over every
+`manifest.assets.paint` entry **before** the commit, and the commit stages
+`git add -A public/data/paint` so deletions are staged too. Accepted cost: ~900 KB of new
+blobs per release, ~11 MB/year, against a 131 MiB repo. The alternative — paint on the data
+release, fetched at deploy time — reintroduces the silent-fetch-failure mode already rejected
+for the tileset.
+
+The `sha256sum -c` that `vite.config.ts`'s comment claims verifies the deploy now exists. It
+did not when that comment was written.
+
+### An unchanged upstream made the workflow go red
+
+S0 exits 0 without downloading when the fingerprint matches the live manifest, and its module
+docstring says in as many words that this "is not a failure and must not be reported as one".
+But it writes no `build/manifest.json`, and the very next step ran
+`jq -r '.validation.period_age_days.redfin' build/manifest.json`. Every step after the
+pipeline failed on a missing file.
+
+A `Did upstream change?` step now reads `build/s0_probe_report.json` and every build-dependent
+step is guarded on it. A `force_rebuild` dispatch input was added too, wired to the `--force`
+flag that already existed and that nothing called: after a PIPELINE change, S0 short-circuits
+and the fix would otherwise not reach the site until Redfin happens to publish.
+
+### The diverging colour scale was asymmetric
+
+`_diverging_breaks` computed `step = bound / (EDGES / 2 + 0.5)` = `bound / 3.5`. For six edges
+symmetric about zero with the outer two landing on ±bound, the five gaps between them make it
+`2 * bound / (EDGES - 1)` = `bound / 2.5`.
+
+Shipped edges were `-20 -14.29 -8.57 -2.86 +2.86 +8.57`. Six edges, strictly increasing, and
+they passed every assertion in `compute()` — which is why this survived. But the top class
+meant "≥ +8.57%" on a scale whose stated design is a p95-derived ±20, and the saturation was
+lopsided by 74x:
+
+| | old (`/3.5`) | fixed (`/2.5`) |
+|---|---|---|
+| edges | -20 · -14.29 · -8.57 · -2.86 · +2.86 · +8.57 | -20 · -12 · -4 · +4 · +12 · +20 |
+| class counts | 58 · 102 · 324 · 1971 · 11245 · 10262 · 2298 | 58 · 183 · 1402 · 14951 · 8982 · 653 · 31 |
+| clamped low / high | 58 / **2,298** | 58 / **31** |
+
+The verification run confirms the blast radius is exactly one artifact: **eight of the nine
+paint hashes are byte-identical** across the fix, and only `zhvi_yoy` moved
+(`5fcd2c11` to `f6970376`).
+
+**This changes what the map shows and is not published yet.** `public/data/` still carries the
+old scale. It reaches the site on the next data run, or immediately via a `force_rebuild`
+dispatch.
+
+### Also in this pass
+
+- `decode_live`'s row-major compatibility branch is deleted — a v3 snapshot has been published,
+  which is the condition its own comment named. It refuses a non-v3 payload instead, so the
+  gate sees no baseline rather than a scrambled one.
+- `forecast.backtest` refitted the whole `[T x Z]` panel inside the horizon loop for a value
+  that does not depend on the horizon: four identical full-panel fits per run, now one.
+- `forecast.run`'s `index` parameter was never passed and is gone.
+- `_build_dicts` took a `zips` argument it never read.

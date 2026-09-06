@@ -168,6 +168,10 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
 
     lo_n, hi_n = (1.0 - NOMINAL) / 2.0, 1.0 - (1.0 - NOMINAL) / 2.0
     z = float(np.quantile(std_c[1], hi_n))  # a normal-ish 1-step multiplier
+    # One full-sample fit, reused across horizons. It is a diagnostic scale for
+    # row 2 below and does not depend on h, so refitting it inside the loop cost
+    # four fits over the whole [T x Z] panel for four identical answers.
+    full = fit(LZ)
     coverage = {"nominal": NOMINAL, "random_walk_sqrt_h": {}, "ar1_closed_form": {},
                 "empirical_quantiles": {}}
     for h in HORIZONS:
@@ -176,9 +180,8 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
         coverage["random_walk_sqrt_h"][h] = round(float(np.mean(np.abs(s) <= z * np.sqrt(h))), 4)
         # 2. our own model's closed form, evaluated at the median rho so the row
         #    describes the method rather than one ZIP
-        m = fit(LZ)
         scale = float(np.nanmedian(
-            closed_form_sd(m["rho"], np.ones_like(m["sigma"]), h)
+            closed_form_sd(full["rho"], np.ones_like(full["sigma"]), h)
         ))
         coverage["ar1_closed_form"][h] = round(float(np.mean(np.abs(s) <= z * scale)), 4)
         # 3. what ships
@@ -229,7 +232,7 @@ def _naive_mae(LZ: np.ndarray, origins, eligible) -> dict:
     return out
 
 
-def run(panel_path, records: dict, index=None) -> dict:
+def run(panel_path, records: dict) -> dict:
     """Fit, backtest, and write `f_h12`, `f_sigma` and `f_tier` into `records`."""
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
