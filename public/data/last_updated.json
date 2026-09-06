@@ -1,8 +1,11 @@
 {
-  "last_updated_utc": "2026-09-06T17:26:34.546345+00:00",
+  "last_updated_utc": "2026-09-06T18:31:25.147002+00:00",
   "period_end": "2026-07-31",
   "zhvi_period_end": "2026-07-31",
   "total_zip_codes": 33771,
-  "zip_codes_changed": 28919,
-  "data_points_changed": 28919
+  "content_changed": true,
+  "content_digest": "4483cac7d9265b9db7b8ef206b69eab8482a08f1b6829b6d0215732b253c542c",
+  "change_status": "compared",
+  "zip_codes_changed": 0,
+  "data_points_changed": 0
 }

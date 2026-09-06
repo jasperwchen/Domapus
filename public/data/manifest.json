@@ -1,5 +1,8 @@
 {
-  "generated_utc": "2026-09-06T17:26:34.542695+00:00",
+  "generated_utc": "2026-09-06T18:31:25.146405+00:00",
+  "content_digest": "4483cac7d9265b9db7b8ef206b69eab8482a08f1b6829b6d0215732b253c542c",
+  "previous_content_digest": null,
+  "content_changed": true,
   "redfin": {
     "period_end": "2026-07-31",
     "period_begin": "2026-05-01",
@@ -20,8 +23,20 @@
       "fill_rate": 0.7705
     }
   },
-  "fingerprints": {},
-  "upstream": {},
+  "fingerprints": {
+    "redfin": "fe2e41688ad44739",
+    "zhvi": "ce9e00ebd1721338"
+  },
+  "upstream": {
+    "redfin": {
+      "last_modified": "Wed, 02 Sep 2026 18:51:30 GMT",
+      "content_length": 1331318985
+    },
+    "zhvi": {
+      "last_modified": "Sun, 16 Aug 2026 18:59:06 GMT",
+      "content_length": 123065811
+    }
+  },
   "panel": {
     "periods": 173,
     "zips": 33952,
@@ -35,8 +50,16 @@
   },
   "orphans": 819,
   "changed": {
-    "zips": 28919,
-    "data_points": 28919
+    "status": "compared",
+    "zips": {
+      "total": 33771,
+      "added": 0,
+      "removed": 0,
+      "changed": 0
+    },
+    "data_points": 0,
+    "by_column": {},
+    "compared_against_built_utc": "2026-09-06T17:25:54.803184+00:00"
   },
   "validation": {
     "period_age_days": {
@@ -149,7 +172,8 @@
   "snapshot": {
     "zips": 33771,
     "columns": 50,
-    "bytes": 11454544
+    "bytes": 11454530,
+    "payload_digest": "4ee2c48fb2bd15aa5ad6d366d97c5a052275f18fb6a9e6845003296635606f0a"
   },
   "noise": {
     "K": 0.5598,
@@ -653,25 +677,25 @@
       "classes": 7,
       "breaks": [
         -20.0,
-        -14.2857,
-        -8.5714,
-        -2.8571,
-        2.8571,
-        8.5714
+        -12.0,
+        -4.0,
+        4.0,
+        12.0,
+        20.0
       ],
       "class_counts": [
         58,
-        102,
-        324,
-        1971,
-        11245,
-        10262,
-        2298
+        183,
+        1402,
+        14951,
+        8982,
+        653,
+        31
       ],
       "non_null": 26260,
       "break_population": null,
       "clamped_low": 58,
-      "clamped_high": 2298
+      "clamped_high": 31
     }
   },
   "history": {
@@ -759,11 +783,11 @@
         "fade_exempt": false
       },
       "zhvi_yoy": {
-        "file": "paint/zhvi_yoy-5fcd2c11.u8",
+        "file": "paint/zhvi_yoy-f6970376.u8",
         "bytes": 100000,
-        "sha256": "5fcd2c11822ec2aac2834eeb2599f7e53de9ef6e1edf97ccef236ccb587e3103",
+        "sha256": "f69703761db2e06a6a0387283d97e3eb8e217c75ed286fdaf855a68fa5ca8576",
         "zips_set": 26260,
-        "max_byte": 55,
+        "max_byte": 53,
         "fade_exempt": false
       }
     },
