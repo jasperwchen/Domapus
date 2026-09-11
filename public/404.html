@@ -8,8 +8,8 @@
 
   <!-- GitHub Pages has no server-side rewrite, so every SPA route below
        /Domapus/ (currently /methodology) is served this file. Stash the real
-       path, bounce to the app shell, and let App.tsx put the path back with
-       history.replaceState.
+       path, bounce to the app shell, and let the restore script at the TOP of
+       index.html put the path back before React Router reads the URL.
 
        This used to run only when the URL carried a query string or hash, which
        meant a bare /Domapus/methodology — the form in the sitemap, in search
@@ -18,13 +18,28 @@
   <script>
     (function () {
       var path = window.location.pathname;
+      // public/ is copied verbatim, so this file cannot read the build's base
+      // and writes it out instead. The optional pr-preview segment keeps a PR
+      // preview's deep links inside that preview rather than bouncing them to
+      // production, which serves a different build.
+      var matched = path.match(/^\/Domapus\/(?:pr-preview\/pr-\d+\/)?/);
+      var base = matched ? matched[0] : '/Domapus/';
       // The app shell exists, so it never lands here; the guard only prevents a
       // hard redirect loop if a deploy ever ships without index.html.
-      if (path === '/Domapus/' || path === '/Domapus/index.html') return;
+      if (path === base || path === base + 'index.html') return;
       var search = window.location.search;
       var hash   = window.location.hash;
-      sessionStorage.setItem('redirectPath', path + search + hash);
-      window.location.replace('/Domapus/' + search + hash);
+      // Stored RELATIVE to the base ("methodology"), not absolute. index.html
+      // re-attaches it to whatever base it was itself served under, so an entry
+      // left over from another deployment in the same tab still lands on a route
+      // that exists rather than on one the loaded build cannot match.
+      //
+      // Private-mode storage can throw. Bounce anyway: landing on the map is a
+      // worse answer than the requested page but a better one than this body.
+      try {
+        sessionStorage.setItem('spaPath', path.slice(base.length) + search + hash);
+      } catch (err) { /* no restore possible */ }
+      window.location.replace(base + search + hash);
     })();
   </script>
 

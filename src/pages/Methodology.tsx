@@ -10,8 +10,8 @@
 // opens with a short statement a reader with no statistics can follow, and the
 // derivations, constants and diagnostics sit under a "Statistical detail"
 // disclosure beneath it. Nothing was deleted in that move. The earlier version
-// built every section to a rhetorical turn — "and that map is mostly an
-// artifact", "that has a cost, and it is not neutral" — bolded its own verdicts
+// built every section to a rhetorical turn ("and that map is mostly an
+// artifact", "that has a cost, and it is not neutral"), bolded its own verdicts
 // mid-paragraph, and ordered the material the way the pipeline runs rather than
 // the way a reader needs it. Methodology sections in the BLS Handbook of Methods,
 // Eurostat quality reports and journal Methods sections do none of that: headings
@@ -178,7 +178,7 @@ export default function Methodology() {
   // index.html carries one hard-coded canonical pointing at the map, and it is
   // in the served HTML for every route. Left alone, a crawler that follows the
   // sitemap to /methodology is told the page's canonical URL is the homepage
-  // and drops it from the index — the sitemap entry would do nothing. Swap both
+  // and drops it from the index, so the sitemap entry would do nothing. Swap both
   // the title and the canonical while this page is mounted, and restore them so
   // a client-side return to the map does not keep them.
   useEffect(() => {
@@ -201,7 +201,7 @@ export default function Methodology() {
 
   return (
     <div className="min-h-screen bg-dashboard-bg">
-      <TopBarShell subtitle="Methodology" />
+      <TopBarShell subtitle="Methodology" nav="map" />
       <main className="max-w-3xl mx-auto px-6 py-10">{body()}</main>
     </div>
   );
@@ -256,8 +256,8 @@ function Body({ mf }: { mf: Manifest }) {
       {/* ---------------------------------------------------------------- 1 */}
       <Section n="1" title="Sources and reference periods">
         <p>
-          The map draws on two sources. Redfin supplies transaction statistics —
-          sale prices, sale counts, listings and days on market — for a rolling
+          The map draws on two sources. Redfin supplies transaction statistics
+          (sale prices, sale counts, listings and days on market) for a rolling
           three-month window, currently {mf.redfin.period_begin} to{" "}
           {mf.redfin.period_end}. Zillow supplies the Home Value Index (ZHVI), a
           modelled estimate of the value of a typical home, for the calendar month
@@ -290,10 +290,10 @@ function Body({ mf }: { mf: Manifest }) {
           </p>
           <p>
             Every year-over-year figure on this site is recomputed from published
-            levels at a twelve-month lag, in each metric's own unit — percent for
+            levels at a twelve-month lag, in each metric's own unit: percent for
             prices and counts, percentage points for shares, and whole days or
             months for days-on-market and months-of-supply. Redfin publishes the
-            last two as a difference multiplied by 100 under a percent label;
+            last two as a difference multiplied by 100 under a percent label, so
             recomputing means those columns are never read.
           </p>
         </Detail>
@@ -386,20 +386,19 @@ function Body({ mf }: { mf: Manifest }) {
           caption="Precision classes. The cut is on relative margin of error; the sales column is what that implies at this release's scale constant and moves when the constant moves."
           head={["Class", "Relative margin of error", "Sales implied", "ZIPs"]}
           rows={[
-            ["High", "under 4%", `${noise.tier_n_implied[2]}+`, noise.tiers["3"]?.toLocaleString() ?? "—"],
-            ["Good", "4 to 6%", `${noise.tier_n_implied[1]}+`, noise.tiers["2"]?.toLocaleString() ?? "—"],
-            ["Fair", "6 to 10%", `${noise.tier_n_implied[0]}+`, noise.tiers["1"]?.toLocaleString() ?? "—"],
-            ["Low", "10% or more", `under ${noise.tier_n_implied[0]}`, noise.tiers["0"]?.toLocaleString() ?? "—"],
+            ["High", "under 4%", `${noise.tier_n_implied[2]}+`, noise.tiers["3"]?.toLocaleString() ?? "n/a"],
+            ["Good", "4 to 6%", `${noise.tier_n_implied[1]}+`, noise.tiers["2"]?.toLocaleString() ?? "n/a"],
+            ["Fair", "6 to 10%", `${noise.tier_n_implied[0]}+`, noise.tiers["1"]?.toLocaleString() ?? "n/a"],
+            ["Low", "10% or more", `under ${noise.tier_n_implied[0]}`, noise.tiers["0"]?.toLocaleString() ?? "n/a"],
           ]}
         />
         <p>
           Precision is <strong>not</strong> encoded in the fill colour. It was,
-          until the size of the resulting distortion was measured: dimming the
-          low-precision ZIPs shifted their apparent lightness by as much as four
-          class steps on a scale whose meaning <em>is</em> lightness, and it fell
-          on rural ZIPs specifically, which the same data shows to be genuinely
-          cheaper. The two errors compounded. Precision is now reported as a
-          number where a number can be read.
+          until the distortion was measured. Dimming the low-precision ZIPs moved
+          their apparent lightness by up to four class steps on a scale whose
+          meaning <em>is</em> lightness, and it fell on rural ZIPs, which the same
+          data shows to be genuinely cheaper. Both errors ran the same direction.
+          Precision is now reported as a number, where a number can be read.
         </p>
         <Detail>
           <p>
@@ -441,7 +440,7 @@ function Body({ mf }: { mf: Manifest }) {
             n="3"
             caption="Scale constant K refitted within sample-size buckets. Thin buckets carry the highest values, so a single pooled constant understates the margin of error for the ZIPs that need it widest. A per-quartile or per-metro constant is the first refinement."
             head={["Sales", ...Object.keys(noise.K_by_sample_size)]}
-            rows={[["K", ...Object.values(noise.K_by_sample_size).map((v) => v?.toFixed(4) ?? "—")]]}
+            rows={[["K", ...Object.values(noise.K_by_sample_size).map((v) => v?.toFixed(4) ?? "n/a")]]}
           />
           <p>
             Each statistic is fitted separately. The dispersion of log
@@ -465,16 +464,16 @@ function Body({ mf }: { mf: Manifest }) {
         <Section n="4" title="Twelve-month forecast">
           <p>
             The detail panel shows a projection of the Zillow index twelve months
-            ahead, with a shaded band around it. The line is the central estimate;
-            the band is the range within which the outcome fell, historically, for
-            the share of cases the band is labelled with. It is a projection of the
-            index, not of sale prices, and not of any individual property.
+            ahead, with a shaded band around it. The line is the central estimate.
+            The band is the range that historically contained the outcome as often
+            as its label claims. It projects the index, not sale prices, and not
+            any individual property.
           </p>
           <p>
             The model is an autoregression on monthly growth in the logarithm of
-            the index — equivalent to a damped local trend. It was tested by
+            the index, equivalent to a damped local trend. It was tested by
             refitting it at {backtest.origins.total} historical points and comparing
-            its projections against what subsequently happened.
+            its projections against what actually happened.
           </p>
           <p>
             The band's width is calibrated from those historical errors rather than
@@ -508,15 +507,15 @@ function Body({ mf }: { mf: Manifest }) {
           </p>
           <Detail>
             <p>
-              Stating the equivalence between an autoregression on growth and
-              ARIMA(1,1,0) with a constant is what makes the closed form usable:
-              it runs in microseconds per ZIP where a general implementation takes
+              An autoregression on growth is ARIMA(1,1,0) with a constant, and
+              stating that equivalence is what makes the closed form usable: it
+              runs in microseconds per ZIP where a general implementation takes
               milliseconds, over {backtest.eligible_zips.toLocaleString()} ZIPs.
             </p>
             <p>
-              Most of the gap in Table 5 is attributable to using a random-walk
-              variance for a model that is not a random walk. Empirical calibration
-              closes the remainder, which is non-normality of the residuals.
+              Most of the gap in Table 5 comes from using a random-walk variance
+              for a model that is not a random walk. Empirical calibration closes
+              the remainder, which is non-normality of the residuals.
             </p>
             <p>
               The {backtest.origins.total} origins are worth approximately{" "}
@@ -530,17 +529,17 @@ function Body({ mf }: { mf: Manifest }) {
               {backtest.eligible_zips.toLocaleString()} ZIPs with at least five
               years of history rather than the{" "}
               {backtest.complete_history_zips.toLocaleString()} with complete
-              history. Complete history is a survivorship filter — it selects
-              large, established, continuously transacting markets — and reporting
+              history. Complete history is a survivorship filter that selects
+              large, established, continuously transacting markets, so reporting
               it as the headline would flatter the model.
             </p>
             <p>
               Zillow revises the index retroactively across its whole history
-              between releases, so what the backtest could observe at each origin
-              is not what was observable at the time. The errors above are
-              therefore optimistic by an unknown amount. Each monthly vintage is
-              archived from this release onward so that a genuine point-in-time
-              evaluation becomes possible.
+              between releases, so what the backtest observes at each origin is not
+              what was observable at the time. The errors above are therefore
+              optimistic by an unknown amount. Each monthly vintage is archived
+              from this release onward, which will make a genuine point-in-time
+              evaluation possible.
             </p>
           </Detail>
         </Section>
@@ -552,8 +551,8 @@ function Body({ mf }: { mf: Manifest }) {
           <p>
             House prices are strongly geographically clustered: expensive ZIPs sit
             next to expensive ZIPs almost everywhere. The map already shows that.
-            What it cannot show is the exception — a ZIP whose price disagrees with
-            the ZIPs immediately around it.
+            What it cannot show is the exception: a ZIP whose price disagrees
+            with the ZIPs immediately around it.
           </p>
           <p>
             The optional overlay marks those exceptions and only those. On this
@@ -574,7 +573,7 @@ function Body({ mf }: { mf: Manifest }) {
             rows={[
               ["ZIPs", ...Object.values(spatial.class_counts).map((v) => v.toLocaleString())],
               ["Median sales", ...Object.keys(spatial.class_counts).map(
-                (k) => spatial.lisa_median_n_by_class[k] ?? "—")],
+                (k) => spatial.lisa_median_n_by_class[k] ?? "n/a")],
             ]}
           />
           <Detail>
@@ -592,10 +591,11 @@ function Body({ mf }: { mf: Manifest }) {
               them. No figure computed without the restriction carries over.
             </p>
             <p>
-              Run without the restriction, the two outlier classes had a handful of
-              sales each while the cluster classes had dozens — the signature of
-              sampling noise producing apparent outliers, since a small sample
-              pushed away from its neighbourhood mean is the definition of one.
+              Run without the restriction, the two outlier classes had a handful
+              of sales each while the cluster classes had dozens. That is the
+              signature of sampling noise producing apparent outliers: a small
+              sample pushed away from its neighbourhood mean is the definition of
+              one.
             </p>
             <p>
               Global Moran's I depends on the number of neighbours counted, so a
@@ -611,7 +611,7 @@ function Body({ mf }: { mf: Manifest }) {
               Nearest-neighbour weights are asymmetric, which invalidates the
               closed-form variance, so all inference is by permutation:{" "}
               {spatial.permutations.toLocaleString()} conditional permutations with
-              Benjamini–Hochberg false-discovery control at q ={" "}
+              Benjamini-Hochberg false-discovery control at q ={" "}
               {spatial.fdr_q}. {spatial.bh_significant.toLocaleString()} ZIPs clear
               it.
             </p>
@@ -628,7 +628,7 @@ function Body({ mf }: { mf: Manifest }) {
               Two qualifications. This is descriptive clustering with a permutation
               screen, not a hypothesis test: the null being tested is complete
               spatial randomness, which the global statistic rejects everywhere.
-              And Benjamini–Hochberg under spatial dependence is valid under
+              And Benjamini-Hochberg under spatial dependence is valid under
               positive regression dependency, which is an assumption rather than an
               established fact.
             </p>
@@ -679,8 +679,9 @@ function Body({ mf }: { mf: Manifest }) {
           <li>
             <strong>A ZCTA is not a ZIP code.</strong> Postal ZIP codes are delivery
             routes, not areas; the Census Bureau's tabulation areas approximate them
-            from block-level assignments. Some ZIP codes — post-office boxes and
-            single-building codes — have no tabulation area and cannot be drawn.
+            from block-level assignments. Some ZIP codes, such as post-office
+            boxes and single-building codes, have no tabulation area and cannot be
+            drawn.
           </li>
           <li>
             <strong>A ZIP is not a neighbourhood.</strong> Boundaries follow postal
@@ -750,7 +751,7 @@ function Body({ mf }: { mf: Manifest }) {
           </Term>
           <Term name="FDR">
             False discovery rate. The expected share of flagged results that are
-            false positives, controlled here at q = {spatial?.fdr_q ?? "—"}.
+            false positives, controlled here at q = {spatial?.fdr_q ?? "n/a"}.
           </Term>
           <Term name="YoY">
             Year over year. Change against the same reference period twelve months

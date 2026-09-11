@@ -10,7 +10,7 @@ import {
   type ClassSource,
 } from "@/lib/class-source";
 import { CHOROPLETH_COLORS } from "@/lib/choropleth";
-import { boot, fetchManifest, fetchPaint, outlierCount, type Manifest } from "@/lib/manifest";
+import { boot, takeSnapshotPrefetch, fetchManifest, fetchPaint, outlierCount, type Manifest } from "@/lib/manifest";
 import { PaintTable } from "@/lib/paint-table";
 import { ZipTable, WIRE_OF } from "@/lib/zip-table";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -122,8 +122,9 @@ export function HousingDashboard() {
 
     (async () => {
       const url = dataUrl("zip-data.json");
-      const early: ArrayBuffer | null = await ((window as unknown as Record<string, unknown>)
-        .__zipDataPromise as Promise<ArrayBuffer | null> | undefined ?? Promise.resolve(null));
+      // Once only: the buffer is transferred below and this component remounts
+      // on browser Back out of the methodology route. See takeSnapshotPrefetch.
+      const early: ArrayBuffer | null = await takeSnapshotPrefetch();
 
       try {
         const result = await processData(

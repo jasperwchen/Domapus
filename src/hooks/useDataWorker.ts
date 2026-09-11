@@ -8,12 +8,26 @@ interface PendingRequest {
   reject: (reason?: Error) => void;
 }
 
+/** No phase means nothing is in flight. MapLibreMap renders the overlay on the
+ *  phase string alone, so a phase left behind by a finished load is an overlay
+ *  that never goes away. */
+const IDLE: ProgressData = { phase: '' };
+
 export function useDataWorker() {
   const workerRef = useRef<Worker | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [progress, setProgress] = useState<ProgressData>({ phase: '' });
+  const [progress, setProgress] = useState<ProgressData>(IDLE);
+
   const requestsRef = useRef<Map<string, PendingRequest>>(new Map());
   const isInitializedRef = useRef(false);
+
+  // Every terminal state goes through here. Clearing `isLoading` without also
+  // clearing the phase left "Building columns..." on screen for the life of the
+  // page, on an ordinary cold load as much as anywhere else.
+  const settle = useCallback(() => {
+    setIsLoading(false);
+    setProgress(IDLE);
+  }, []);
 
   useEffect(() => {
     if (isInitializedRef.current) return;
@@ -31,7 +45,7 @@ export function useDataWorker() {
           break;
 
         case 'ABORTED': {
-          setIsLoading(false);
+          settle();
           const aborted = requestsRef.current.get(id);
           if (aborted) {
             aborted.reject(new DOMException('Request superseded', 'AbortError'));
@@ -43,7 +57,7 @@ export function useDataWorker() {
         case 'ERROR': {
           console.error('[useDataWorker] Worker error:', error);
           trackError("worker_error", error || "Unknown worker error");
-          setIsLoading(false);
+          settle();
           const pending = requestsRef.current.get(id);
           if (pending) {
             pending.reject(new Error(error));
@@ -54,7 +68,7 @@ export function useDataWorker() {
 
         default: {
           console.log(`[useDataWorker] ${type} completed for request ${id}`);
-          setIsLoading(false);
+          settle();
           const pending = requestsRef.current.get(id);
           if (pending) {
             pending.resolve(data as SnapshotReadyResponse);
@@ -68,7 +82,7 @@ export function useDataWorker() {
     worker.onerror = (err: ErrorEvent) => {
       console.error("[useDataWorker] Unhandled worker error:", err);
       trackError("worker_unhandled_error", err?.message || "Unhandled worker error");
-      setIsLoading(false);
+      settle();
       requestsRef.current.forEach(request => request.reject(new Error(err.message)));
       requestsRef.current.clear();
     };
@@ -80,7 +94,7 @@ export function useDataWorker() {
       }
       isInitializedRef.current = false;
     };
-  }, []);
+  }, [settle]);
 
   const processData = useCallback((message: { type: string; data?: LoadSnapshotRequest }, options: { timeout?: number; retries?: number; transfer?: Transferable[] } = {}): Promise<SnapshotReadyResponse> => {
     const { timeout = 30000, retries = 2, transfer = [] } = options;
@@ -99,6 +113,7 @@ export function useDataWorker() {
         const timeoutId = setTimeout(() => {
           if (requestsRef.current.has(id)) {
             requestsRef.current.delete(id);
+            settle();
             reject(new Error("Request timed out"));
             trackError("worker_timeout", `Request ${message.type} timed out`);
           }
@@ -130,12 +145,22 @@ export function useDataWorker() {
         });
 
         setIsLoading(true);
-        worker.postMessage({ id, ...message }, transfer);
+        try {
+          worker.postMessage({ id, ...message }, transfer);
+        } catch (err) {
+          // postMessage rejects a detached ArrayBuffer synchronously, after the
+          // loading flag is already up. Without this the promise rejects and the
+          // overlay stays forever, which reads as a hang rather than a failure.
+          requestsRef.current.delete(id);
+          clearTimeout(timeoutId);
+          settle();
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
       });
     };
 
     return attemptRequest(0);
-  }, []);
+  }, [settle]);
 
   return { processData, isLoading, progress };
 }

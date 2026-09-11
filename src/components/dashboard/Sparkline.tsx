@@ -204,7 +204,7 @@ function Chart({
               <p className="shrink-0 text-right text-[11px] leading-tight tabular-nums text-muted-foreground">
                 {Math.round(Number(level) * 100)}% range
                 <br />
-                {fmt(hover.lo, meta.money)}–{fmt(hover.hi, meta.money)}
+                {fmt(hover.lo, meta.money)} to {fmt(hover.hi, meta.money)}
               </p>
             )}
           </>

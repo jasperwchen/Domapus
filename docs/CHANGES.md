@@ -1995,3 +1995,187 @@ page depends on (removing one removes a section).
 - Comparison: green/red good-bad colouring dropped. `isGoodHigher = key !== 'median_dom'` is
   wrong for `months_of_supply` and meaningless for `homes_sold` — which direction is better
   depends on whether the reader is buying or selling, which the panel does not know.
+
+---
+
+## 2026-09-09 — /methodology was unreachable in production
+
+`https://jasperwchen.github.io/Domapus/methodology` showed the map. The address bar read
+correctly, the page did not change, and every local mode looked fine. Verified live before
+touching anything: the URL served `404.html`, the bounce ran, and the router stayed on `/`.
+
+**Cause.** The restore lived in an `App.tsx` effect and called `window.history.replaceState`.
+That call fires no `popstate`, and React Router reads `window.location` once while mounting.
+So the address bar was fixed and the router never learned about it. The fix is not a
+different effect — it is doing the restore in static HTML, before the bundle is even fetched.
+The restore is now the first thing in `<head>` of `index.html`, ahead of GTM (so the pageview
+reports the real path) and ahead of the paint-boot script (which reads `location.search`).
+
+**Why no local mode caught it.** `npm run dev` and `vite preview` both serve `index.html` for
+any path, so no bounce happens and the scripts never run. `bench/serve.mjs` falls back to
+`index.html` too, despite its "matching GitHub Pages" comment — that fallback is about
+byte measurement, but it means the harness cannot see a routing break. The chain only ever
+executed in production.
+
+**Also changed while in there.**
+
+- `404.html` derives the base from the requested path instead of hardcoding `/Domapus/`, with
+  an optional `pr-preview/pr-N` segment, so a preview deep link bounces into that preview
+  rather than into production, which serves a different build.
+- The path is stored **relative to the base** (`methodology`, not `/Domapus/methodology`) and
+  `index.html` re-attaches it to whatever base it was itself served under. An entry left in
+  `sessionStorage` by one deployment then resolves against the shell that actually loaded
+  instead of naming a route that build cannot match. The restore also refuses any stored
+  value starting with `/`.
+- The storage key moved from `redirectPath` to `spaPath`, so during a deploy an old shell and
+  a new `404.html` (or the reverse) simply miss each other and land on the map, rather than
+  half-applying two formats.
+- Both scripts guard `sessionStorage`, which throws under some privacy settings. The bounce
+  happens either way: the map is a worse answer than the requested page and a better one than
+  the 404 body.
+
+**Regression test.** `src/lib/__tests__/base-path.test.ts` extracts the two inline scripts from
+the shipped HTML and runs them, so a rewrite of one without the other fails. Verified it goes
+red on the original bug (restore removed from `index.html`) and on the absolute-path format,
+not just green on the fix. It also asserts the restore stays ahead of GTM and of
+`__domapusBoot` in source order.
+
+Everything checked against a server that returns `404.html` with a 404 for unknown paths, the
+way Pages does — not against `vite preview`.
+
+**Not changed, worth knowing.** The methodology links in `TopBar` and `Legend` are plain
+`<a href>`, so reaching the page costs a full reload plus the 404 round trip; React Router
+`<Link>` would make it a client-side transition. Separately, the boot script fetches
+`zip-data.json` and a paint table on the methodology page, which needs neither.
+
+### Same session: header navigation and the dash pass
+
+`TopBarShell` takes a `nav` prop. The map shows Methodology; the methodology page
+shows Map. The wordmark always linked back, but a `title` on a logo is not an exit a
+reader looks for, and the page shipped without one.
+
+Internal links no longer open a new tab. `IconLink` opts into `target="_blank"` with
+an `external` flag that only GitHub and Sponsor set. Two routes of one site should not
+each cost a window.
+
+That change had a consequence worth naming: the new tab used to preserve the map's
+state for free, because the map tab stayed alive. Same-tab navigation would have
+returned the reader to the national default view. Both nav links therefore carry
+`location.search` across, which is where the map already keeps metric, selected ZIP,
+centre and zoom. Verified lossless: leave the map at `?metric=median_sale_price&zip=
+90210&lat=34.09&lng=-118.4&zoom=9`, open the methodology page, click Map, and the
+metric, the open detail panel and the viewport all come back. The methodology page
+ignores the params and sets its own canonical, so the only cost is URL length.
+
+Unchanged on the map header, because they were asked to stay: the "Housing Market
+Analysis" subtitle, the "Data through" period block, and the Export button.
+
+**Dashes.** The methodology page had 20 em dashes and 2 en dashes; it now has none.
+Sentences were rejoined with a colon, a comma or a full stop depending on what the
+clause was doing, and a few were tightened in passing. The register is unchanged: it
+is still the BLS Handbook / Eurostat / journal Methods voice the earlier rewrite set,
+and nothing was cut for length alone.
+
+Em dashes standing in for a missing value in a table are now `n/a`. That reads
+correctly aloud, which an em dash does not.
+
+Four rendered strings elsewhere carried dashes and were fixed: the detail panel's
+missing-value placeholder, the forecast band readout (`$391k to $489k` rather than an
+en-dash range), the header's period tooltip, and `ZipComparison`'s city and
+relative-change placeholders.
+
+**Not done.** Roughly 110 source comments still contain em dashes. They are invisible
+to users and rewriting them would be a large diff touching files this work has no
+other reason to open. `bench/compare.mjs` and `src/lib/zip-table.ts` each hold one in
+a developer-facing string.
+
+### Same session: route-aware boot, and where client-side routing does and does not pay
+
+**The boot script no longer fetches map data on a page with no map.** `index.html`
+tests `/\/methodology\/?$/` against `location.pathname` and skips the paint table and
+the snapshot when it matches. The route is readable there because the 404-restore
+script above it has already run. Testing the tail rather than the whole path keeps it
+independent of the base, which differs between production and a PR preview.
+
+Measured against production, gzipped: the methodology page used to pull `zip-data.json`
+at 2,694 KB, a paint table at 23 KB and the manifest at 4 KB. It now pulls the manifest
+and nothing else. Roughly 2.7 MB that a reader arriving from search or the sitemap paid
+for and never used.
+
+Safe because both consumers already treat a missing boot as "fetch it yourself":
+`HousingDashboard` does `booted?.manifest ?? await fetchManifest()` and picks
+`fetchPaint` when the booted metric does not match, and the worker fetches the snapshot
+from its own URL when handed no prefetched buffer. Verified by landing cold on the
+methodology page and navigating to the map: manifest and paint were fetched on demand
+and the map painted.
+
+**Client-side routing is now asymmetric, on purpose.** Going to the methodology page is
+a `<Link>`. Going to the map is a full page load.
+
+Routing *into* the map looked like a win and is not. `index.html` starts the manifest
+and paint fetches during head parse, which is the whole reason first paint is fast. A
+client-side mount cannot do that, so it falls back to `fetchManifest` then `fetchPaint`,
+two round trips in series where the boot script runs both in parallel with the bundle.
+Routing into the map trades the 404 bounce for a slower first paint.
+
+React Router cannot express the map's URL either. `useHref` returns the bare basename
+for a "/" path, so `<Link to="/">` renders `/Domapus` and drops the trailing slash the
+canonical URL and the sitemap both carry. Observed, not assumed: the address bar read
+`http://localhost:4321/Domapus` after a routed navigation.
+
+Going the other way has neither problem. The methodology page needs no snapshot, and
+`/methodology` is a real path that `useHref` renders correctly, so the `<Link>` skips
+the 404 bounce and the whole app reboot for free.
+
+`IconLink` now takes `to` for a routed link, `href` for a full load, and `href` plus
+`external` for another site, so a call site cannot set the tab behaviour independently
+of the destination. External links carry `aria-label="… (opens in a new tab)"`, since a
+window opening unannounced is a WCAG 3.2.5 problem.
+
+The Legend's inline Methodology link is a `<Link>` too. It used to open a new tab to
+protect the reader's map state; the query string carries that now.
+
+### 2026-09-09 (same day) — Back out of the methodology page hung the map
+
+Reported: on the map, click Methodology, press Back, and the map sits on its
+loading state.
+
+**Cause, and it was mine.** `index.html` prefetches the snapshot into
+`window.__zipDataPromise`, and `HousingDashboard` hands that buffer to the worker
+in a TRANSFER list, which detaches it. Reading it a second time yields an
+ArrayBuffer with `byteLength` 0, and `postMessage` refuses it outright:
+
+    DataCloneError: ArrayBuffer at index 0 is already detached.
+
+There was never a second reader until the methodology page became a client-side
+route in this same session. Every route change used to be a fresh document with a
+fresh prefetch. Browser Back out of a `<Link>` navigation remounts the dashboard
+against the same `window`, so it read the corpse of the buffer it had already given
+away. Reproduced before changing anything, and confirmed the buffer's `byteLength`
+was 0 while the promise still resolved.
+
+`manifest.ts` now exports `takeSnapshotPrefetch()`, which clears the handle before
+awaiting (so two mounts in one tick cannot both take it) and resolves a detached
+buffer to null. Either way the caller fetches the URL instead: one round trip
+slower, and correct. `boot()` is deliberately NOT one-shot, because
+`PaintTable.from` takes a view over the paint buffer rather than consuming it,
+which the metric-change path has always relied on. That asymmetry is now asserted
+in `src/lib/__tests__/snapshot-prefetch.test.ts` rather than left implicit.
+
+**A second, older bug was wearing the same clothes.** `useDataWorker` cleared
+`isLoading` in each terminal branch but never reset `progress`, and MapLibreMap
+renders its overlay on `loadingProgress.phase` alone, ungated by `isLoading`. So
+the last phase string stayed on screen for the life of the page. This was NOT new:
+"Building columns..." was visible after an ordinary cold load too, and it is very
+likely part of what "stuck on loading" described. Every terminal state now goes
+through one `settle()` that clears both.
+
+`postMessage` throwing synchronously made that worse and is now handled: the throw
+happens after `setIsLoading(true)`, so the promise rejected while the overlay
+stayed up forever. A hang reads as broken where an error message reads as failed,
+and the paint path is independent, so the map itself still works. The timeout path
+got the same treatment for the same reason.
+
+Verified on a build served the way Pages serves it: cold load clean, Back clean,
+and three consecutive Methodology/Back round trips each keeping the map, the
+canvas, the restored 90210 panel and the URL, with no console errors.

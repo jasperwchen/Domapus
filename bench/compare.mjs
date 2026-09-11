@@ -91,7 +91,7 @@ function scenarioTable(results) {
   }
 }
 
-const esc = (s) => String(s).replace(/\|/g, "\\|");
+const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 
 if (results.length === 2) {
   const [a, b] = results;

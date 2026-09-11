@@ -63,11 +63,36 @@ interface BootPayload {
   metric: string;
 }
 
-/** What index.html kicked off before the bundle parsed, if it succeeded. */
+/** What index.html kicked off before the bundle parsed, if it succeeded.
+ *
+ *  Safe to read repeatedly. `PaintTable.from` takes a view over the buffer and
+ *  does not consume it, which the metric-change path has always relied on. */
 export function boot(): Promise<BootPayload | null> {
   const w = window as unknown as Record<string, unknown>;
   const p = w.__domapusBoot as Promise<BootPayload | null> | undefined;
   return p ?? Promise.resolve(null);
+}
+
+/** The snapshot index.html started fetching, handed over exactly ONCE.
+ *
+ *  Unlike the paint table, this buffer is TRANSFERRED to the worker, which
+ *  detaches it. A second reader gets a zero-length ArrayBuffer and postMessage
+ *  refuses it outright: "ArrayBuffer at index 0 is already detached", and the
+ *  map sits on its loading state forever.
+ *
+ *  There was no second reader until the methodology page became a client-side
+ *  route. Every route change used to be a fresh document with a fresh prefetch;
+ *  now browser Back out of that page remounts the dashboard against the same
+ *  window object, and it read the corpse of the buffer it had already given away.
+ *
+ *  Cleared before the await so two mounts in one tick cannot both take it, and a
+ *  detached buffer resolves to null rather than being passed on. Either way the
+ *  caller falls back to fetching the URL: one round trip slower, and correct. */
+export function takeSnapshotPrefetch(): Promise<ArrayBuffer | null> {
+  const w = window as unknown as Record<string, unknown>;
+  const p = w.__zipDataPromise as Promise<ArrayBuffer | null> | undefined;
+  w.__zipDataPromise = undefined;
+  return p ? p.then((buf) => (buf && buf.byteLength > 0 ? buf : null)) : Promise.resolve(null);
 }
 
 export function fetchManifest(): Promise<Manifest> {

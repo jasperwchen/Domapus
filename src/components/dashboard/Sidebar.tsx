@@ -229,7 +229,7 @@ function Hero({ zipData, metricKey }: { zipData: ZipData; metricKey: string }) {
       </p>
       <p className="mt-0.5 text-3xl font-bold tabular-nums leading-none text-foreground">
         {value === null || value === undefined || isNaN(value)
-          ? "—"
+          ? "n/a"
           : formatMetricValue(value, m.format as FormatType)}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">

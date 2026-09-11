@@ -81,12 +81,12 @@ export function ZipComparison({
           <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold tabular-nums text-foreground">{currentZip.zipCode}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{currentZip.city || '—'}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{currentZip.city || 'n/a'}</p>
             </div>
             <span className="text-[11px] font-medium text-muted-foreground">vs</span>
             <div className="flex-1 min-w-0 text-right">
               <p className="text-sm font-semibold tabular-nums text-foreground">{compareZip.zipCode}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{compareZip.city || '—'}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{compareZip.city || 'n/a'}</p>
             </div>
             <Button
               variant="ghost"
@@ -174,7 +174,7 @@ function Group({
  *  Percent of A, not a difference in the metric's own unit: the column is one
  *  width for fifteen metrics on five different scales. */
 function relative(a: number | null, b: number | null): string {
-  if (!Number.isFinite(a as number) || !Number.isFinite(b as number) || a === 0) return '—';
+  if (!Number.isFinite(a as number) || !Number.isFinite(b as number) || a === 0) return 'n/a';
   const pct = ((b as number) - (a as number)) / Math.abs(a as number) * 100;
   if (Math.abs(pct) < 0.5) return '±0%';
   return `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`;

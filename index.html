@@ -3,6 +3,38 @@
 
 <head>
   <meta charset="UTF-8" />
+
+  <!-- GitHub Pages serves public/404.html for every SPA route; it stashes the
+       requested path and bounces here. Put that path back BEFORE anything reads
+       the URL.
+
+       This has to happen in static HTML, not in a React effect. React Router
+       reads window.location once while mounting and does not observe a bare
+       history.replaceState — no popstate fires for it. Restoring from App.tsx's
+       effect therefore fixed the address bar and left the router on "/", which
+       is why /Domapus/methodology showed the map in production while dev, where
+       Vite serves the route directly and no bounce happens, looked fine.
+
+       First in <head> so GTM's pageview and the boot script below both see the
+       real URL, and well before the deferred module bundle. -->
+  <script>
+    (function () {
+      var stored;
+      try {
+        stored = sessionStorage.getItem('spaPath');
+        if (stored) sessionStorage.removeItem('spaPath');
+      } catch (err) { return; }
+      // Base-relative ("methodology"), so a leading slash is either a stale entry
+      // from an older format or something this script did not write. Drop it
+      // rather than navigate somewhere unintended.
+      if (!stored || stored.charAt(0) === '/') return;
+      // The directory this shell was served from: "/Domapus/" in production,
+      // "/Domapus/pr-preview/pr-N/" in a preview, "/" in dev.
+      var dir = window.location.pathname.replace(/[^/]*$/, '');
+      window.history.replaceState(null, '', dir + stored);
+    })();
+  </script>
+
   <!-- Google Tag Manager -->
   <script>
     (function (w, d, s, l, i) {
@@ -60,6 +92,22 @@
       var metric = new URLSearchParams(location.search).get('metric') || 'zhvi';
       var file = paint[metric] || paint.zhvi;
 
+      // The methodology page draws no map. It needs the manifest, which it fetches
+      // itself and which the preload above already has in flight, but the paint
+      // table and the 2.5 MB snapshot are pure waste there, and a reader arriving
+      // from search or the sitemap pays for both before reading a word.
+      //
+      // The route is readable here because the restore script at the top of this
+      // file has already run, so location.pathname is the requested path and not
+      // the shell the 404 bounced through. Testing the tail rather than the whole
+      // path keeps this independent of the base, which differs per deployment.
+      //
+      // Both consumers already treat a missing boot as "fetch it yourself":
+      // HousingDashboard falls back to fetchManifest/fetchPaint and the worker
+      // fetches the snapshot from its own URL. So a reader who goes on to the map
+      // gets it one round trip later rather than not at all.
+      var mapless = /\/methodology\/?$/.test(location.pathname);
+
       // No inlined map means this is a build from before the first pipeline run.
       // Resolve to null rather than fetching `undefined`: the app then reads the
       // manifest itself and pays one extra round trip, which is the correct
@@ -72,7 +120,7 @@
       // credentials mode does not match". `crossorigin` (i.e. anonymous) means
       // credentials mode SAME-ORIGIN, not omit, which is the trap: the obvious
       // repair of adding `credentials: 'omit'` to the fetch makes it worse.
-      window.__domapusBoot = file
+      window.__domapusBoot = file && !mapless
         ? Promise.all([
             fetch(base + 'manifest.json').then(function (r) { return r.json(); }),
             fetch(base + file).then(function (r) { return r.arrayBuffer(); })
@@ -81,9 +129,11 @@
           }).catch(function () { return null; })
         : Promise.resolve(null);
 
-      window.__zipDataPromise = fetch(base + 'zip-data.json')
-        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
-        .catch(function () { return null; });
+      window.__zipDataPromise = mapless
+        ? Promise.resolve(null)
+        : fetch(base + 'zip-data.json')
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+            .catch(function () { return null; });
     })();
   </script>
 

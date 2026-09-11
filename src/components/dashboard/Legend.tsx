@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6,8 +7,6 @@ import { METRICS, getMetricLabel } from "@/lib/metrics";
 import { computeQuantiles } from "@/lib/quantiles";
 import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS, NO_DATA_COLOR } from "@/lib/choropleth";
 import { OUTLIER_COLORS } from "@/lib/choropleth-painter";
-
-const METHODOLOGY_URL = `${import.meta.env.BASE_URL}methodology`;
 
 interface LegendProps {
   selectedMetric: string;
@@ -56,6 +55,7 @@ export function Legend({
   showLisa, onShowLisaChange, reliability, outliers,
 }: LegendProps) {
   const isMobile = useIsMobile();
+  const { search } = useLocation();
 
   const legendDisplay = useMemo(() => {
     if (!metricValues || metricValues.length === 0) {
@@ -209,7 +209,7 @@ export function Legend({
             checked={!!autoScale}
             onChange={onAutoScaleChange}
             label="Adjust Contrast to View"
-            help="Automatically adjusts the scale to the values currently visible on the map"
+            help="Recalculates the color scale based only on ZIP codes currently visible, restoring contrast for regions of similar value."
           />
         )}
 
@@ -251,14 +251,15 @@ export function Legend({
             of the selection effect is real and unchanged. */}
         {reliability && (
           <p className="text-[11px] leading-snug text-muted-foreground pt-0.5">
-            <a
-              href={METHODOLOGY_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            {/* Same tab, like every other route link. This used to open a new
+                one to protect the reader's map state; the query string carries
+                metric, ZIP and viewport now, so returning restores all of it. */}
+            <Link
+              to={`/methodology${search}`}
               className="underline underline-offset-2 hover:text-foreground"
             >
               Methodology
-            </a>
+            </Link>
           </p>
         )}
       </div>

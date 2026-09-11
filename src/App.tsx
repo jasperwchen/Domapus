@@ -13,20 +13,16 @@ import { trackError } from './lib/analytics';
 const Methodology = lazy(() => import("./pages/Methodology"));
 
 const queryClient = new QueryClient();
+
+// "/Domapus" in production, "/Domapus/pr-preview/pr-N" in a preview, "/" in dev.
+// The router strips this prefix off window.location before matching, so every
+// <Route path> below is written without it. The path a deep link asks for is
+// restored by the script at the top of index.html, which runs before this file
+// is even fetched.
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
 const App = () => {
   useEffect(() => {
-
-    const redirectPath = sessionStorage.getItem('redirectPath');
-    if (redirectPath) {
-      sessionStorage.removeItem('redirectPath');
-      const path = redirectPath.replace(basename, '');
-      if (path && path !== '/' && path !== basename) {
-        window.history.replaceState(null, '', basename + path);
-      }
-    }
-
     const handleGlobalError = (event: ErrorEvent) => {
       trackError("javascript_crash", event.message);
     };

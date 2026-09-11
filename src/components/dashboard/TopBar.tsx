@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Heart, Calendar, BookOpen } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Heart, Calendar, BookOpen, Map as MapIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MetricSelector, MetricType } from "./MetricSelector";
 import { SearchBox } from "./SearchBox";
@@ -19,7 +20,6 @@ const GithubIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 const BASE_PATH = import.meta.env.BASE_URL;
-const METHODOLOGY_URL = `${BASE_PATH}methodology`;
 
 /**
  * The header both routes share: identity on the left, site-wide links on the
@@ -30,7 +30,7 @@ const METHODOLOGY_URL = `${BASE_PATH}methodology`;
  * ZIP search that control a map on another route.
  */
 export function TopBarShell({
-  subtitle, center, actions,
+  subtitle, center, actions, nav = "methodology",
 }: {
   /** The line under the wordmark. The map says what the site is; a document says
    *  what the document is. */
@@ -39,7 +39,18 @@ export function TopBarShell({
   center?: React.ReactNode;
   /** Page-specific actions, placed before the site-wide links. */
   actions?: React.ReactNode;
+  /** Which route the first button goes to: the one the reader is not on. The
+   *  wordmark also links to the map, but a titled icon is the only exit a reader
+   *  will look for, and the methodology page previously offered none. */
+  nav?: "methodology" | "map";
 }) {
+  // Both routes carry the query string across, because the map keeps its whole
+  // view there: metric, selected ZIP, centre and zoom. Without it the reader who
+  // opens the methodology page comes back to the national default instead of the
+  // county they were reading about. The methodology page ignores these params and
+  // sets its own canonical, so carrying them costs nothing but URL length.
+  const { search } = useLocation();
+
   // Breakpoints, not the `isMobile` hook, because the hook is one boolean at
   // 768 px and this row has to degrade in more than two steps. Adding the
   // Methodology button pushed the total minimum width past a 900 px viewport and
@@ -52,7 +63,7 @@ export function TopBarShell({
     >
       <div className="flex items-center gap-3 lg:gap-5 min-w-0">
         <a
-          href={BASE_PATH}
+          href={`${BASE_PATH}${search}`}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
           title="Back to the map"
         >
@@ -79,15 +90,22 @@ export function TopBarShell({
         {actions}
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <IconLink href={METHODOLOGY_URL} label="Methodology">
-            <BookOpen className="h-4 w-4" />
-          </IconLink>
-          <IconLink href="https://github.com/jasperwchen/Domapus" label="GitHub">
+          {nav === "map" ? (
+            <IconLink href={`${BASE_PATH}${search}`} label="Map">
+              <MapIcon className="h-4 w-4" />
+            </IconLink>
+          ) : (
+            <IconLink to={`/methodology${search}`} label="Methodology">
+              <BookOpen className="h-4 w-4" />
+            </IconLink>
+          )}
+          <IconLink href="https://github.com/jasperwchen/Domapus" label="GitHub" external>
             <GithubIcon className="h-4 w-4" />
           </IconLink>
           <IconLink
             href="https://buymeacoffee.com/JasperC"
             label="Sponsor"
+            external
             className="bg-pink-600 hover:bg-pink-700 text-white"
           >
             <Heart className="h-4 w-4" />
@@ -100,21 +118,58 @@ export function TopBarShell({
 
 /** Icon plus a label that appears only when there is room for it. The title
  *  attribute carries the name at every width, so the icon-only state is still
- *  identifiable. */
-function IconLink({
-  href, label, className, children,
-}: {
-  href: string;
+ *  identifiable.
+ *
+ *  Three destinations, and the prop decides all of the behaviour so it cannot be
+ *  set inconsistently at a call site.
+ *
+ *  `to` is a client-side route. Nothing stays in the tab by accident: a new tab
+ *  per route leaves the reader collecting windows and disables Back, which is the
+ *  control they will actually reach for.
+ *
+ *  `href` without `external` is a route this app deliberately reaches by a full
+ *  page load. That is the map: `index.html` starts the manifest and paint fetches
+ *  during head parse, and a client-side mount cannot, so it falls back to
+ *  fetchManifest then fetchPaint, two round trips in series that the boot script
+ *  runs in parallel with the bundle. Routing into the map would trade the 404
+ *  bounce for a slower first paint. React Router also cannot express the map's URL:
+ *  `useHref` returns the bare basename for a "/" path, so a Link renders
+ *  `/Domapus` and drops the trailing slash the canonical URL carries.
+ *
+ *  `href` with `external` leaves the site, the one case where a new tab earns
+ *  itself, because the alternative is discarding the map the reader was using. It
+ *  says so out loud for anyone who cannot see a window open. */
+type IconLinkProps = {
   label: string;
   className?: string;
+  external?: boolean;
   children: React.ReactNode;
-}) {
+} & ({ to: string; href?: never } | { href: string; to?: never });
+
+function IconLink({ label, className, external = false, children, ...dest }: IconLinkProps) {
+  const inner = (
+    <>
+      {children}
+      <span className="hidden xl:inline">{label}</span>
+    </>
+  );
   return (
     <Button variant="outline" size="sm" asChild className={className}>
-      <a href={href} target="_blank" rel="noopener noreferrer" title={label}>
-        {children}
-        <span className="hidden xl:inline">{label}</span>
-      </a>
+      {dest.to !== undefined ? (
+        <Link to={dest.to} title={label}>{inner}</Link>
+      ) : external ? (
+        <a
+          href={dest.href}
+          title={label}
+          aria-label={`${label} (opens in a new tab)`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {inner}
+        </a>
+      ) : (
+        <a href={dest.href} title={label}>{inner}</a>
+      )}
     </Button>
   );
 }
@@ -185,7 +240,7 @@ export function TopBar({
             {!isMobile && (
               <div
                 className="items-center text-dashboard-text-secondary gap-2 hidden 2xl:flex"
-                title={`${sourceLabel} data — ${periodPhrase}. Site last refreshed ${runDate}.`}
+                title={`${sourceLabel} data, ${periodPhrase}. Site last refreshed ${runDate}.`}
               >
                 <Calendar className="h-4 w-4 opacity-80" />
                 <div className="flex flex-col">
