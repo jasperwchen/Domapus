@@ -91,11 +91,6 @@ deploy footprint (92.6 -> 46.9 MB) and the coverage fix itself.
       `tar -czf history-2026-07-31.tar.gz -C public/data/history .` to `data-2026-07` by hand
       before deploying.
 
-## Blocked on user
-
-- [!] Close the 5 open Renovate PRs (outward action on a public repo)
-- [!] The gh-pages cleanup push is **obsolete — do not run it.** See "Publishing surfaces".
-
 ## Verification still owed
 
 - [ ] Run `bench/verify-choropleth.mjs` against the **deployed** site, not only a local build.
