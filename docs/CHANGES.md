@@ -2179,3 +2179,58 @@ got the same treatment for the same reason.
 Verified on a build served the way Pages serves it: cold load clean, Back clean,
 and three consecutive Methodology/Back round trips each keeping the map, the
 canvas, the restored 90210 panel and the URL, with no console errors.
+
+---
+
+## 2026-09-11 — maplibre-gl 5 → 6, and the rest of `npm outdated` deliberately left alone
+
+`npm audit` reported a **critical** XSS advisory against `maplibre-gl <= 6.4.0`
+(GHSA-jrc7-96c5-q579, a `DOM.sanitize()` bypass) and the only fix is the v6 major. That is the
+whole reason for this pass. The hole is not actually reachable here — popups go through
+`setDOMContent`, never `setHTML` — so this clears the advisory rather than patching a live
+bug, but leaving a critical open to avoid a major is the wrong trade.
+
+**What v6 forced.**
+
+- ESM-only, so the default import is gone: `import * as maplibregl from "maplibre-gl"` in the
+  four source files and one test that use the namespace, and `import type * as maplibregl` in
+  `choropleth-painter.ts`, `class-source.ts` and `HousingDashboard.tsx`.
+- `setWorkerUrl()` is now required under a bundler, because v6 resolves its worker from
+  `import.meta.url` and a bundler's module graph does not point at the real file. New
+  `src/lib/maplibre-worker.ts` calls it once at module scope; `MapLibreMap.tsx` and
+  `PrintStage.tsx` import it for the side effect, next to their existing `addPMTilesProtocol()`
+  call. The URL must come in as `?worker&url` and not plain `?url` — `?url` emits the worker
+  verbatim without its `maplibre-gl-shared.mjs` sibling, which dies on first import and loads
+  no tiles at all. That failure only appears in `npm run build`; dev mode is forgiving of
+  either, which is exactly the shape of bug that ships.
+
+**The one behavioural change worth checking.** `zoomLevelsToOverscale` defaults to 4 in v6
+instead of 0, so maplibre slices vector tiles where it used to overscale them, and that changes
+what both `queryRenderedFeatures` and `querySourceFeatures` return. Those are what hover, click
+and `loadedZips()` in `class-source.ts` are built on — `loadedZips()` decides the live class
+source in auto-scale mode. Dedup is by a `Set` of feature ids so slicing should be harmless in
+theory, and it is in practice: verified on the production build served at the real base path.
+Click selection resolves a ZIP and fills the sidebar including the history sparkline, and
+toggling *Adjust Contrast to View* then zooming into the Northeast moves the legend breaks from
+$157k / $360k / $1.2M to $152k / $240k / $485k with the map recolouring to match, which is
+`ViewportClassSource` recomputing quantiles off `querySourceFeatures`. The export preview
+renders CONUS and both insets with tiles, which is `PrintStage`'s own Map instance proving it
+also got the worker URL. No console errors on any of it.
+
+Ruled out by grep, all zero hits: `styleimagemissing`, `map.transform`, `setRTLTextPlugin`,
+`MapDataEvent`, the UMD/CSP bundle, `#pragma mapbox`, `JSON.parse` on feature properties, and
+the `GeoJSONSource.setData` second argument. WebGL2 is now required, which is not a constraint
+for this site.
+
+**Everything else in `npm outdated` was left alone, on purpose.** After this bump the only
+in-range updates left were `autoprefixer` 10.5.5 → 10.5.6, `lucide-react` 1.43.0 → 1.45.0 and
+`vite` 8.2.2 → 8.3.0, all taken. What remains is nine packages where `Current == Wanted`, so
+every one needs a deliberate migration and none is a security fix: React 19 (with its two
+`@types` packages), TypeScript 7, Tailwind 4, ESLint 10 with `@eslint/js` 10 and
+`eslint-plugin-react-hooks` 7, vitest 5, and the two testing-library majors. React 19 and
+Tailwind 4 in particular are their own projects. They are a product decision, not a
+housekeeping one.
+
+Verified after the bumps: `tsc -b` clean, 117/117 vitest, lint at 0 errors and the same 8
+pre-existing warnings, `npm run build` clean with the worker emitted as a self-contained
+506 KB chunk referenced by hash from the maplibre bundle, and `npm audit` at 0 vulnerabilities.

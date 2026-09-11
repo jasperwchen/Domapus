@@ -1,4 +1,4 @@
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { CHOROPLETH_COLORS, NO_DATA_COLOR } from "./choropleth";
 import type { ClassSource } from "./class-source";
 import { count, mark, measure } from "./perf";
@@ -285,7 +285,7 @@ export function setPaintPropertyCounted(
   map: maplibregl.Map, layer: string, prop: string, value: unknown,
 ): void {
   count("map:sourceReload");
-  map.setPaintProperty(layer, prop, value as never);
+  map.setPaintProperty(layer, prop as never, value as never);
 }
 
 /** Correct scope for PAINTING: whole loaded tiles. Scoping tighter leaves tile

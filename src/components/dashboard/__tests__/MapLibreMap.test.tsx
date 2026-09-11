@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { MapLibreMap } from "../MapLibreMap";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 
 // Hoisted so vi.mock (which is hoisted to the top of the module) can access these.
 const mocks = vi.hoisted(() => {
@@ -104,6 +104,8 @@ interface MockMapLibreModule {
   Popup: typeof mocks.MockPopup;
   AttributionControl: new () => unknown;
   NavigationControl: new () => unknown;
+  setWorkerUrl: (url: string) => void;
+  addProtocol: (scheme: string, handler: unknown) => void;
   __getLastMap: () => InstanceType<typeof mocks.MockMap> | null;
   __getMockResize: () => ReturnType<typeof vi.fn>;
   __getMockTriggerRepaint: () => ReturnType<typeof vi.fn>;
@@ -115,6 +117,8 @@ vi.mock("maplibre-gl", () => {
     Popup: mocks.MockPopup,
     AttributionControl: class {},
     NavigationControl: class {},
+    setWorkerUrl: () => undefined,
+    addProtocol: () => undefined,
     __getLastMap: () => mocks.MockMap.lastInstance,
     __getMockResize: () => mocks.mockResize,
     __getMockTriggerRepaint: () => mocks.mockTriggerRepaint,

@@ -15,7 +15,7 @@
 // Switching modes bumps the epoch and rewrites the full ZIP set, so the two can
 // never overlap or leave stale colours behind.
 
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 import { CLASSES } from "./choropleth";
 import { FADE_EXEMPT, type PaintTable } from "./paint-table";
 import { span } from "./perf";

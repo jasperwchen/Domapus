@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle, useState, useCallback } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import "@/lib/maplibre-worker";
 import { ZipData } from "../map/types";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";

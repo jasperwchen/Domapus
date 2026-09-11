@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import maplibregl, { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
+import "@/lib/maplibre-worker";
 import { createMetricPopupContent } from "./map/utils";
 import { ZipData } from "./map/types";
 import { dataUrl } from "@/lib/data-url";

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import type * as maplibregl from "maplibre-gl";
 import { useDataWorker } from "@/hooks/useDataWorker";
 import { ZipData } from "./map/types";
 import { MapExport } from "@/components/MapExport";

@@ -100,6 +100,8 @@ vi.mock("maplibre-gl", () => {
     Popup: MockPopup,
     AttributionControl: class {},
     NavigationControl: class {},
+    setWorkerUrl: () => undefined,
+    addProtocol: () => undefined,
     __getLastMap: () => MockMap.lastInstance,
   };
   return { ...mod, default: mod };
