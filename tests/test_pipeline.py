@@ -601,13 +601,32 @@ def test_diverging_breaks_are_symmetric_and_reach_the_bound():
     from pipeline import classify
 
     edges = classify._diverging_breaks(20.0)
-    assert edges == [-20.0, -12.0, -4.0, 4.0, 12.0, 20.0]
+    assert len(edges) == classify.EDGES
     assert edges[0] == -20.0 and edges[-1] == 20.0
     assert [-e for e in reversed(edges)] == edges, "the scale is not symmetric about zero"
-    # The neutral class straddles zero and nothing else does.
-    assert classify.class_of(0.0, edges) == classify.CLASSES // 2
-    steps = [round(b - a, 6) for a, b in zip(edges, edges[1:])]
-    assert len(set(steps)) == 1, f"unequal steps {steps}"
+    # Equal steps TO THE SHIPPED PRECISION. The edges are rounded to 4 dp before
+    # they go in the manifest, and at 14 classes the nominal step is 40/12 = 3.33...,
+    # so consecutive rounded edges differ by 3.3333 or 3.3334 depending on where
+    # they land. That is a 0.0001 percentage-point artefact of rounding, not an
+    # asymmetric scale — symmetry is asserted exactly, above. At 7 classes the step
+    # was exactly 8.0 and this never showed.
+    nominal = 2.0 * 20.0 / (classify.EDGES - 1)
+    steps = [b - a for a, b in zip(edges, edges[1:])]
+    assert max(abs(x - nominal) for x in steps) <= 1e-4, f"unequal steps {steps}"
+
+    # Zero's treatment follows the PARITY of the class count, and both readings
+    # are correct for their parity. An odd count has an even number of edges and
+    # no edge on zero, so the middle class straddles it. An even count — 14 today
+    # — has an odd number of edges and the middle one IS zero, so no class
+    # straddles it and every colour commits to a sign.
+    if classify.CLASSES % 2:
+        assert 0.0 not in edges
+        assert classify.class_of(0.0, edges) == classify.CLASSES // 2
+        assert classify.class_of(-0.001, edges) == classify.class_of(0.001, edges)
+    else:
+        assert 0.0 in edges
+        assert classify.class_of(-0.001, edges) == classify.CLASSES // 2 - 1
+        assert classify.class_of(0.0, edges) == classify.CLASSES // 2
 
 
 def test_diverging_bound_is_reached_at_both_ends():

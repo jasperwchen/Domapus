@@ -43,7 +43,16 @@ function logEqualBreaks(sorted: number[]): number[] | null {
   return Array.from({ length: CLASSES - 1 }, (_, i) => 10 ** (lo + step * (i + 1)));
 }
 
-/** Equal-width classes whose grid is pinned to 100%, width from the p1..p99 span. */
+/** Equal intervals over the definitional [0, 100] domain. Reads no sample, so an
+ *  auto-scaled view of a bounded share shows the same boundaries as the national
+ *  map — which is the point: the domain does not change with the viewport. */
+function equalInterval0100Breaks(): number[] {
+  return Array.from({ length: CLASSES - 1 }, (_, i) => (100 * (i + 1)) / CLASSES);
+}
+
+/** Equal-width classes whose grid is pinned to 100%, width from the p1..p99 span.
+ *  For series that PIVOT at 100% (the sale-to-list ratio), not for shares bounded
+ *  by it — see `equalInterval0100Breaks`. */
 function equalAnchored100Breaks(sorted: number[]): number[] | null {
   const width = (percentile(sorted, 0.99) - percentile(sorted, 0.01)) / CLASSES;
   if (!(width > 0)) return null;
@@ -73,6 +82,7 @@ export function fitBreaks(scheme: string | undefined, sample: number[]): number[
     case "quantile": edges = quantileBreaks(sorted); break;
     case "log_equal_p1_p99": edges = logEqualBreaks(sorted); break;
     case "equal_anchored_100": edges = equalAnchored100Breaks(sorted); break;
+    case "equal_interval_0_100": edges = equalInterval0100Breaks(); break;
     default: return null;
   }
   if (!edges) return null;

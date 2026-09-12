@@ -352,9 +352,16 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       const legendX = mapRight - LEGEND_W - LEGEND_MARGIN_R;
       const legendY = mapBottom - LEGEND_MARGIN_B - 32 - LEGEND_H;
 
+      // HARD-EDGED, matching the on-screen key: each class gets an equal band and
+      // its colour is stopped twice, at the band's start and end, so nothing
+      // between them is interpolated. A smooth ramp here would put colours in the
+      // exported legend that no ZIP on the exported map can be — the same class of
+      // bug as the three separate colour lists this file used to carry.
       const gradient = ctx.createLinearGradient(legendX, 0, legendX + LEGEND_W, 0);
       CHOROPLETH_COLORS.forEach((color, i) => {
-        gradient.addColorStop(i / (CHOROPLETH_COLORS.length - 1), color);
+        const n = CHOROPLETH_COLORS.length;
+        gradient.addColorStop(i / n, color);
+        gradient.addColorStop((i + 1) / n, color);
       });
 
       ctx.beginPath();

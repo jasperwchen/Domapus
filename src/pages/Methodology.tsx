@@ -311,9 +311,12 @@ function Body({ mf }: { mf: Manifest }) {
           Boundaries are chosen per metric family rather than uniformly. Prices are
           approximately log-normal, so they are cut at equal intervals on a
           logarithmic scale, which preserves the ratio between classes. Counts are
-          cut at quantiles, because rank is what a reader compares. Shares are cut
-          at equal intervals anchored at 100%. Year-over-year change uses a
-          diverging scale symmetric about zero.
+          cut at quantiles, because rank is what a reader compares. A share of
+          sales is cut at equal intervals over its real zero-to-one-hundred domain;
+          the average sale-to-list ratio, which is the one series that genuinely
+          pivots at 100%, keeps a grid anchored there. Year-over-year change uses a
+          diverging scale symmetric about zero, with a boundary falling exactly on
+          zero so that no colour means &ldquo;no change&rdquo; ambiguously.
         </p>
         <p>
           Which ZIPs are allowed to <em>set</em> the boundaries is not the same
@@ -326,15 +329,27 @@ function Body({ mf }: { mf: Manifest }) {
         </p>
         <Detail>
           <p>
-            Seven classes rather than twelve: sequential ramps support five to nine
-            steps before adjacent colours stop being distinguishable. The ramp is
-            resampled from a twelve-colour source at equal arc length in CIELAB and
-            is rejected at build time if its lightness is not monotone or if the
-            minimum adjacent colour difference under simulated colour-vision
-            deficiency falls below a fixed floor.
+            The class count is measured rather than chosen. The ramp is resampled
+            from a twelve-colour source at equal arc length in CIELAB, and it has a
+            fixed amount of contrast to spend: about 84 units of perceptual
+            distance, bounded by how far lightness can travel between the palest
+            and darkest usable fill. More classes divide the same budget into
+            thinner slices.
           </p>
           <p>
-            Anchoring matters for the logarithmic scales. Seven equal classes over
+            So the build does not ask whether adjacent colours differ. It measures
+            how many classes apart two ZIPs must be before every reader, including
+            all three types of colour-vision deficiency, can see that they differ,
+            and it rejects any class count where that distance is a larger share of
+            the range than the seven-class ramp gave. At fourteen classes it is two
+            classes, or 14.3% of the range, which is the same guarantee seven
+            classes gave at one class apart. A reader with colour-vision deficiency
+            resolves about seven bands, as before; everyone else resolves fourteen.
+            Fifteen classes needs three, and is rejected. The ramp is also rejected
+            if its lightness is not monotone, so it survives greyscale printing.
+          </p>
+          <p>
+            Anchoring matters for the logarithmic scales. Equal classes spread over
             the observed minimum to maximum place most ZIPs in two colours, because
             a single very low and a single very high sale set the range. The
             anchors are the 1st and 99th percentiles; values outside them clamp to

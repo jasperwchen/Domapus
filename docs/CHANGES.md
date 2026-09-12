@@ -2237,6 +2237,91 @@ pre-existing warnings, `npm run build` clean with the worker emitted as a self-c
 
 ---
 
+## 2026-09-11 — the colour scale carried 2.5 bits and the legend hid it
+
+**Seven classes was a legend rule applied to a map.** `derive_ramp.mjs` justified it as
+"sequential ramps support 5-9 steps before adjacent colours stop being distinguishable",
+which is true of a key you read swatch by swatch and irrelevant to a choropleth you read as
+a gradient. The cost was measurable: one price class spanned a factor of 1.49, so at the
+$400k mark two ZIPs $190k apart painted identically.
+
+**The real ceiling is the ramp's arc length under colour-vision deficiency, and it is
+fixed.** About 84 dE76, bounded by how far L* can travel between the palest and darkest
+usable fill, because tritanopia collapses the yellow-blue axis this ramp's chroma lives on.
+No choice of hues buys more. So the check is no longer "are adjacent swatches separable" —
+it measures the SEPARABLE SPAN, how many classes apart two ZIPs must be before every reader
+can tell them apart, and rejects any count whose span/classes ratio is worse than the 14.3%
+of range seven classes gave:
+
+    classes   span   guaranteed-visible   verdict
+       7        1        14.3%            (what shipped)
+      13        2        15.4%            rejected
+      14        2        14.3%            TAKEN
+      15        3        20.0%            rejected
+
+14 is therefore the largest count that costs a colour-blind reader nothing: they still
+resolve ~7 bands, while normal vision resolves 14 at 13.79 dE76 adjacent, far above the
+~2.3 perceptual floor. 15 was asked for first and measured down. The byte imposes a second,
+independent ceiling of 15 — the class field is the low nibble holding `class + 1`, so class
+15 encodes as 0x10 and reads back as reliability tier 1 with no class — and `paint.py` now
+raises on it rather than trusting the palette script to have caught it.
+
+**`sold_above_list` was one colour over 97% of the drawn area.** `equal_anchored_100` pins
+the grid to 100% and lays edges downward at a width taken from the p1..p99 span. That is
+right for the sale-to-list ratio, which genuinely pivots at 100%, and wrong for a share of
+sales, which approaches 100% from below and never straddles it. The lowest edge landed at
+33.6% against a national median of 16.7%, so the grid never reached the data: 65.6% of ZIPs
+in the bottom class. Now `equal_interval_0_100`, which reads no sample at all and so cannot
+be tuned to the distribution in either direction. Bottom class 33.8%, of which 29.3 points
+are ZIPs reporting EXACTLY zero sales above list — that floor is the data, not the classing,
+and quantile classing would have spread it artificially to 31.5%.
+
+**An even class count puts a boundary on zero.** 14 classes means 13 diverging edges, an odd
+number, so the middle one is exactly 0.0. The 7-class scale had a neutral -4%..+4% band
+holding 57% of ZIPs — the map's largest single block was the one that said nothing. Now every
+cool colour is a decline and every warm one is a rise. `DIVERGING_COLORS` is resampled per
+half so the arms stay symmetric (the RdBu halves are not the same CIELAB arc length) and no
+swatch sits on neutral.
+
+**The legend is a seamless 14-band strip, not an interpolated gradient.** At 14 bands it
+reads as a ramp, and every pixel in it is a colour some ZIP is actually painted. A smooth
+gradient was the easier way to get that look and would have put colours in the key the map
+can never produce — invisible at 14 classes in a way it was not at 7. Same fix applied to the
+PNG/PDF export, which was building a smooth canvas gradient. Five tick labels on desktop and
+three on mobile, both spread across the boundary list and positioned at the boundary each one
+names; the mobile strip previously spread three PERCENTILES of the value list evenly down the
+bar, describing a scale the map was not painting.
+
+**The goldens have a producer.** `scripts/make_golden.py` recomputes `tests/golden/*.json`
+from a real build using the shipped `classify` and `paint`, changing only the class-dependent
+parts and leaving the hand-chosen ZIP selection alone. They had been checked in by hand, which
+made a class-count change a 48-ZIP-by-9-metric edit. `golden.test.ts` now derives the maximum
+legal byte from the ramp length instead of the literal 0x37, and asserts the fixture still
+reaches it — a fixture that quietly stops exercising the bound is a test that reads stronger
+than it is.
+
+**Measured, 2026-07 release.** Biggest single class, before -> after:
+
+    sold_above_list 65.6% -> 33.8%   zhvi_yoy 57% -> 31.6%   months_of_supply -> 23.2%
+    median_dom -> 19.7%   median_ppsf -> 16.0%   zhvi -> 14.1%   median_sale_price -> 13.5%
+
+Neighbour class disagreement (mean |dk| over 8 nearest neighbours / shuffled baseline, where
+1.00 is pure noise) is a property of the data and does not move with the class count —
+identical at 7 and 15. It splits the metrics in two, and the split matters for what to do
+about the speckle on the count and time maps:
+
+    all ZIPs / restricted to ZIPs with enough sales
+    median_dom 0.69 -> 0.48    months_of_supply 0.72 -> 0.58    (estimates: sampling noise)
+    homes_sold 0.68 -> 0.86    active_listings 0.66 -> 0.79     (exact counts: real)
+
+For the two estimates the roughness is thin-sample noise and the signal underneath is about
+as spatially structured as price. For the two counts it goes UP among busy ZIPs, which rules
+sampling noise out — there is none, a count is not estimated — so that roughness is real
+heterogeneity in ZIP size and density. Neither argues for dropping a metric; what is missing
+is a reliability channel on the fill, deferred since the opacity fade was removed.
+
+---
+
 ## 2026-09-11 — "Adjust Contrast to View" was dead on click, then dishonest once it worked
 
 Two separate defects behind one user report. Both fixed, both now covered by tests.

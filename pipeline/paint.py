@@ -2,17 +2,24 @@
 
 Today the browser cannot colour a single ZIP until an 8.2 MB JSON snapshot has
 downloaded, parsed, and been rebuilt into 33,771 objects. Almost none of that
-work is needed to decide what colour something is — the colour is one of seven,
-and the reliability fade is one of four. Seven times four fits in a byte.
+work is needed to decide what colour something is — the colour is one of fourteen,
+and the reliability fade is one of four. Fourteen times four fits in a byte.
 
     byte index = the ZIP as a base-10 integer.  "00501" -> 501.  "30309" -> 30309.
     byte value = (reliability_tier << 4) | (class_index + 1)
 
-      bits 0-3   class_index + 1, in 1..7.   0 => no data for this ZIP.
+      bits 0-3   class_index + 1, in 1..14.  0 => no data for this ZIP.
       bits 4-5   reliability tier 0..3 (spec section 6.2).
       bits 6-7   reserved, MUST be 0.
 
-    Maximum legal value = (3 << 4) | 7 = 0x37.
+    Maximum legal value = (3 << 4) | 14 = 0x3E.
+
+**THE NIBBLE CAPS THE CLASS COUNT AT 15, AND THAT CAP IS ENFORCED BELOW.** Class
+index 15 would encode as 0x10, which is not a wider class field — it is
+reliability tier 1 with no class at all, silently, on every ZIP in the top class.
+The palette script has its own, lower ceiling (14, from the colour-blind
+separability budget), but the two constraints are independent and neither may be
+left to the other to catch.
 
 **Why 100,000 bytes and not a dense 33,791-byte array.** ZIP codes are five
 digits, so the ZIP *is* the array index — a perfect hash needing no lookup
@@ -40,12 +47,23 @@ import hashlib
 import logging
 from pathlib import Path
 
+from .classify import CLASSES
 from .contracts import PipelineError
 
 log = logging.getLogger(__name__)
 
 ZIP_SPACE = 100_000
-MAX_LEGAL_BYTE = (3 << 4) | 7  # 0x37
+
+# The class field is four bits holding `class + 1`, so 15 classes is the format's
+# hard ceiling and 16 needs a wider field.
+MAX_CLASSES = 15
+if CLASSES > MAX_CLASSES:
+    raise PipelineError(
+        f"paint: {CLASSES} classes will not fit the byte layout. `class + 1` lives in "
+        f"bits 0-3, so class {MAX_CLASSES} encodes to 0x10 and reads back as "
+        f"reliability tier 1 with no class. Widen the field or lower CLASSES."
+    )
+MAX_LEGAL_BYTE = (3 << 4) | CLASSES
 
 # ACTIVE LISTINGS is a listing-side series that does not depend on sales at all,
 # and 3,393 latest-period ZIPs carry one with HOMES SOLD null — for those,
@@ -80,8 +98,10 @@ def encode(records: dict, metric: str) -> bytes:
                 f"paint[{metric}]: ZIP {zip_code!r} is outside the {ZIP_SPACE:,}-byte "
                 f"address space. The direct-index layout assumes 5-digit ZIPs."
             )
-        if not 0 <= cls <= 6:
-            raise PipelineError(f"paint[{metric}]: ZIP {zip_code} has class {cls}, expected 0..6")
+        if not 0 <= cls < CLASSES:
+            raise PipelineError(
+                f"paint[{metric}]: ZIP {zip_code} has class {cls}, expected 0..{CLASSES - 1}"
+            )
 
         tier = rec.get("rel") or 0
         if not 0 <= tier <= 3:

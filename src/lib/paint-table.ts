@@ -3,9 +3,12 @@
 //   byte index = the ZIP as a base-10 integer.  "00501" -> 501.
 //   byte value = (reliability_tier << 4) | (class_index + 1)
 //
-//     bits 0-3  class index + 1, in 1..7.  0 => no data for this ZIP.
+//     bits 0-3  class index + 1, in 1..14.  0 => no data for this ZIP.
 //     bits 4-5  reliability tier 0..3.
 //     bits 6-7  reserved, always 0.
+//
+// The four-bit class field caps the class count at 15; `pipeline/paint.py` raises
+// rather than let class 15 encode as 0x10 and read back as a reliability tier.
 //
 // ZIP codes are five digits, so the ZIP IS the array index — a perfect hash with
 // no lookup structure, no parse, and no worker. Reading a class is one array read

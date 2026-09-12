@@ -345,3 +345,16 @@ eslint are green; verified in a production build in the browser.
   the declared 1e4 scale again, so the wire value is degrees x 1e8. `boundsOf` divided once.
   Confirmed by decoding at 1e8 and recovering exactly 8.3966 deg max longitude span, the
   figure `geom.py` cites for Anchorage 99503.
+
+---
+
+## Open question: the count and time metrics are unmarked noise
+
+`median_dom`, `months_of_supply`, `homes_sold` and `active_listings` read as camouflage
+because at ZIP level they largely are noise — two thirds of the way to random, measured
+above. The scale is honest; what is missing is that a 3-sale ZIP's median DOM paints at
+full strength beside a 300-sale ZIP's. The rankable gate keeps thin ZIPs from SETTING the
+breaks but still paints them, and the fill has carried no reliability channel since the
+opacity fade was removed (it was a lightness signal on a lightness ramp). The deferred
+texture overlay in `choropleth-painter.ts` is the intended fix. 14 classes makes the
+speckle more visible without making it more or less honest.

@@ -9,9 +9,27 @@
 // claim you cannot defend, and this one has three numbers attached to it that an
 // interviewer can reasonably ask about. Running this file answers all three.
 //
-// Why 7 and not 12: sequential ramps support 5-9 classes. Past that, adjacent
-// swatches stop being distinguishable and the legend stops being readable, so
-// the extra classes buy resolution nobody can perceive.
+// HOW MANY CLASSES IS SET BY THE CVD BUDGET, NOT BY TASTE. The old rule here was
+// "sequential ramps support 5-9 classes", which is true of a legend you read
+// swatch by swatch and irrelevant to a map you read as a gradient. The real limit
+// is that the ramp has a fixed arc length under simulated colour blindness —
+// about 84 dE76, bounded by the usable L* range, because tritanopia collapses the
+// yellow-blue axis this ramp's chroma lives on. No choice of hues buys more.
+//
+// So the check below does not ask "are adjacent swatches separable". It measures
+// the SEPARABLE SPAN: how many classes apart two ZIPs must be before every reader
+// can tell them apart. That span over the class count is the fraction of the
+// range the map guarantees is visible, and THAT is the number that must not
+// regress. Measured on this ramp:
+//
+//     classes   separable span   guaranteed-visible difference
+//        7          1              14.3% of range   (what shipped)
+//       14          2              14.3%            (this ramp)
+//       15          3              20.0%            rejected
+//
+// 14 is therefore the largest class count that costs a colour-blind reader
+// nothing: they still resolve ~7 bands, exactly as before, while normal vision
+// resolves 14 at 13.8 dE76 adjacent, far above the ~2.3 dE76 perceptual floor.
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,7 +44,7 @@ const SOURCE = [
   "#7B2E8D", "#2E0B59",
 ];
 
-const CLASSES = 7;
+const CLASSES = 14;
 
 // Three absence states, three visual channels; they must not be conflated.
 // "No data" is a ZCTA that is drawn but reported by neither source — it gets a
@@ -35,9 +53,9 @@ const CLASSES = 7;
 const NO_DATA_COLOR = "#E8E8E8";
 
 // Signed data on a sequential ramp is a correctness bug, not a taste question.
-const DIVERGING_COLORS = [
-  "#2166AC", "#67A9CF", "#D1E5F0", "#F7F7F7", "#FDDBC7", "#EF8A62", "#B2182B",
-];
+// These are ANCHORS, resampled to CLASSES below — one half each side of neutral.
+const DIVERGING_COOL = ["#2166AC", "#67A9CF", "#D1E5F0", "#F7F7F7"];
+const DIVERGING_WARM = ["#F7F7F7", "#FDDBC7", "#EF8A62", "#B2182B"];
 
 // --- colour maths -----------------------------------------------------------
 
@@ -103,6 +121,20 @@ const CVD = {
   ],
 };
 
+// Below ~10 dE76 two filled areas stop being reliably separable. This is the one
+// perceptual constant in the file; everything else is measured against it.
+const CVD_FLOOR = 10;
+
+// The guarantee the 7-class ramp gave: one class apart out of seven. A new ramp
+// may move the class count however it likes, but the fraction of the range it
+// promises every reader can see must not get worse than this.
+const GUARANTEE_CEILING = 1 / 7;
+
+// Adjacent classes must still separate for a normal-vision reader. 2.3 dE76 is
+// the textbook just-noticeable difference; 5 is that with room for a cheap
+// display and a small polygon.
+const NORMAL_FLOOR = 5;
+
 function simulate(rgb, matrix) {
   const lin = rgb.map(toLinear);
   return matrix
@@ -134,6 +166,29 @@ function resampleEqualArcLength(hexes, n) {
   return out;
 }
 
+/**
+ * `n` colours for a diverging scale, `n` EVEN, resampled per half.
+ *
+ * Even `n` is not an accident of wanting 14. With an even class count the
+ * boundary list has an odd length and its middle edge lands exactly on zero, so
+ * "no change" is a LINE rather than a band: every warm colour means growth and
+ * every cool one means decline, with nothing ambiguous in the middle. That is
+ * why no swatch here sits on the neutral anchor — each half is sampled from its
+ * extreme up to but not including it.
+ *
+ * Sampling the two halves separately rather than resampling one 7-colour
+ * polyline is what keeps the scale symmetric. The cool and warm arms of RdBu are
+ * not the same CIELAB arc length, so one pass over the whole path would put the
+ * neutral point off-centre and a -5% ZIP would not mirror a +5% one.
+ */
+function resampleDiverging(cool, warm, n) {
+  const half = n / 2;
+  return [
+    ...resampleEqualArcLength(cool, half + 1).slice(0, half),
+    ...resampleEqualArcLength(warm, half + 1).slice(1),
+  ];
+}
+
 // --- report -----------------------------------------------------------------
 
 function stats(hexes) {
@@ -147,6 +202,7 @@ function stats(hexes) {
     const sim = hexes.map((h) => rgbToLab(simulate(hexToRgb(h), m)));
     cvd[name] = Math.min(...sim.slice(1).map((l, i) => deltaE76(sim[i], l)));
   }
+  const span = separableSpan(hexes);
 
   const lightness = labs.map((l) => l[0]);
   let monotone = true;
@@ -156,33 +212,72 @@ function stats(hexes) {
     steps: steps.map((s) => +s.toFixed(2)),
     meanStep: +mean.toFixed(2),
     cv: +(sd / mean).toFixed(4),
+    minAdjacentNormal: +Math.min(...steps).toFixed(2),
     minAdjacentCvd: Object.fromEntries(
       Object.entries(cvd).map(([k, v]) => [k, +v.toFixed(2)]),
     ),
+    separableSpan: span,
+    // The fraction of the scale's range two ZIPs must differ by before EVERY
+    // reader can see that they differ. This is the accessibility number.
+    guarantee: span === null ? null : span / hexes.length,
     lightness: lightness.map((l) => +l.toFixed(1)),
     lightnessMonotoneDecreasing: monotone,
   };
 }
 
+/** Smallest separation `d` at which every pair of classes `d` apart clears
+ *  CVD_FLOOR under all three simulated deficiencies, or null if none does. */
+function separableSpan(hexes) {
+  for (let d = 1; d < hexes.length; d++) {
+    let ok = true;
+    for (const m of Object.values(CVD)) {
+      const sim = hexes.map((h) => rgbToLab(simulate(hexToRgb(h), m)));
+      for (let i = 0; i + d < sim.length; i++) {
+        if (deltaE76(sim[i], sim[i + d]) < CVD_FLOOR) { ok = false; break; }
+      }
+      if (!ok) break;
+    }
+    if (ok) return d;
+  }
+  return null;
+}
+
 const ramp = resampleEqualArcLength(SOURCE, CLASSES);
+const diverging = resampleDiverging(DIVERGING_COOL, DIVERGING_WARM, CLASSES);
 const before = stats(SOURCE);
 const after = stats(ramp);
 
-const report = { source: SOURCE, ramp, before, after };
+const report = { source: SOURCE, ramp, diverging, before, after };
 console.log(JSON.stringify(report, null, 2));
 
-// The two properties the ramp has to have. Failing loudly here is the point:
-// a ramp that regresses on either must not be written to source.
-const CVD_FLOOR = 10; // below ~10 dE76 adjacent swatches stop being separable
+// The properties the ramp has to have. Failing loudly here is the point: a ramp
+// that regresses on any of them must not be written to source.
 const problems = [];
 if (!after.lightnessMonotoneDecreasing) {
   problems.push("L* is not monotone decreasing — the ramp fails in grayscale print");
 }
-for (const [name, v] of Object.entries(after.minAdjacentCvd)) {
-  if (v < CVD_FLOOR) problems.push(`min adjacent dE76 under ${name} is ${v}, below ${CVD_FLOOR}`);
+if (after.separableSpan === null) {
+  problems.push(`no class separation clears ${CVD_FLOOR} dE76 under all three CVD types`);
+  // span/CLASSES <= 1/7 is span*7 <= CLASSES, exactly, in integers. Comparing the
+  // ratio as a rounded float rejected 2/14 against 1/7 for being 0.1429 > 0.142857.
+} else if (after.separableSpan * 7 > CLASSES) {
+  problems.push(
+    `accessibility regression: two ZIPs must differ by ${(after.guarantee * 100).toFixed(1)}% ` +
+    `of the range (${after.separableSpan} of ${CLASSES} classes) before every reader can see ` +
+    `it, against the ${(GUARANTEE_CEILING * 100).toFixed(1)}% the 7-class ramp gave`,
+  );
+}
+if (after.minAdjacentNormal < NORMAL_FLOOR) {
+  problems.push(
+    `adjacent classes are ${after.minAdjacentNormal} dE76 apart to a normal-vision ` +
+    `reader, below ${NORMAL_FLOOR} — the extra classes buy nothing anyone can see`,
+  );
 }
 if (after.cv > before.cv) {
   problems.push(`step CV got worse: ${before.cv} -> ${after.cv}`);
+}
+if (diverging.length !== CLASSES) {
+  problems.push(`diverging ramp is ${diverging.length} colours, expected ${CLASSES}`);
 }
 if (problems.length) {
   console.error("\nRAMP REJECTED:\n  " + problems.join("\n  "));
@@ -193,14 +288,25 @@ if (process.argv.includes("--write") && !problems.length) {
   const f = (n) => n.toFixed(2);
   const body = `// GENERATED by scripts/palette/derive_ramp.mjs — do not edit by hand.
 //
-// 7 classes resampled from the 12-hex source ramp at equal arc length in CIELAB.
+// ${CLASSES} classes resampled from the 12-hex source ramp at equal arc length in CIELAB.
 // Re-derive with:  node scripts/palette/derive_ramp.mjs --write
 //
 // Adjacent dE76 steps: ${after.steps.join(" ")}
 //   coefficient of variation ${before.cv} (12-hex source) -> ${after.cv} (this ramp)
-// Minimum adjacent dE76 under simulated CVD (Machado 2009, severity 1.0):
-//   protanopia ${f(after.minAdjacentCvd.protanopia)} · deuteranopia ${f(after.minAdjacentCvd.deuteranopia)} · tritanopia ${f(after.minAdjacentCvd.tritanopia)}
-//   (the source ramp: ${f(before.minAdjacentCvd.protanopia)} · ${f(before.minAdjacentCvd.deuteranopia)} · ${f(before.minAdjacentCvd.tritanopia)})
+//   smallest adjacent step to a normal-vision reader ${f(after.minAdjacentNormal)}, far above
+//   the ~2.3 just-noticeable difference, so all ${CLASSES} are separable to most readers.
+//
+// THE ACCESSIBILITY GUARANTEE, which is the number that governs the class count.
+// Under simulated colour-vision deficiency (Machado 2009, severity 1.0) ADJACENT
+// classes are not separable at this count — protanopia ${f(after.minAdjacentCvd.protanopia)} ·
+// deuteranopia ${f(after.minAdjacentCvd.deuteranopia)} · tritanopia ${f(after.minAdjacentCvd.tritanopia)} dE76, against a ${CVD_FLOOR} dE76 floor.
+// Classes ${after.separableSpan} apart are. So two ZIPs differing by ${(after.guarantee * 100).toFixed(1)}% of the range look
+// different to EVERY reader, which is exactly what the 7-class ramp guaranteed at
+// ${(GUARANTEE_CEILING * 100).toFixed(1)}%. A colour-blind reader resolves ${Math.round(CLASSES / after.separableSpan)} bands here and resolved 7
+// before; normal vision resolves ${CLASSES} instead of 7. The ramp's CVD arc length is
+// a fixed budget — about 84 dE76, bounded by the usable L* range — so a higher
+// class count can only spend it thinner, and 15 already fails this check.
+//
 // L* runs ${after.lightness[0]} -> ${after.lightness[after.lightness.length - 1]}, monotone decreasing, so it
 // survives grayscale printing as well as all three CVD types.
 
@@ -218,9 +324,16 @@ export const CLASSES = ${CLASSES};
  */
 export const NO_DATA_COLOR = "${NO_DATA_COLOR}";
 
-/** For signed series. Painting signed data on a sequential ramp is a correctness bug. */
+/**
+ * For signed series. Painting signed data on a sequential ramp is a correctness bug.
+ *
+ * Resampled per half from the RdBu anchors, so the two arms stay symmetric even
+ * though their CIELAB arc lengths are not. With an even class count the middle
+ * boundary lands exactly on zero and no swatch sits on neutral: every cool colour
+ * means decline, every warm one means growth, and there is no ambiguous middle.
+ */
 export const DIVERGING_COLORS = [
-${DIVERGING_COLORS.map((h) => `  "${h}",`).join("\n")}
+${diverging.map((h) => `  "${h}",`).join("\n")}
 ] as const;
 `;
   const out = join(ROOT, "src", "lib", "choropleth.generated.ts");

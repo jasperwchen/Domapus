@@ -50,6 +50,15 @@ function formatLegendValue(value: number, metric: string): string {
   }
 }
 
+/** `count` boundaries spread evenly across `b`, with their index kept so each
+ *  label can be positioned at the boundary it names rather than at a guess. */
+function tickAt(b: readonly number[], count: number, metric: string) {
+  return Array.from({ length: count }, (_, k) => {
+    const i = Math.round((k * (b.length - 1)) / (count - 1));
+    return { i, label: formatLegendValue(b[i], metric) };
+  });
+}
+
 export function Legend({
   selectedMetric, metricValues, breaks, autoScale, onAutoScaleChange,
   showLisa, onShowLisaChange, reliability, outliers,
@@ -75,22 +84,32 @@ export function Legend({
   const gradient = `linear-gradient(to right, ${CHOROPLETH_GRADIENT_STOPS})`;
   const verticalGradient = `linear-gradient(to top, ${CHOROPLETH_GRADIENT_STOPS})`;
 
-  // Discrete swatches, one per painted class, labelled with the map's own break
-  // values. A continuous gradient implies a continuum the map does not paint.
+  // One band per painted class, labelled with the map's own break values. The
+  // bands are SEAMLESS but hard-edged: at 14 classes the strip reads as a ramp,
+  // and every pixel of it is a colour some ZIP is actually painted. Interpolating
+  // between them would be the easier way to get that look and would put colours
+  // in the key that the map can never produce.
   const hasBreaks = !!breaks && breaks.length === CHOROPLETH_COLORS.length - 1;
 
-  // THREE labels, not six. Six 5-to-7 character values across a 256 px panel is
-  // ~36 px per label at 10 px type, which is why they used to overlap and why the
-  // old markup carried a negative margin to hide it. A choropleth key exists to
-  // give a sense of scale, not to be a lookup table — the exact break for any
-  // class is on the swatch's own tooltip, and the value for any ZIP is one hover
-  // away on the map itself.
-  const ticks = useMemo(() => {
-    if (!hasBreaks) return null;
-    const b = breaks!;
-    const at = [0, (b.length - 1) >> 1, b.length - 1];
-    return at.map((i) => ({ i, label: formatLegendValue(b[i], selectedMetric) }));
-  }, [hasBreaks, breaks, selectedMetric]);
+  // Labels are a sample of the boundaries, not all of them. 13 values of 5-7
+  // characters across a 256 px panel is ~20 px each at 10 px type; they would
+  // overlap into noise. A choropleth key exists to give a sense of scale, not to
+  // be a lookup table — the exact range of any band is on its own tooltip, and
+  // the value of any ZIP is one hover away on the map.
+  //
+  // Five on desktop, three on the 80 px mobile strip. Both are spread evenly
+  // across the boundary list, so with 13 boundaries the desktop ticks land on
+  // 0, 3, 6, 9 and 12 — every 21.4% of the strip, with the middle one at exactly
+  // half. Derived from the count rather than written down, so changing CLASSES
+  // does not silently label the wrong boundaries.
+  const ticks = useMemo(
+    () => (hasBreaks ? tickAt(breaks!, 5, selectedMetric) : null),
+    [hasBreaks, breaks, selectedMetric],
+  );
+  const mobileTicks = useMemo(
+    () => (hasBreaks ? tickAt(breaks!, 3, selectedMetric) : null),
+    [hasBreaks, breaks, selectedMetric],
+  );
 
   // Mobile
   if (isMobile) {
@@ -102,11 +121,30 @@ export function Legend({
             style={{ background: verticalGradient }}
             aria-hidden="true"
           />
-          <div className="flex flex-col justify-between text-[11px] font-medium text-muted-foreground py-0.5">
-            <span className="text-foreground">{legendDisplay.max}</span>
-            <span>{legendDisplay.mid}</span>
-            <span>{legendDisplay.min}</span>
-          </div>
+          {/* Each label sits at the height of the boundary it names, not at the
+              top/middle/bottom of the strip. The old markup spread three
+              PERCENTILES of the value list evenly down the bar, which described a
+              scale the map was not painting — the same second-authority problem
+              the desktop key was fixed for. */}
+          {mobileTicks ? (
+            <div className="relative flex-1 text-[11px] font-medium tabular-nums text-muted-foreground">
+              {mobileTicks.map(({ i, label }) => (
+                <span
+                  key={i}
+                  className="absolute left-0 translate-y-1/2 whitespace-nowrap"
+                  style={{ bottom: `${((i + 1) / CHOROPLETH_COLORS.length) * 100}%` }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col justify-between text-[11px] font-medium text-muted-foreground py-0.5">
+              <span className="text-foreground">{legendDisplay.max}</span>
+              <span>{legendDisplay.mid}</span>
+              <span>{legendDisplay.min}</span>
+            </div>
+          )}
         </div>
 
         {onAutoScaleChange && (
@@ -140,7 +178,7 @@ export function Legend({
       <div className="space-y-2">
         {hasBreaks ? (
           <>
-            <div className="flex gap-px" aria-hidden="true">
+            <div className="flex" aria-hidden="true">
               {CHOROPLETH_COLORS.map((c, i) => (
                 <div
                   key={c + i}

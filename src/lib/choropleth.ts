@@ -27,5 +27,20 @@ export {
 
 import { CHOROPLETH_COLORS } from "./choropleth.generated";
 
-/** CSS `linear-gradient` color-stop list covering the full ramp, low → high. */
-export const CHOROPLETH_GRADIENT_STOPS = CHOROPLETH_COLORS.join(", ");
+/**
+ * CSS `linear-gradient` stop list covering the full ramp, low → high, with HARD
+ * edges: every class gets an equal band and nothing between them is interpolated.
+ *
+ * Each colour is emitted twice, at the start and end of its band, which is the
+ * standard way to defeat gradient interpolation. It matters here because the map
+ * paints CLASSES discrete colours and a smoothly interpolated key would show
+ * colours no ZIP can ever be — at 7 classes that was obvious and at 14 it would
+ * be invisible, which makes it worse rather than better. 14 bands across a 256 px
+ * panel are ~18 px each, so the key reads as a ramp without claiming to be one.
+ */
+export const CHOROPLETH_GRADIENT_STOPS = CHOROPLETH_COLORS
+  .map((c, i) => {
+    const n = CHOROPLETH_COLORS.length;
+    return `${c} ${((i / n) * 100).toFixed(4)}% ${(((i + 1) / n) * 100).toFixed(4)}%`;
+  })
+  .join(", ");

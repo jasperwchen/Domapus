@@ -1,13 +1,15 @@
 // The cross-language contract: Python wrote these bytes, TypeScript reads them.
 //
-// `tests/golden/*.json` are cut from a REAL pipeline run, not hand-written. A
+// `tests/golden/*.json` are cut from a REAL pipeline run, not hand-written.
+// Regenerate with `python scripts/make_golden.py --write`, which recomputes only
+// the class-dependent parts and leaves the ZIP selection and every value alone. A
 // hand-written fixture only proves that two hand-written readers agree with each
 // other; this proves the shipped encoder and the shipped decoder agree, and it
 // fails the moment either side changes without the other.
 //
 // The fixture is chosen to contain the cases that actually break: leading-zero
 // ZIPs, columns holding a real `0`, columns holding `null`, and at least one ZIP
-// in the top reliability tier so the maximum legal byte 0x37 is exercised.
+// in the top reliability tier so the maximum legal byte 0x3E is exercised.
 
 import { describe, it, expect } from "vitest";
 import paintGolden from "../../../tests/golden/paint_50.json";
@@ -159,13 +161,25 @@ describe("golden fixture: the Python encoder and the TypeScript reader agree", (
     }
   });
 
-  it("never emits a byte above the legal maximum 0x37", () => {
+  // Derived from CLASSES, not written down: the maximum is `(3 << 4) | CLASSES`,
+  // and a literal here would keep passing after a class-count change while the
+  // encoder quietly started writing into the reserved bits.
+  const MAX_LEGAL_BYTE = (3 << 4) | CHOROPLETH_COLORS.length;
+
+  it(`never emits a byte above the legal maximum 0x${MAX_LEGAL_BYTE.toString(16)}`, () => {
+    let seenMax = 0;
     for (const [metric, bytes] of Object.entries(paint.bytes)) {
       for (const [zip, b] of Object.entries(bytes)) {
-        expect(b, `${metric} ${zip}`).toBeLessThanOrEqual(0x37);
+        expect(b, `${metric} ${zip}`).toBeLessThanOrEqual(MAX_LEGAL_BYTE);
         expect(b & 0xc0, `${metric} ${zip}: bits 6-7 are reserved`).toBe(0);
+        seenMax = Math.max(seenMax, b);
       }
     }
+    // The fixture is chosen to contain a top-class, top-tier ZIP. If it stops
+    // reaching the maximum, the bound above is no longer being exercised and the
+    // test has quietly become weaker than it reads.
+    expect(seenMax, "fixture no longer exercises the maximum legal byte")
+      .toBe(MAX_LEGAL_BYTE);
   });
 
   it("reconstructs real polygon bounds that contain their own anchor", () => {

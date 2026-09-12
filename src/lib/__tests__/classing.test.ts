@@ -37,7 +37,27 @@ function breakPopulation(metric: string, gate: string | null): number[] {
   return out;
 }
 
-describe("fitBreaks reproduces the pipeline", () => {
+// THE DEPLOY GATE. The published data and this build must agree on how many
+// classes there are, and when they do not the map paints nothing at all:
+// `PaintTable.from` refuses to construct on a class-count mismatch, which is the
+// guard doing its job and a grey map for the reader.
+//
+// `deploy.yml` also runs on push, so merging a class-count change before a data
+// run publishes exactly that pair. This test is what stops it — the order is push
+// the branch, dispatch `update_data.yml` against it, then merge once the 14-class
+// data is committed. The per-scheme comparisons below are skipped while the two
+// disagree, because comparing a 14-class cut against 7-class published breaks
+// produces eight diffs that all say this one thing.
+const generationsAgree = manifest.classes === CLASSES;
+
+describe("the published data and this build are the same generation", () => {
+  it(`manifest declares ${manifest.classes} classes and the ramp has ${CLASSES}`, () => {
+    expect(manifest.classes, "run the pipeline before merging a class-count change")
+      .toBe(CLASSES);
+  });
+});
+
+describe.skipIf(!generationsAgree)("fitBreaks reproduces the pipeline", () => {
   const recomputable = Object.entries(manifest.classing as Record<string, {
     scheme: string; breaks: number[]; break_gate?: string | null;
   }>).filter(([metric, c]) => c.scheme !== "diverging"

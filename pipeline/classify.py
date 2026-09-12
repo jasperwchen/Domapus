@@ -7,9 +7,20 @@ construction rather than by luck.
 
 Three decisions carry the section.
 
-**7 classes, not 12.** Sequential ramps support 5-9 steps before adjacent colours
-stop being distinguishable. The 12-hex ramp resampled at equal CIELAB arc length
-is in `src/lib/choropleth.generated.ts`.
+**14 classes, and the number is derived rather than chosen.** It was 7, on the rule
+that sequential ramps support 5-9 steps before adjacent swatches stop being
+distinguishable. That rule is about reading a legend swatch by swatch; the map is
+read as a gradient, and at 7 classes one class spanned a factor of 1.49 in price,
+so two ZIPs $190k apart at the $400k mark painted identically.
+
+The real ceiling is the ramp's arc length under simulated colour blindness — about
+84 dE76, bounded by the usable L* range, because tritanopia collapses the
+yellow-blue axis the ramp's chroma lives on. `derive_ramp.mjs` measures the
+SEPARABLE SPAN (how many classes apart two ZIPs must be before every reader can
+tell them apart) and rejects any count whose span/classes ratio is worse than the
+14.3% of range the 7-class ramp gave. 14 is the largest count that passes: a
+colour-blind reader still resolves 7 bands, normal vision resolves 14. 15 needs a
+3-class span and fails.
 
 **One scheme per metric FAMILY, not one scheme for everything.** Universal
 quantile classing makes every map look equally hot regardless of the real
@@ -44,8 +55,8 @@ from .contracts import PipelineError
 
 log = logging.getLogger(__name__)
 
-CLASSES = 7
-EDGES = CLASSES - 1  # 6 boundary values
+CLASSES = 14
+EDGES = CLASSES - 1  # 13 boundary values
 
 # The 9 painted columns: 8 map-selectable metrics + the one painted change series.
 # `breaks` has an entry for each of these and for NOTHING else — an unpainted
@@ -77,9 +88,20 @@ SCHEMES = {
     "median_dom": "quantile",
     "months_of_supply": "quantile",
 
+    # 100% is a PIVOT for the sale-to-list ratio — it is the price the seller
+    # asked — and the series straddles it, so anchoring the grid there is right.
     "avg_sale_to_list_ratio": "equal_anchored_100",
-    "sold_above_list": "equal_anchored_100",
-    "off_market_in_two_weeks": "equal_anchored_100",
+
+    # These two are SHARES OF SALES, bounded [0, 100], and 100% is the top of the
+    # domain rather than a pivot. Anchoring their grid at 100 and walking down
+    # meant the grid never reached the data: measured on the 2026-07 release,
+    # `sold_above_list` has a national median of 16.7% and a p25 of 0.0, while the
+    # lowest edge landed at 33.6%, so 65.6% of ZIPs and 96.9% of the drawn area
+    # painted as one colour. Equal intervals over the real domain puts 33.0% in
+    # the bottom class, and 29.3% of ZIPs report EXACTLY 0.0 — no scheme can split
+    # those, so that floor is the data rather than the classing.
+    "sold_above_list": "equal_interval_0_100",
+    "off_market_in_two_weeks": "equal_interval_0_100",
 
     "zhvi_yoy": "diverging",
 }
@@ -186,8 +208,9 @@ def _quantile_breaks(v: np.ndarray) -> list[float]:
 def _log_equal_breaks(v: np.ndarray) -> list[float]:
     """Equal intervals on log10 between the p1 and p99 anchors.
 
-    Ratio-preserving: with p1..p99 spanning roughly 30x, each class is about 1.6x
-    the last, which is a sentence a legend reader can hold.
+    Ratio-preserving: with p1..p99 spanning roughly 16x, each class is about 1.22x
+    the last. At 7 classes it was 1.49x, which is why two ZIPs $190k apart at the
+    $400k mark used to paint identically.
     """
     pos = v[v > 0]
     if pos.size == 0:
@@ -200,17 +223,19 @@ def _log_equal_breaks(v: np.ndarray) -> list[float]:
 
 
 def _equal_anchored_100_breaks(v: np.ndarray) -> list[float]:
-    """Equal-width classes whose grid is pinned to 100%.
+    """Equal-width classes whose grid is pinned to 100%, for series that PIVOT there.
 
-    The width comes from the p1..p99 span, the same anchoring the sequential
-    ramps use, and the edges are then laid down at 100 - k*width. That keeps two
-    properties the family needs at once: the boundaries are readable real numbers
-    rather than ranks, and the classes actually spread the data.
+    The width comes from the p1..p99 span, the same anchoring the sequential ramps
+    use, and the edges are laid down at 100 - k*width. This is right for the
+    average sale-to-list ratio, where 100% is the price the seller asked and the
+    series straddles it in both directions.
 
-    Equal intervals over the definitional [0, 100] domain were the other reading
-    of "anchored at 100%" and are rejected: shares sold above list concentrate
-    well below 50%, so a fixed 0..100 grid collapses most of the country into two
-    colours — exactly the failure this section rejects for unanchored log classing.
+    IT IS WRONG FOR A SHARE BOUNDED AT 100, and that was the shipped bug. A share
+    of sales does not straddle 100%, it approaches it from below, so a grid pinned
+    at the top and walked down by `EDGES` steps of a width taken from the rankable
+    spread never reaches the data. Measured on the 2026-07 release,
+    `sold_above_list` had a national median of 16.7% and a lowest edge of 33.6%:
+    65.6% of ZIPs in one colour. Those series use `_equal_interval_0_100_breaks`.
     """
     lo, hi = float(np.percentile(v, 1)), float(np.percentile(v, 99))
     width = (hi - lo) / CLASSES
@@ -219,12 +244,33 @@ def _equal_anchored_100_breaks(v: np.ndarray) -> list[float]:
     return [round(100.0 - width * k, 4) for k in range(EDGES, 0, -1)]
 
 
-def _diverging_breaks(bound: float) -> list[float]:
-    """Six edges symmetric about zero, so the middle class straddles no change.
+def _equal_interval_0_100_breaks() -> list[float]:
+    """Equal intervals over the definitional [0, 100] domain. Takes no sample.
 
-    With 7 classes there are 6 edges, the outer two land ON +-bound, and the five
-    gaps between them are equal — so the step is `2 * bound / (EDGES - 1)`. At
-    B = 20 the edges are -20 -12 -4 +4 +12 +20 and the neutral class is -4%..+4%.
+    For a share of sales, which cannot leave [0, 100] and whose meaningful
+    reference points — none, a quarter, half, all — are absolute rather than
+    relative. Because it reads no data at all, the rankable gate cannot bias it
+    and a thin month cannot move it, which is why `classing.break_gate` reports
+    None here rather than naming a population it does not consult.
+    """
+    return [round(100.0 * (i + 1) / CLASSES, 4) for i in range(EDGES)]
+
+
+def _diverging_breaks(bound: float) -> list[float]:
+    """Edges symmetric about zero. With an EVEN class count, zero is a boundary.
+
+    The outer two edges land ON +-bound and the gaps between them are equal, so
+    the step is `2 * bound / (EDGES - 1)`. At 14 classes that is 13 edges, an odd
+    number, so the middle one falls exactly on 0: at B = 20 the edges run -20
+    -16.67 ... -3.33 0 +3.33 ... +20.
+
+    That is a change of meaning from the 7-class scale and an improvement. There
+    used to be a neutral class straddling zero, -4%..+4%, and on the 2026-07
+    release 57% of ZIPs sat in it — the map's single largest block was the one
+    that said nothing. With an edge on zero instead, every cool colour means
+    decline and every warm one means growth, and the sign of a ZIP's change is
+    never ambiguous. `DIVERGING_COLORS` is resampled per half to match, so no
+    swatch sits on neutral either.
 
     THE DIVISOR IS `EDGES - 1`, NOT `EDGES`, and getting that wrong is silent.
     It shipped as `bound / (EDGES / 2 + 0.5)` = `bound / 3.5`, which put the edges
@@ -292,6 +338,8 @@ def compute(records: dict, diverging_bound: float = DIVERGING_BOUND) -> dict:
                 edges = _log_equal_breaks(sample)
             elif scheme == "equal_anchored_100":
                 edges = _equal_anchored_100_breaks(sample)
+            elif scheme == "equal_interval_0_100":
+                edges = _equal_interval_0_100_breaks()
             else:
                 raise PipelineError(f"classify: unknown scheme {scheme!r} for {metric}")
             break_n = int(sample.size)
@@ -331,7 +379,9 @@ def compute(records: dict, diverging_bound: float = DIVERGING_BOUND) -> dict:
             "class_counts": counts,
             "non_null": classed,
             "break_population": break_n,
-            "break_gate": None if scheme == "diverging"
+            # None where the scheme consults no sample at all, so the field never
+            # names a population that did not in fact set the boundaries.
+            "break_gate": None if scheme in ("diverging", "equal_interval_0_100")
                           else ("all_reporting" if metric in COUNT_METRICS else "rankable"),
             "bottom_class_share": round(counts[0] / classed, 4) if classed else None,
             "clamped_low": sum(1 for r in records.values()
