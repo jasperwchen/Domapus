@@ -16,10 +16,9 @@
 // never overlap or leave stale colours behind.
 
 import type * as maplibregl from "maplibre-gl";
-import { CLASSES } from "./choropleth";
 import { FADE_EXEMPT, type PaintTable } from "./paint-table";
 import { span } from "./perf";
-import { computeQuantileBuckets } from "./quantiles";
+import { fitBreaks } from "./classing";
 import { WIRE_OF, type ZipTable } from "./zip-table";
 
 export interface ClassSource {
@@ -85,12 +84,40 @@ export class PaintTableSource implements ClassSource {
   }
 }
 
+/** What the pipeline decided about one metric's classing, straight from the
+ *  manifest. The frontend obeys these; it does not pick a scheme of its own. */
+export interface ClassingSpec {
+  /** `quantile`, `log_equal_p1_p99`, `equal_anchored_100` or `diverging`. */
+  scheme?: string;
+  /** `rankable` for an estimated statistic, `all_reporting` for an exact count. */
+  break_gate?: string | null;
+  /** The national boundaries, used when a viewport cut is not honest. */
+  breaks?: readonly number[];
+}
+
 /**
- * Auto-scale authority: the same 7 classes, recomputed over the ZIPs in view.
+ * Auto-scale authority: the same 7 classes and the SAME SCHEME, re-cut over the
+ * ZIPs in view.
  *
  * It answers -1 for every ZIP outside the sample. That is correct rather than a
  * gap: a ZIP outside the viewport has no place on a viewport-derived scale, and
  * the painter still writes the full set, so nothing keeps a stale colour.
+ *
+ * TWO THINGS MUST MATCH THE PIPELINE OR THE TOGGLE LIES, and both used to differ.
+ *
+ * The SCHEME. This cut plain quantiles for every metric. Prices are classed
+ * log-equal between p1 and p99, so on the full national extent — same ZIPs the
+ * pipeline classed — the toggle still moved 28.6% of ZIPs into the two darkest
+ * classes against the fixed scale's 6.0%. See `classing.ts`.
+ *
+ * The BREAK POPULATION. Boundaries for an estimated statistic are cut on the
+ * rankable set only, so that a four-sale ZIP cannot move the scale for everyone
+ * else; exact counts are exempt. Sampling every visible ZIP re-admitted the ZIPs
+ * the gate exists to exclude — for `zhvi` that is 26,262 voters against the
+ * pipeline's 9,452. Which gate applies is the manifest's call, not ours.
+ *
+ * Every ZIP in view is still CLASSED either way. The gate decides who votes on
+ * where the cuts go, never who gets a colour.
  *
  * Reliability still comes from the paint table. The viewport changes which values
  * set the scale; it does not change how many sales a ZIP had.
@@ -100,39 +127,54 @@ export class ViewportClassSource implements ClassSource {
   readonly zips: readonly string[];
   readonly breaks: readonly number[];
   private readonly classes = new Map<string, number>();
+  /** True when no honest viewport cut was possible and this is answering with
+   *  the national table instead. */
+  private readonly deferred: boolean;
 
   constructor(
     store: ZipTable,
     private readonly table: PaintTable,
     private readonly metric: string,
     visibleRows: Int32Array,
+    spec: ClassingSpec = {},
   ) {
     this.zips = store.zips;
     const wire = WIRE_OF[metric] ?? metric;
+    const gated = spec.break_gate !== "all_reporting";
 
-    const values: number[] = [];
+    const sample: number[] = [];
     for (let i = 0; i < visibleRows.length; i++) {
-      const v = store.valueAt(wire, visibleRows[i]);
-      if (v !== null && v > 0) values.push(v);
+      const row = visibleRows[i];
+      const v = store.valueAt(wire, row);
+      if (v === null) continue;
+      // `rel` is the reliability tier the pipeline gated on. Rows missing it
+      // fail the gate, the same way a record with no `rel` is not rankable.
+      if (gated && (store.valueAt("rel", row) ?? 0) < 1) continue;
+      sample.push(v);
     }
 
-    this.breaks = span(
+    const fitted = span(
       "class:breaks",
-      () => computeQuantileBuckets(values, CLASSES),
-      { metric, n: values.length },
+      () => fitBreaks(spec.scheme, sample),
+      { metric, n: sample.length },
     );
-    if (this.breaks.length === 0) return;
+    // No honest viewport cut means the national scale, not a blank map: the
+    // source defers wholesale to the table rather than painting -1 everywhere.
+    this.deferred = fitted === null;
+    this.breaks = fitted ?? spec.breaks ?? [];
+    if (this.deferred) return;
 
     span("class:assign", () => {
       for (let i = 0; i < visibleRows.length; i++) {
         const row = visibleRows[i];
         const v = store.valueAt(wire, row);
-        if (v !== null && v > 0) this.classes.set(store.zips[row], classify(v, this.breaks));
+        if (v !== null) this.classes.set(store.zips[row], classify(v, this.breaks));
       }
     }, { metric });
   }
 
   classOf(zip: string): number {
+    if (this.deferred) return this.table.classOf(zip);
     return this.classes.get(zip) ?? -1;
   }
 

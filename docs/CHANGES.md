@@ -2234,3 +2234,62 @@ housekeeping one.
 Verified after the bumps: `tsc -b` clean, 117/117 vitest, lint at 0 errors and the same 8
 pre-existing warnings, `npm run build` clean with the worker emitted as a self-contained
 506 KB chunk referenced by hash from the maplibre bundle, and `npm audit` at 0 vulnerabilities.
+
+---
+
+## 2026-09-11 — "Adjust Contrast to View" was dead on click, then dishonest once it worked
+
+Two separate defects behind one user report. Both fixed, both now covered by tests.
+
+**1. The toggle did nothing until the next pan.** `visibleRows` — the viewport sample the
+auto-scale authority cuts its breaks from — was only ever computed inside the map's `moveend`
+handler, and that handler early-returned whenever auto-scale was off. So flipping the checkbox
+set a boolean and nothing else; the class source stayed `PaintTableSource` and the map kept its
+colours. On a map nobody had moved yet the feature looked broken, which is exactly how it was
+reported. `HousingDashboard` now keeps the last move's `loadedZips` accessor next to the bounds
+it already kept, and recomputes the sample the moment the toggle flips on. The old comment in
+that effect ("turning it on waits for the next map move to supply one") *described* the bug.
+
+**2. Once it fired, it swapped the classing scheme, not just the sample.**
+`ViewportClassSource` cut plain quantiles for every metric. The pipeline classes prices
+log-equal between their p1 and p99 anchors, counts by quantile, shares on a 100%-anchored
+grid, and YoY on a fixed diverging scale. So on the FULL NATIONAL EXTENT — where the viewport
+sample is the same data the pipeline classed — the toggle still repainted the country much
+darker. Measured on the 2026-07 release, `zhvi`, share of ZIPs in the two darkest of seven
+classes: **6.0% fixed vs 28.6% auto, a 4.8x jump**, top break $1.24M vs $567k. Quantiles put
+14.3% in every class by construction; that is what "every map looks equally hot" means and
+`classify.py` already rejects it in prose.
+
+A second, quieter mismatch rode along: break population. Boundaries for an estimated statistic
+are cut on the rankable set only, so a four-sale ZIP cannot move the scale for everyone else.
+Auto-scale sampled every visible ZIP — for `zhvi`, 26,262 voters against the pipeline's 9,452.
+
+`src/lib/classing.ts` now ports the pipeline's four schemes, and `ViewportClassSource` reads
+the scheme name and the break gate out of `manifest.classing[metric]` rather than choosing.
+The pipeline stays the authority on WHICH scheme a metric gets; the frontend only re-runs it on
+a smaller sample. Where no honest cut exists — `diverging` (fixed on purpose), a sample too thin
+to cut, or a scheme name this build does not know — the source now defers wholesale to the paint
+table, i.e. falls back to the fixed national scale. It used to answer -1 for every ZIP in that
+case, which is a blank map.
+
+`break_gate` was already in the manifest and is now in the `Manifest` type.
+
+**The honesty invariant, and where it is asserted.** `src/lib/__tests__/classing.test.ts` cuts
+each metric's own break population out of the published snapshot and checks that `fitBreaks`
+reproduces the published breaks *exactly*, all six edges, for all 8 recomputable painted
+metrics including the wire-scaled ones (`ppsf`, `abv`, `mos`). It reads the real
+`public/data/`, so a pipeline scheme change that the frontend does not follow fails here.
+
+Verified live at the real national extent: breaks move $157k / $360k / $1.2M → $157k / $359k /
+$1.2M and the map is visually identical. That residual 0.3% on the middle break is real and
+correct — the viewport sample excludes ZIPs whose polygons lie outside the visible window
+(Alaska, Hawaii, the map edges), so it is a genuinely slightly smaller sample. Zoomed to
+SoCal the same toggle gives $205k / $496k / $1.9M, which is the feature doing its actual job:
+the scale follows an expensive region instead of flooding the dark end of the ramp.
+
+`tsc -b` clean, 132/132 vitest, lint 0 errors on the touched files.
+
+**One measurement trap, recorded so the next session does not re-chase it.** Auto-scale appeared
+not to update on wheel zoom. It does. Back-to-back scripted `scroll` actions keep maplibre's
+scroll-zoom gesture open, so `moveend` never fires between them and the breaks look stale.
+Arm a `moveend` listener first, then scroll once: the event fires and the breaks recompute.

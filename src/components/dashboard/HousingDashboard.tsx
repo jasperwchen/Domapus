@@ -75,6 +75,7 @@ export function HousingDashboard() {
   const [visibleRows, setVisibleRows] = useState<Int32Array | null>(null);
 
   const lastBoundsRef = useRef<maplibregl.LngLatBounds | null>(null);
+  const lastLoadedRef = useRef<(() => readonly string[]) | null>(null);
   const initialLoadRef = useRef(false);
   const hasUserInteractedRef = useRef(false);
 
@@ -236,6 +237,7 @@ export function HousingDashboard() {
     view?: { lat: number; lng: number; zoom: number },
   ) => {
     lastBoundsRef.current = bounds;
+    lastLoadedRef.current = loaded;
     recomputeVisible(loaded, bounds);
 
     if (!hasUserInteractedRef.current) return;
@@ -254,21 +256,32 @@ export function HousingDashboard() {
     hasUserInteractedRef.current = true;
   }, []);
 
-  // Turning auto-scale off drops the viewport sample immediately; turning it on
-  // waits for the next map move to supply one.
+  // Both directions have to act on the click. Turning auto-scale off drops the
+  // viewport sample; turning it on re-reads the last map move's tile set and
+  // bounds rather than waiting for the next pan, which is what made the toggle
+  // look dead on a map nobody had moved yet.
   useEffect(() => {
-    if (!autoScale) setVisibleRows(null);
-  }, [autoScale, selectedMetric]);
+    if (!autoScale) {
+      setVisibleRows(null);
+      return;
+    }
+    const loaded = lastLoadedRef.current;
+    const bounds = lastBoundsRef.current;
+    if (loaded && bounds) recomputeVisible(loaded, bounds);
+  }, [autoScale, selectedMetric, recomputeVisible]);
 
   // EXACTLY ONE class authority is live at a time. Constructing a source bumps
   // its epoch; the painter sees a new epoch and rewrites the full ZIP set, so the
   // two modes can never overlap or leave stale colours behind.
   const classSource: ClassSource | null = useMemo(() => {
     if (!paint) return null;
-    const breaks = manifest?.classing?.[selectedMetric]?.breaks;
+    const spec = manifest?.classing?.[selectedMetric];
+    const breaks = spec?.breaks;
 
     if (autoScale && store && visibleRows && visibleRows.length > 0) {
-      return new ViewportClassSource(store, paint, selectedMetric, visibleRows);
+      // The scheme and the break gate travel with the breaks. Auto-scale re-cuts
+      // the pipeline's own scheme on a smaller sample; it never picks its own.
+      return new ViewportClassSource(store, paint, selectedMetric, visibleRows, spec ?? {});
     }
     // The paint table can answer for every ZIP it has a byte for, which is the
     // full national set — it does not need the snapshot to have arrived.

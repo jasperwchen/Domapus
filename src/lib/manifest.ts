@@ -24,7 +24,13 @@ export interface Manifest {
   redfin: { period_end: string | null; period_begin: string | null; vintage: string };
   zhvi: { period_end: string | null };
   assets: { paint: Record<string, PaintAsset>; snapshot: string };
-  classing: Record<string, { scheme: string; breaks: number[]; class_counts: number[] }>;
+  /** `break_gate` says which ZIPs were allowed to SET the boundaries: `rankable`
+   *  for an estimated statistic, `all_reporting` for an exact count. Auto-scale
+   *  has to reproduce that gate or it re-cuts on a different population. */
+  classing: Record<string, {
+    scheme: string; breaks: number[]; class_counts: number[];
+    break_gate?: string | null;
+  }>;
   noise: {
     K: number;
     rankable_rse: number;

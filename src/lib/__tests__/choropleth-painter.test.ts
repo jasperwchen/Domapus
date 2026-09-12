@@ -303,10 +303,34 @@ describe("class sources", () => {
     );
     const visibleRows = new Int32Array(Array.from({ length: 40 }, (_, i) => i));
 
-    const src = new ViewportClassSource(store, table, "zhvi", visibleRows);
+    const src = new ViewportClassSource(store, table, "zhvi", visibleRows, {
+      scheme: "log_equal_p1_p99", break_gate: "all_reporting",
+    });
     expect(src.classOf(zips[0])).toBeGreaterThanOrEqual(0);
     expect(src.classOf("10099")).toBe(-1);
     expect(src.zips).toHaveLength(100);
+  });
+
+  it("ViewportClassSource defers to the national table when it cannot cut", () => {
+    // A viewport cut that is not honest — no scheme, a scheme this build does
+    // not know, or a sample too thin — must leave the fixed scale in place. The
+    // failure mode it replaces was a blank map: every ZIP answering -1.
+    const zips = Array.from({ length: 100 }, (_, i) => String(10_000 + i));
+    const store = storeFor(zips, zips.map((_, i) => 100_000 + i * 1000));
+    const { table } = encodePaint(
+      Object.fromEntries(zips.map((z, i) => [z, 100_000 + i * 1000])),
+    );
+    const visibleRows = new Int32Array(Array.from({ length: 40 }, (_, i) => i));
+    const national = [150_000, 200_000, 250_000, 300_000, 350_000, 400_000];
+
+    for (const spec of [{}, { scheme: "headroom_v3", breaks: national }]) {
+      const src = new ViewportClassSource(store, table, "zhvi", visibleRows, spec);
+      for (const zip of zips) expect(src.classOf(zip)).toBe(table.classOf(zip));
+    }
+    expect(
+      new ViewportClassSource(store, table, "zhvi", visibleRows,
+        { scheme: "headroom_v3", breaks: national }).breaks,
+    ).toEqual(national);
   });
 
   it("PaintTableSource reads the class and tier out of one byte", () => {
