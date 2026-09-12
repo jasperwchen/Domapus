@@ -2379,6 +2379,96 @@ not to update on wheel zoom. It does. Back-to-back scripted `scroll` actions kee
 scroll-zoom gesture open, so `moveend` never fires between them and the breaks look stale.
 Arm a `moveend` listener first, then scroll once: the event fires and the breaks recompute.
 
+## 2026-09-12 - the export was a different map, and now it is the same one
+
+Full review of `src/components/dashboard/export/`, then a rebuild. Everything below was
+measured against the shipped snapshot or reproduced in the browser, not inferred.
+
+**The export cut its own class boundaries.** `PrintStage` called `computeQuantileBuckets` -
+14 plain quantiles over whatever ZIPs the region contained - for every metric. The pipeline
+classes prices `log_equal_p1_p99` on the rankable set and publishes the boundaries in
+`manifest.classing`. On the national extent, the same ZIPs and the same release, the two
+disagree for **73.0% of ZIPs on `zhvi`, 82.6% `median_sale_price`, 89.7% `median_ppsf`, 82.9%
+`sold_above_list`, 75.5% `months_of_supply`, 64.4% `median_dom`**; more than half of those by
+two classes or more. `homes_sold` and `active_listings` agreed at 0%, because plain quantiles
+is what the pipeline uses for them. Fixed by passing `manifest.classing[metric].breaks` down
+from the dashboard and calling the shared `classify()`. This was the last second class
+authority in the app; the legend and the painter were fixed for the same flaw earlier.
+
+**The same code silently shipped maps with no colour at all.** Ties make d3's quantile
+thresholds repeat, MapLibre rejects a `step` whose stop values are not strictly ascending, and
+`Style.addLayer` answers a rejected paint value by firing an error EVENT and returning without
+adding the layer. No throw, so the `try/catch` never saw it; no `error` listener, so nothing
+was logged; `trackError` was never called and the toast still said "Export Complete". The file
+came out as ZIP outlines on a blank basemap. **Measured: 1,521 of 6,952 metro x metric
+combinations are invalid (670 of 869 metros), and 56 of 424 state x metric (26 of 53 states).**
+National is clean for all 8 metrics, which is why it went unnoticed. Reproduced live on
+Pittsburgh, PA + Homes Sold; the console said `layers.zips-fill.paint.fill-color[7]:
+Input/output pairs for "step" expressions must be arranged with input values in strictly
+ascending order.` The fill now uses the live map's own constant `match` on a class in
+feature-state, which imposes no ordering on anything, and every export map carries an `error`
+listener.
+
+**Preview and file were two layouts.** Both drew the AK/HI insets at 400 px, which is 35% of
+the width of the 1200-px preview and 11% of the width of the 3600-px canvas. Every layout
+number now lives in one `L` object in STAGE UNITS and the canvas multiplies by `EXPORT_SCALE`;
+text is placed as a box that both renderers centre glyphs in. The maps render at a backing size
+of exactly `stage units x EXPORT_SCALE` (`pixelRatio: 3` on the main map, a 3x container at
+pixelRatio 1 for the insets), so `drawImage` is 1:1 - the main map used to be upscaled 1.51x
+from 2272 px into a 3440 px slot.
+
+**The attribution was painted over whenever "Include Title" was off.** It was drawn at a fixed
+y=128 baseline and then the map rectangle was drawn from `mapTop`, which is 80 without a title.
+The PDF still placed a clickable rectangle over the invisible text. It is now a footer strip
+below the map frame that nothing can reach, and `exportToCanvas` returns the link boxes it
+actually drew, so the PDF stops re-measuring the text with a throwaway canvas and guessing.
+Domapus / Redfin / Zillow are blue and individually clickable in the PDF.
+
+**Framing sampled ZIPs that can never show a colour.** Puerto Rico's 131 ZCTAs and the Virgin
+Islands' 6 report nothing for any metric and dragged the mainland frame from 24.59 deg N down
+to **17.73** - a fifth of a map of the lower 48 spent on ocean. Bounds are now cut from the
+ZIPs that have a value for the metric being drawn, which gives CONUS exactly, and tightens
+Alaska from the 46.6 degrees of longitude its ZCTAs span to the 35.1 that have data.
+
+**Alaska could not fit its own inset.** `fitBounds` picks a zoom from the container's CSS size
+and clamps it to `minZoom`, which must clear the tileset's floor of 3 or the choropleth has no
+tiles. Alaska spans 0.109 of the world's Mercator height; inside the 168 stage units the inset
+is displayed at, the fit asks for zoom 1.4 and gets 3, so the state was cropped to whatever the
+viewport landed on. The inset now renders into a container 3x its display box, which asks for
+3.14. Inset `maxZoom` went 6 -> 7 so Hawaii, which fits at 6.3, fills its box.
+
+**Smaller, all verified:** the legend now labels the boundaries it is drawing (it printed p5 /
+p50 / p95 of the values spread evenly across a strip of class bands - the same
+second-authority bug `Legend.tsx` was fixed for) and formats them through the shared
+`formatLegendValue` (the old substring test printed `median_ppsf` as `285.73` and
+`sold_above_list` as `62.5`); `formatLegendValue` and `tickAt` moved to
+`src/lib/legend-format.ts` so the key on screen and the key in the file are one
+implementation; no-data is `NO_DATA_COLOR` not a fourth hardcoded `#efefef`; fill-opacity
+0.9 -> 1, matching the map's decision that reliability is not an opacity channel; the PNG
+downloads through `toBlob` instead of an 8.7 MB base64 data URL; Escape closes the dialog; the
+metro list is buttons.
+
+**User decisions, 2026-09-12.** The subtitle says "Data through <date>" and not
+`formatRedfinWindow`'s "3 months ending Jul 31, 2026" - the rolling-window caveat is honest and
+unreadable as a chart subtitle, and it belongs on the methodology page. There is a comment at
+`dataDate` saying not to change it back, and a test asserting the string never appears. "Show
+Cities" is disabled at national scope, where Positron's place labels stack into noise; toggling
+it is now a visibility change rather than a rebuild of three maps. A successful export offers a
+GitHub star, once per browser until clicked.
+
+**Tests.** `Export.test.tsx` mocked `addLayer(){}` and `getStyle()` with no layers, so none of
+the above was reachable - an export that coloured 73% of the country differently, and 670 of
+869 metros not at all, passed the suite. The mock now records layers, feature-state writes and
+layout calls, and there are tests for: the classes the manifest's breaks imply, the `match`
+expression, a region whose values are all identical still getting a fill layer, missing breaks
+holding the export back instead of inventing a scale, `pixelRatio` 3, the footer link boxes,
+"Data through", and the city toggle not rebuilding maps. 142 vitest pass, `tsc -b` clean.
+
+**Left alone deliberately:** `computeQuantileBuckets` in `src/lib/quantiles.ts` now has no
+production caller (only tests and a re-export in `map/utils.ts`). Not deleted - it is
+pre-existing code these changes orphaned rather than their own mess, and the call is the
+user's.
+
 
 ---
 
@@ -2546,3 +2636,44 @@ outlines every ZCTA.
 
 **If that layer's `line-width` ever changes, recompute the table.** Ink is linear
 in it.
+
+### 2026-09-12, later - the furniture stops standing on the data
+
+Follow-up to the entry above, all measured with `fit` modelled exactly (bbox into the
+padded rect, centred) and every ZIP centroid projected into stage units.
+
+**The key was drawn on top of 148 to 164 Florida ZCTAs.** It floated inside the map, bottom
+right, on a 324 x 94 white panel. On the national view that corner is the Atlantic east of
+Florida, but the panel reached inland; at state and metro scope there is no ocean at all and
+it simply covered whatever was under it. It now lives in a band below the map frame, laid out
+across one row: metric name, colour bar with its boundary labels underneath, no-data swatch,
+and the attribution right-aligned on the same row. Costs 42 units of map height. Covers
+nothing, at any scope, by construction.
+
+**The Hawaii inset was drawn on top of 3 to 8 Texas ZCTAs** around Big Bend, depending on the
+metric. The insets were placed at a fixed margin from the frame with no idea where the data
+was. The lower 48 are wider than the frame they are drawn in, so the fit is width-bound and
+the leftover height is empty: `mainPadding` now spends that leftover as BOTTOM padding, which
+pushes the states up off the insets and costs nothing, because the width still binds and the
+map is drawn at exactly the same size. Measured after: **0 ZCTAs covered, all eight painted
+metrics.** Where there is no slack, or no inset, the padding stays symmetric at 24.
+
+**The insets now say what scale they are at** - "ALASKA · 0.23× scale", "HAWAII · 2.2× scale",
+read from `map.getZoom()` against the main map's, corrected for the 3x render container. The
+two boxes are the same size on the page but hold states an order of magnitude apart, and
+nothing on the old export said so.
+
+**Title and legend stay optional, and toggling either now re-fits the map.** They change the
+SHAPE of the map frame; MapLibre resizes its own canvas but keeps the zoom it was fitted at,
+so the view stayed framed for the old rectangle - and after this change the bottom padding
+would have been computed for a height that no longer applied.
+
+**The metro search takes the keyboard.** Enter picks the highlighted suggestion, which starts
+at the top match, and the arrow keys move it with wraparound; `aria-activedescendant` and
+`role="combobox"` so a screen reader follows. The state picker is a Radix `Select`, which
+already had arrow keys, Enter and type-to-jump.
+
+**Preview and file still agree by construction.** The metric name's width decides where the
+colour bar starts, so it is measured ONCE in stage units and handed to both renderers rather
+than measured independently in each.
+

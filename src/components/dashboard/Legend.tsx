@@ -3,7 +3,8 @@ import { Link, useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { METRICS, getMetricLabel } from "@/lib/metrics";
+import { getMetricLabel } from "@/lib/metrics";
+import { formatLegendValue, tickAt } from "@/lib/legend-format";
 import { computeQuantiles } from "@/lib/quantiles";
 import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS, NO_DATA_COLOR } from "@/lib/choropleth";
 import { OUTLIER_COLORS } from "@/lib/choropleth-painter";
@@ -25,38 +26,6 @@ interface LegendProps {
   /** How many ZIPs break their neighbourhood's price pattern. Null until the
    *  manifest lands, and absent entirely if the spatial stage did not run. */
   outliers?: { total: number } | null;
-}
-
-// Formatted from the metric registry rather than by sniffing the key name. The
-// old substring test read "months_of_supply" as neither price nor ratio and fell
-// through to a raw number, and would have read any future "*_price_ratio" as a
-// price because "price" matched first.
-function formatLegendValue(value: number, metric: string): string {
-  switch (METRICS[metric]?.format) {
-    case "price":
-      return value >= 1_000_000
-        ? `$${(value / 1_000_000).toFixed(1)}M`
-        : value >= 1000
-          ? `$${(value / 1000).toFixed(0)}k`
-          : `$${value.toFixed(0)}`;
-    case "percent":
-      return `${value.toFixed(0)}%`;
-    case "months":
-      return value.toFixed(1);
-    case "days":
-      return `${Math.round(value)}d`;
-    default:
-      return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toLocaleString();
-  }
-}
-
-/** `count` boundaries spread evenly across `b`, with their index kept so each
- *  label can be positioned at the boundary it names rather than at a guess. */
-function tickAt(b: readonly number[], count: number, metric: string) {
-  return Array.from({ length: count }, (_, k) => {
-    const i = Math.round((k * (b.length - 1)) / (count - 1));
-    return { i, label: formatLegendValue(b[i], metric) };
-  });
 }
 
 export function Legend({
@@ -156,7 +125,7 @@ export function Legend({
               className="h-3.5 w-3.5 shrink-0 accent-primary"
             />
             <span className="text-[10px] font-medium leading-none text-muted-foreground">
-              Scale to this view
+              Adjust Contrast to View
             </span>
           </label>
         )}

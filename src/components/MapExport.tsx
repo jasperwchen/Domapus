@@ -9,10 +9,14 @@ const ExportSidebar = lazy(() => import("./dashboard/export/ExportSidebar").then
 interface MapExportProps {
   store: ZipTable | null;
   selectedMetric: string;
+  /** The class boundaries the map is painting, from the manifest. Passed
+   *  through so the exported map is coloured by the same authority as the live
+   *  one instead of re-deriving a scale of its own. */
+  breaks: readonly number[] | null;
   onExportModeChange: (isExportMode: boolean) => void;
 }
 
-export function MapExport({ store, selectedMetric, onExportModeChange }: MapExportProps) {
+export function MapExport({ store, selectedMetric, breaks, onExportModeChange }: MapExportProps) {
   const [isExportMode, setIsExportMode] = useState(false);
   const isMobile = useIsMobile();
 
@@ -40,6 +44,7 @@ export function MapExport({ store, selectedMetric, onExportModeChange }: MapExpo
           // action — the ~173 ms object build no longer happens on page load.
           allZipData={store ? store.toRecord() : {}}
           selectedMetric={selectedMetric}
+          breaks={breaks}
           onClose={handleClose}
         />
       </Suspense>

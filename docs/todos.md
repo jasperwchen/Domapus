@@ -245,6 +245,25 @@ of the four are step-ordering or `if:` guards that CI cannot exercise:
 
 ---
 
+## Export - LANDED 2026-09-12. Measurements and rationale in CHANGES.md.
+
+The export takes the pipeline's published class boundaries instead of cutting 14 plain
+quantiles of its own, paints through the live map's `match` expression instead of a `step`
+that MapLibre rejected on 670 of 869 metros, draws preview and file from one set of layout
+numbers, and keeps its legend and insets off the data (measured: 0 ZCTAs covered, down from
+164 under the legend and 8 under the Hawaii inset). Open follow-ups:
+
+- [ ] `computeQuantileBuckets` (`src/lib/quantiles.ts`) has no production caller left - only
+      `map/utils.ts` re-exporting it and two test files. Delete it, or keep it as the helper
+      an auto-scale path would reach for. Not decided, not deleted.
+- [ ] The main export map renders at `pixelRatio: 3`, a 3408x2232 backing store. That is what
+      makes `drawImage` 1:1 instead of a 1.51x upscale, and it is ~30 MB of GPU memory held
+      while the dialog is open. Not measured on a low-end device.
+- [ ] With the title off the file carries no region name and no date. That is what the toggle
+      asks for, but it means an untitled export cannot be identified later. Left as is.
+
+---
+
 ## Reviewed but not actioned — pipeline and scripts
 
 All six items from the 2026-09-06 read are **done** — one shared `panel.dense`, predicate
@@ -358,3 +377,4 @@ breaks but still paints them, and the fill has carried no reliability channel si
 opacity fade was removed (it was a lightness signal on a lightness ramp). The deferred
 texture overlay in `choropleth-painter.ts` is the intended fix. 14 classes makes the
 speckle more visible without making it more or less honest.
+

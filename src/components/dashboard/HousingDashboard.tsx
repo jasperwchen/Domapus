@@ -375,6 +375,12 @@ export function HousingDashboard() {
         <MapExport
           store={store}
           selectedMetric={selectedMetric}
+          // The PUBLISHED national boundaries, not `classSource.breaks`. In
+          // auto-scale mode the live source is cut to the viewport, and a
+          // viewport has nothing to do with the state or metro being exported;
+          // the national scale is the one the site defaults to and the one that
+          // makes two exports comparable.
+          breaks={manifest?.classing?.[selectedMetric]?.breaks ?? null}
           onExportModeChange={setIsExportMode}
         />
       </TopBar>

@@ -7,29 +7,37 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { PrintStage, PrintStageRef, EXPORT_CANVAS_W, EXPORT_CANVAS_H, ATTRIBUTION_TEXT, ATTRIBUTION_FONT, ATTRIBUTION_BASELINE_Y, ATTRIBUTION_RIGHT_X } from "./PrintStage";
+import { PrintStage, PrintStageRef, EXPORT_CANVAS_W, EXPORT_CANVAS_H } from "./PrintStage";
 import { cn } from "@/lib/utils";
 import { jsPDF, jsPDFOptions } from "jspdf";
 import { toast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { trackError } from "@/lib/analytics";
 import { getStateName } from "../map/utils";
 
-export interface ExportOptions {
-  regionScope: "national" | "state" | "metro";
-  selectedState?: string;
-  selectedMetro?: string;
-  fileFormat: "png" | "pdf";
-  includeLegend: boolean;
-  includeTitle: boolean;
+const REPO_URL = "https://github.com/jasperwchen/Domapus";
+/** Set once the reader has actually gone to the repo. After that the success
+ *  toast goes back to being a plain confirmation — asking again is nagging. */
+const STAR_CLICKED_KEY = "domapus:starred";
+/** And at most one ask per page load even before that. */
+let starAskedThisSession = false;
+
+function starAlreadyClicked(): boolean {
+  try { return localStorage.getItem(STAR_CLICKED_KEY) === "1"; }
+  catch { return false; }
 }
 
 interface ExportSidebarProps {
   allZipData: Record<string, ZipData>;
   selectedMetric: string;
+  /** The class boundaries the live map is painting, from the manifest. Without
+   *  them there is no honest colour scale and the export is held back rather
+   *  than invented — see PrintStage's `classesByZip`. */
+  breaks: readonly number[] | null;
   onClose: () => void;
 }
 
-export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSidebarProps) {
+export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: ExportSidebarProps) {
   const [regionScope, setRegionScope] = useState<"national" | "state" | "metro">("national");
   const [selectedState, setSelectedState] = useState<string>("");
   const [selectedMetro, setSelectedMetro] = useState<string>("");
@@ -38,7 +46,11 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
   const [metroSearch, setMetroSearch] = useState<string>("");
   const [debouncedMetroSearch, setDebouncedMetroSearch] = useState<string>("");
   const [isMetroListOpen, setIsMetroListOpen] = useState(false);
+  /** Which suggestion Enter takes. Starts at the top of the list, so typing and
+   *  pressing Enter picks the best match without reaching for the mouse. */
+  const [activeMetro, setActiveMetro] = useState(0);
   const metroContainerRef = useRef<HTMLDivElement>(null);
+  const metroListRef = useRef<HTMLDivElement>(null);
 
   const [fileFormat, setFileFormat] = useState<"png" | "pdf">("png");
   const [includeLegend, setIncludeLegend] = useState(true);
@@ -50,10 +62,24 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
 
   const printStageRef = useRef<PrintStageRef>(null);
 
+  // Positron's place labels stack into noise at national extent, so the control
+  // is disabled there rather than left to produce a bad export.
+  const citiesAllowed = regionScope !== "national";
+  const scaleAvailable = !!breaks && breaks.length > 0;
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedMetroSearch(metroSearch), 150);
     return () => clearTimeout(timer);
   }, [metroSearch]);
+
+  // A new query is a new list, so the highlight goes back to the top match.
+  useEffect(() => { setActiveMetro(0); }, [debouncedMetroSearch]);
+
+  useEffect(() => {
+    if (!isMetroListOpen) return;
+    const el = metroListRef.current?.querySelector<HTMLElement>(`[data-idx="${activeMetro}"]`);
+    el?.scrollIntoView?.({ block: "nearest" });
+  }, [activeMetro, isMetroListOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -65,9 +91,25 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // A full-screen dialog that only closes through one button is a trap on the
+  // way out; Escape closes it, except mid-export where the download is in flight.
+  const isExportingRef = useRef(isExporting);
+  isExportingRef.current = isExporting;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape" || isExportingRef.current) return;
+      if (isMetroListOpen) { setIsMetroListOpen(false); return; }
+      onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, isMetroListOpen]);
+
+  // `showCities` is deliberately absent: it no longer rebuilds the maps, so the
+  // preview never leaves the ready state when it changes.
   useEffect(() => {
     setIsMapReady(false);
-  }, [regionScope, selectedState, selectedMetro, selectedMetric, showCities]);
+  }, [regionScope, selectedState, selectedMetro, selectedMetric]);
 
   const { availableStates, filteredMetros } = useMemo(() => {
     if (Object.keys(allZipData).length === 0) return { availableStates: [], filteredMetros: [] };
@@ -128,6 +170,16 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     });
   }, [allZipData, regionScope, selectedState, selectedMetro, hasValidSelection]);
 
+  /** How much of the region this metric can actually colour. Shown so the reader
+   *  finds out before exporting, not after. */
+  const withData = useMemo(
+    () => filteredData.reduce((n, zip) => {
+      const v = zip[selectedMetric as keyof ZipData];
+      return n + (typeof v === "number" && Number.isFinite(v) ? 1 : 0);
+    }, 0),
+    [filteredData, selectedMetric],
+  );
+
   const regionName = useMemo(() => {
     if (regionScope === 'state') return getStateName(selectedState) || "Select a state";
     if (regionScope === 'metro') return selectedMetro || "Select a metro area";
@@ -138,12 +190,14 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     if (isExporting) return true;
     if (!isMapReady) return true;
     if (!hasValidSelection) return true;
+    if (!scaleAvailable) return true;
     if (filteredData.length === 0) return true;
     return false;
   };
 
   const getButtonText = () => {
     if (isExporting) return "Exporting...";
+    if (!scaleAvailable) return "Colour scale unavailable";
     if (!hasValidSelection) {
       if (regionScope === 'state') return "Select a state";
       if (regionScope === 'metro') return "Select a metro";
@@ -151,6 +205,30 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     if (!isMapReady && filteredData.length > 0) return "Rendering...";
     return `Export ${fileFormat.toUpperCase()}`;
   };
+
+  const openRepo = useCallback(() => {
+    try { localStorage.setItem(STAR_CLICKED_KEY, "1"); } catch { /* private mode */ }
+    window.open(REPO_URL, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const announceDone = useCallback(() => {
+    const ask = !starAskedThisSession && !starAlreadyClicked();
+    if (!ask) {
+      toast({ title: "Export complete", description: "Your map has been downloaded.", duration: 5000 });
+      return;
+    }
+    starAskedThisSession = true;
+    toast({
+      title: "Export complete",
+      description: "Domapus is free and open source. A star helps other people find it.",
+      duration: 12000,
+      action: (
+        <ToastAction altText="Star Domapus on GitHub" onClick={openRepo}>
+          Star on GitHub
+        </ToastAction>
+      ),
+    });
+  }, [openRepo]);
 
   const handleExport = useCallback(async () => {
     if (!printStageRef.current) return;
@@ -171,14 +249,23 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     setIsExporting(true);
 
     try {
-      const canvas = await printStageRef.current.exportToCanvas();
+      const { canvas, links } = await printStageRef.current.exportToCanvas();
       const safeRegionName = regionName.replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
+      const stem = `Domapus-${selectedMetric}-${safeRegionName}`;
 
       if (fileFormat === "png") {
+        // A blob, not a data URL. The same image as a base64 `href` is an 8.7 MB
+        // string held in memory twice and refused outright by some browsers.
+        const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, "image/png"));
+        if (!blob) throw new Error("Could not encode the PNG");
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.download = `Domapus-${selectedMetric}-${safeRegionName}.png`;
-        link.href = canvas.toDataURL("image/png", 1.0);
+        link.download = `${stem}.png`;
+        link.href = url;
+        document.body.appendChild(link);
         link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } else {
         const imgData = canvas.toDataURL("image/png", 1.0);
         const MARGIN = 4;
@@ -211,25 +298,25 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
 
         pdf.addImage(imgData, "PNG", offsetX, offsetY, drawWidth, drawHeight);
 
-        const tmpCtx = document.createElement("canvas").getContext("2d")!;
-        tmpCtx.font = ATTRIBUTION_FONT;
-        const metrics = tmpCtx.measureText(ATTRIBUTION_TEXT);
-        const canvasTextRight = ATTRIBUTION_RIGHT_X;
-        const canvasTextLeft = canvasTextRight - metrics.width;
-        const canvasTextTop = ATTRIBUTION_BASELINE_Y - (metrics.actualBoundingBoxAscent ?? 24);
-        const canvasTextBottom = ATTRIBUTION_BASELINE_Y + (metrics.actualBoundingBoxDescent ?? 5);
+        // One clickable box per brand name, placed from the boxes the canvas
+        // actually drew. This used to re-measure the attribution with a throwaway
+        // canvas in this file and put a single rectangle where it guessed the
+        // text had gone — over a line that, with the title off, was not even
+        // visible, because the map had been painted on top of it.
         const scaleX = drawWidth / EXPORT_CANVAS_W;
         const scaleY = drawHeight / EXPORT_CANVAS_H;
-        const attrX = offsetX + (canvasTextLeft - 2) * scaleX;
-        const attrY = offsetY + (canvasTextTop - 2) * scaleY;
-        const attrW = (metrics.width + 4) * scaleX;
-        const attrH = (canvasTextBottom - canvasTextTop + 4) * scaleY;
-        pdf.link(attrX, attrY, attrW, attrH, { url: "https://jasperwchen.github.io/Domapus/" });
+        for (const l of links) {
+          pdf.link(
+            offsetX + l.x * scaleX, offsetY + l.y * scaleY,
+            l.w * scaleX, l.h * scaleY,
+            { url: l.url },
+          );
+        }
 
-        pdf.save(`Domapus-${selectedMetric}-${safeRegionName}.pdf`);
+        pdf.save(`${stem}.pdf`);
       }
 
-      toast({ title: "Export Complete", description: "Your map has been downloaded.", duration: 5000 });
+      announceDone();
     } catch (error: unknown) {
       console.error("Export failed:", error);
       trackError("export_failed", error instanceof Error ? error.message : "Unknown export error");
@@ -237,7 +324,7 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     } finally {
       setIsExporting(false);
     }
-  }, [fileFormat, selectedMetric, regionScope, regionName, includeLegend, includeTitle]);
+  }, [fileFormat, selectedMetric, regionScope, regionName, includeLegend, includeTitle, announceDone]);
 
   const selectMetro = (metroName: string) => {
     setSelectedMetro(metroName);
@@ -249,11 +336,35 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
     setSelectedMetro("");
     setMetroSearch("");
     setDebouncedMetroSearch("");
+    setActiveMetro(0);
     setIsMetroListOpen(true);
   };
 
+  /** Arrow keys move the highlight, Enter takes it. Escape is left to the
+   *  dialog's own handler, which closes the list before it closes the dialog. */
+  const onMetroKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isMetroListOpen) { setIsMetroListOpen(true); return; }
+      const n = filteredMetros.length;
+      if (n === 0) return;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setActiveMetro(i => (i + step + n) % n);
+      return;
+    }
+    if (e.key === "Enter" && isMetroListOpen && filteredMetros.length > 0) {
+      e.preventDefault();
+      selectMetro(filteredMetros[Math.min(activeMetro, filteredMetros.length - 1)]);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-background z-50 flex flex-col md:flex-row">
+    <div
+      className="fixed inset-0 bg-background z-50 flex flex-col md:flex-row"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Export map"
+    >
       {/* Preview Area (top on mobile) */}
       <div className="order-1 md:order-2 flex-1 md:p-6 overflow-hidden flex flex-col bg-muted/30 min-h-[52vh] md:min-h-0">
         <div className="flex-1 flex items-center justify-center min-h-0 w-full">
@@ -262,6 +373,7 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
               ref={printStageRef}
               filteredData={filteredData}
               selectedMetric={selectedMetric}
+              breaks={breaks}
               regionScope={regionScope}
               regionName={regionName}
               includeLegend={includeLegend}
@@ -312,6 +424,16 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
                       <Input
                         placeholder="Type to search metros..."
                         value={metroSearch}
+                        role="combobox"
+                        aria-expanded={isMetroListOpen}
+                        aria-controls="metro-listbox"
+                        aria-autocomplete="list"
+                        aria-activedescendant={
+                          isMetroListOpen && filteredMetros.length > 0
+                            ? `metro-opt-${activeMetro}`
+                            : undefined
+                        }
+                        onKeyDown={onMetroKeyDown}
                         onChange={(e) => {
                           setMetroSearch(e.target.value);
                           setIsMetroListOpen(true);
@@ -325,27 +447,43 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
                         className="pl-8 h-8 md:h-9 pr-8 text-xs md:text-sm"
                       />
                       {metroSearch && (
-                        <button onClick={clearMetroSelection} className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground">
+                        <button
+                          type="button"
+                          onClick={clearMetroSelection}
+                          aria-label="Clear metro selection"
+                          className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
+                        >
                           <X className="h-4 w-4" />
                         </button>
                       )}
                     </div>
 
                     {isMetroListOpen && (
-                      <div className="absolute z-10 w-full mt-1 bg-popover text-popover-foreground border rounded-md shadow-md max-h-[250px] overflow-y-auto">
+                      <div
+                        ref={metroListRef}
+                        className="absolute z-10 w-full mt-1 bg-popover text-popover-foreground border rounded-md shadow-md max-h-[250px] overflow-y-auto"
+                      >
                         {filteredMetros.length > 0 ? (
-                          <div className="p-1">
-                            {filteredMetros.map((m) => (
-                              <div
+                          <div className="p-1" id="metro-listbox" role="listbox" aria-label="Metro areas">
+                            {filteredMetros.map((m, i) => (
+                              <button
                                 key={m}
+                                id={`metro-opt-${i}`}
+                                data-idx={i}
+                                type="button"
+                                role="option"
+                                tabIndex={-1}
+                                aria-selected={i === activeMetro}
+                                onMouseEnter={() => setActiveMetro(i)}
                                 onClick={() => selectMetro(m)}
                                 className={cn(
-                                  "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                                  selectedMetro === m && "bg-accent text-accent-foreground font-medium"
+                                  "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-left text-sm outline-none",
+                                  i === activeMetro && "bg-accent text-accent-foreground",
+                                  selectedMetro === m && "font-medium"
                                 )}
                               >
                                 {m}
-                              </div>
+                              </button>
                             ))}
                           </div>
                         ) : (
@@ -354,6 +492,12 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
                       </div>
                     )}
                   </div>
+                )}
+
+                {hasValidSelection && filteredData.length > 0 && (
+                  <p className="text-[11px] leading-snug text-muted-foreground tabular-nums">
+                    {withData.toLocaleString()} of {filteredData.length.toLocaleString()} ZIP codes report this metric
+                  </p>
                 )}
               </div>
 
@@ -376,7 +520,28 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
                 <div className="space-y-1.5 md:space-y-2">
                   <div className="flex items-center space-x-2"><Checkbox id="c-title" checked={includeTitle} onCheckedChange={(c) => setIncludeTitle(c === true)} /><Label htmlFor="c-title" className="text-xs md:text-sm">Include Title</Label></div>
                   <div className="flex items-center space-x-2"><Checkbox id="c-legend" checked={includeLegend} onCheckedChange={(c) => setIncludeLegend(c === true)} /><Label htmlFor="c-legend" className="text-xs md:text-sm">Include Legend</Label></div>
-                  <div className="flex items-center space-x-2"><Checkbox id="c-cities" checked={showCities} onCheckedChange={(c) => setShowCities(c === true)} /><Label htmlFor="c-cities" className="text-xs md:text-sm">Show Cities</Label></div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="c-cities"
+                      checked={showCities && citiesAllowed}
+                      disabled={!citiesAllowed}
+                      onCheckedChange={(c) => setShowCities(c === true)}
+                    />
+                    <Label
+                      htmlFor="c-cities"
+                      className={cn(
+                        "text-xs md:text-sm",
+                        !citiesAllowed && "text-muted-foreground opacity-60 cursor-not-allowed",
+                      )}
+                    >
+                      Show Cities
+                    </Label>
+                  </div>
+                  {!citiesAllowed && (
+                    <p className="text-[11px] leading-snug text-muted-foreground pl-6">
+                      Unavailable at national scale
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -385,7 +550,7 @@ export function ExportSidebar({ allZipData, selectedMetric, onClose }: ExportSid
 
         <div className="p-3 md:p-4 space-y-2 border-t bg-background">
           <Button id="btn-map-export" onClick={handleExport} disabled={isExportDisabled()} className="w-full" size="default">
-            {(isExporting || (!isMapReady && hasValidSelection && filteredData.length > 0)) && (
+            {(isExporting || (!isMapReady && hasValidSelection && scaleAvailable && filteredData.length > 0)) && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
             )}
             {!isExporting && hasValidSelection && filteredData.length > 0 && isMapReady && (
