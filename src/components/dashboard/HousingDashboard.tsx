@@ -15,6 +15,7 @@ import { boot, takeSnapshotPrefetch, fetchManifest, fetchPaint, outlierCount, ty
 import { PaintTable } from "@/lib/paint-table";
 import { ZipTable, WIRE_OF } from "@/lib/zip-table";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { toast } from "@/hooks/use-toast";
 import { TopBar } from "./TopBar";
 import { MapLibreMap } from "./MapLibreMap";
 import { Legend } from "./Legend";
@@ -154,13 +155,6 @@ export function HousingDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSearch = useCallback((zip: string, trigger: number) => {
-    setSearchZip(zip);
-    setSearchTrigger(trigger);
-    hasUserInteractedRef.current = true;
-    setUrlState({ zip, metric: selectedMetric });
-  }, [selectedMetric, setUrlState]);
-
   // A map click in compare mode means "compare against this one", not "switch to
   // this one". The URL keeps naming the primary ZIP: it is what the panel is
   // about, and a shared link should reopen on it.
@@ -174,6 +168,39 @@ export function HousingDashboard() {
     setSelectedZip(zip);
     setUrlState({ zip: zip.zipCode, metric: selectedMetric });
   }, [mode, selectedZip, selectedMetric, setUrlState]);
+
+  const handleSearch = useCallback((zip: string, trigger: number) => {
+    setSearchZip(zip);
+    setSearchTrigger(trigger);
+    hasUserInteractedRef.current = true;
+    setUrlState({ zip, metric: selectedMetric });
+
+    // Searching is another way of picking a ZIP, so it goes through the same
+    // handler a map click does and obeys the same compare-mode rule. The search
+    // box used to only fly the map there and highlight the polygon, which left
+    // the reader to find the ZIP they had just typed and click it again before
+    // any numbers appeared.
+    const row = store?.get(zip);
+    if (row) {
+      handleZipSelect(row);
+      return;
+    }
+
+    // A miss was silent, which reads as a broken search box rather than as an
+    // answer. The two cases are different and the reader can act on both.
+    toast(
+      store
+        ? {
+            title: `No data for ZIP ${zip}`,
+            description:
+              "Check the code, or try a nearby one. Not every ZIP code has a housing market either source reports on.",
+          }
+        : {
+            title: "Still loading ZIP details",
+            description: "The map is ready but the data behind it is not. Try again in a moment.",
+          },
+    );
+  }, [selectedMetric, setUrlState, store, handleZipSelect]);
 
   // Closing the panel ends compare mode. The next ZIP the user clicks opens on
   // its details, which is what closing a panel means everywhere else.

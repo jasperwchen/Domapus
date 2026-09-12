@@ -35,7 +35,12 @@ export function MetricSelector({ selectedMetric, onMetricChange }: MetricSelecto
       </label>
       <Select value={selectedMetric} onValueChange={handleMetricChange}>
         <SelectTrigger
-          className="w-36 lg:w-48 h-9 text-sm px-3 justify-between shrink-0"
+          // Full width below `md`, where the only caller is the mobile control
+          // bar and there is a whole 343 px row to fill — a fixed 144 px there
+          // truncated every metric to "Zillow Hom...". In the desktop header the
+          // width has to stay fixed, because the row it sits in also has to hold
+          // the search field and five buttons.
+          className="w-full md:w-36 lg:w-48 h-9 text-sm px-3 justify-between shrink-0"
           aria-label="Select visualization metric"
         >
           <div className="flex-1 text-left truncate pr-2">

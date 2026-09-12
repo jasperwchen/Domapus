@@ -20,6 +20,8 @@
 // Match that when editing.
 
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { fetchManifest, type Manifest } from "@/lib/manifest";
 import { TopBarShell } from "@/components/dashboard/TopBar";
 
@@ -202,8 +204,40 @@ export default function Methodology() {
   return (
     <div className="min-h-screen bg-dashboard-bg">
       <TopBarShell subtitle="Methodology" nav="map" />
-      <main className="max-w-3xl mx-auto px-6 py-10">{body()}</main>
+      <main className="max-w-3xl mx-auto px-6 py-10">
+        {/* Above the title, and outside `body()` on purpose: if the manifest
+            fails this page renders one line of error text, and that is exactly
+            when the reader most needs a way out. The header's map icon is the
+            only other exit and it carries no label below `xl`. */}
+        <BackToMap className="mb-6" />
+        {body()}
+      </main>
     </div>
+  );
+}
+
+/**
+ * The way back to the map.
+ *
+ * A real navigation rather than a `<Link>`, for the reason `TopBar` sets out:
+ * `index.html` starts the manifest and paint fetches during head parse, and a
+ * client-side mount cannot, so routing into the map would trade this page's
+ * exit for a slower first paint on arrival.
+ *
+ * The query string comes along because the map keeps its whole view there,
+ * metric, selected ZIP, centre and zoom. Dropping it would return the reader to
+ * the national default instead of the place they left.
+ */
+function BackToMap({ className = "" }: { className?: string }) {
+  const { search } = useLocation();
+  return (
+    <a
+      href={`${import.meta.env.BASE_URL}${search}`}
+      className={`inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors ${className}`}
+    >
+      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+      Back to map
+    </a>
   );
 }
 
@@ -779,6 +813,10 @@ function Body({ mf }: { mf: Manifest }) {
         Release generated {mf.generated_utc}. Figures on this page are read from
         that release's manifest at page load.
       </p>
+
+      {/* This is a long document. A reader who has reached the end of it should
+          not have to scroll back up to find the way out. */}
+      <BackToMap className="mt-6" />
     </>
   );
 }

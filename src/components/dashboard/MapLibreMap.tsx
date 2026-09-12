@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import * as maplibregl from 'maplibre-gl';
-import type { LngLatBoundsLike, MapMouseEvent, LayerSpecification } from 'maplibre-gl';
+import type { MapMouseEvent, LayerSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@/lib/maplibre-worker";
 import { createMetricPopupContent } from "./map/utils";
@@ -70,6 +70,82 @@ const LABEL_MARGIN_DEG = 0.25;
 type PointFC = GeoJSON.FeatureCollection<GeoJSON.Point>;
 const EMPTY_FC: PointFC = { type: "FeatureCollection", features: [] };
 
+/** The lower 48, and the view the map opens on. Was written out twice, once at
+ *  init and once in the reset button; the zoom floor below needs its width too. */
+const DEFAULT_BOUNDS: [[number, number], [number, number]] = [
+  [-124.7844079, 24.7433195],
+  [-66.9513812, 49.3457868],
+];
+
+/** What the tileset actually carries (`geometry.lock.json` min_zoom). */
+const TILESET_MIN_ZOOM = 2;
+/** The floor that guarantees every ZCTA has a polygon. z2 is 75 short of
+ *  33,780, which is why the map prefers to stop here. */
+const COVERAGE_MIN_ZOOM = 3;
+/** How much of the container width the country is allowed to fill when the
+ *  floor has to be relaxed, leaving a visible margin rather than bleeding the
+ *  coasts off both edges. */
+const FIT_WIDTH_FRACTION = 0.92;
+
+/*
+ * WHY ZIP BORDERS FADE BELOW THE DEFAULT VIEW, AND ONLY BELOW IT.
+ *
+ * The `line-opacity` stops on the `zips-border` layer below come from here.
+ *
+ * The border layer draws every ZCTA's own ring, so both sides of each shared
+ * edge get painted. `geometry.lock.json` measures 5,624,668 segments at 292.9 m
+ * median spacing: about 1.6 million km of line over the lower 48's 8.08 million
+ * km2, so 0.198 km of ink per km2 of country. At 39N a CSS pixel spans
+ * 60.8 / 2^zoom km, so the share of the country covered by border ink is
+ *
+ *     ink = 0.198 km/km2 x line-width(zoom) px x km-per-pixel(zoom)
+ *
+ * The default view opens around z4, where ink is 0.30 and the map looks right.
+ * Below that the ink roughly doubles per zoom step, to 0.45 at z3 and 0.90 at
+ * z2, and the choropleth greys over: compositing the 0.15-alpha stroke that
+ * many times darkens the map by 1 - 0.85^ink, which runs 4.8% at z4 to 7.1% at
+ * z3 and 13.7% at z2 nationally, and 22% to 31% to 52% at the roughly five
+ * times ink density of a dense metro.
+ *
+ * So z4 is the reference, and the fade only holds the PRODUCT at its level:
+ *
+ *     opacity(z) = ink(z4) / ink(z), capped at 1
+ *
+ * which is 1 at z4 and above, 0.67 at z3 and 0.33 at z2. Darkening then sits
+ * flat near 4.6% nationally and 21% in a metro from z2 all the way to z4,
+ * instead of climbing. **Nothing at or above z4 changes**; this removes only
+ * the excess ink that low zoom adds, and a hovered or searched ZIP keeps a
+ * full-strength outline at every zoom.
+ *
+ * Recompute if the layer's `line-width` changes, since ink is linear in it.
+ *
+ * The stops themselves are written out on the `zips-border` layer, in the same
+ * literal form as `line-width` beside them: MapLibre's expression types only
+ * narrow on a literal, and one copy of the numbers cannot drift from another.
+ */
+
+/**
+ * The zoom the map refuses to go below.
+ *
+ * COVERAGE_MIN_ZOOM is only affordable on a viewport wide enough to show the
+ * country at it. At z3 the lower 48 is 658 CSS px across, so on a 375 px phone a
+ * hard floor of 3 opened the map with both coasts off-screen: `fitBounds` wants
+ * z2.19 there and gets clamped. Take the lower floor only where the alternative
+ * is not showing the United States at all, and never below what the tileset has.
+ *
+ * The cost is bounded and small. Below z3 the tileset serves its z2 cut, which
+ * is missing 75 of 33,780 ZCTAs (0.22%), and at z2 one pixel is about 39 km, so
+ * those are sub-pixel however they are tiled. Viewports wider than ~715 px never
+ * reach for it, so desktop and landscape tablets keep the full-coverage floor.
+ */
+function zoomFloorFor(containerWidthPx: number): number {
+  const spanDeg = DEFAULT_BOUNDS[1][0] - DEFAULT_BOUNDS[0][0];
+  const usable = Math.max(1, containerWidthPx * FIT_WIDTH_FRACTION);
+  // World width at zoom z is 512 * 2^z CSS px.
+  const fitZoom = Math.log2((usable * 360) / (512 * spanDeg));
+  return Math.max(TILESET_MIN_ZOOM, Math.min(COVERAGE_MIN_ZOOM, fitZoom));
+}
+
 export function MapLibreMap({
   selectedMetric,
   onZipSelect,
@@ -109,7 +185,12 @@ export function MapLibreMap({
 
   const getDynamicPadding = useCallback((container: HTMLDivElement) => {
     const minDim = Math.min(container.clientWidth, container.clientHeight);
-    return Math.min(minDim * 0.12, 100);
+    // On a phone the short side IS the width, so a flat 12% of it spent 24% of
+    // the screen on margin before the map drew anything. Cap the narrow case at
+    // 6% a side; wide viewports, where the short side is the height, are
+    // unchanged and so is the default desktop framing the benchmarks pin.
+    const cap = container.clientWidth < 700 ? container.clientWidth * 0.06 : 100;
+    return Math.min(minDim * 0.12, cap);
   }, []);
 
   const applyLabelContrast = useCallback((map: maplibregl.Map) => {
@@ -164,7 +245,6 @@ export function MapLibreMap({
   // 1. Initialize Map
   const createAndInitializeMap = useCallback((container: HTMLDivElement) => {
     addPMTilesProtocol();
-    const defaultBounds: LngLatBoundsLike = [[-124.7844079, 24.7433195], [-66.9513812, 49.3457868]];
     const dynamicPadding = getDynamicPadding(container);
 
     // The starting view comes from props. This used to re-read lat/lng/zoom from
@@ -184,13 +264,14 @@ export function MapLibreMap({
       // keep working. Raise maxZoom past 14 and that error becomes visible as soft edges;
       // re-tile at a deeper -z first.
       //
-      // minZoom 3 is the floor the tileset guarantees full ZCTA coverage at. z2 tiles exist
-      // for the Alaska and Hawaii export insets, which fit below z3, and are 75 ZCTAs short.
-      minZoom: 3,
+      // z3 is the floor the tileset guarantees full ZCTA coverage at, and it is
+      // what any viewport wide enough to show the country gets. See zoomFloorFor
+      // for why a phone is allowed below it.
+      minZoom: zoomFloorFor(container.clientWidth),
       maxZoom: 12,
       ...(hasInitialView
         ? { center: view.center!, zoom: view.zoom! }
-        : { bounds: defaultBounds, fitBoundsOptions: { padding: dynamicPadding } }),
+        : { bounds: DEFAULT_BOUNDS, fitBoundsOptions: { padding: dynamicPadding } }),
       attributionControl: false,
     });
 
@@ -589,6 +670,32 @@ export function MapLibreMap({
             12, ["case",
                 ["boolean", ["feature-state", "highlighted"], false], 5,
                 ["boolean", ["feature-state", "hovered"], false], 3, 2]
+          ],
+          // Below the default view the same border network is packed into a
+          // quarter of the pixels, and the choropleth greys over. These two
+          // stops hold the ink at its z4 level and stop there: z4 and every
+          // zoom above it is full strength, exactly as before. The block
+          // comment at the top of this file has the arithmetic.
+          //
+          // A ZIP the reader is pointing at or has searched for keeps a
+          // full-strength outline at every zoom. Those two are the map
+          // answering a direct question, and one outline costs nothing.
+          //
+          // The zoom interpolation has to be the OUTER expression with a `case`
+          // at each stop, which is why this repeats itself the way `line-width`
+          // above does: MapLibre rejects ["zoom"] anywhere but the input of a
+          // top-level interpolate or step.
+          "line-opacity": [
+            "interpolate", ["linear"], ["zoom"],
+            2, ["case", ["any",
+                ["boolean", ["feature-state", "highlighted"], false],
+                ["boolean", ["feature-state", "hovered"], false]], 1, 0.33],
+            3, ["case", ["any",
+                ["boolean", ["feature-state", "highlighted"], false],
+                ["boolean", ["feature-state", "hovered"], false]], 1, 0.67],
+            4, ["case", ["any",
+                ["boolean", ["feature-state", "highlighted"], false],
+                ["boolean", ["feature-state", "hovered"], false]], 1, 1]
           ]
         }
       }, beforeId);
@@ -811,10 +918,9 @@ export function MapLibreMap({
   const handleResetBounds = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
-    const defaultBounds: LngLatBoundsLike = [[-124.7844079, 24.7433195], [-66.9513812, 49.3457868]];
     const container = mapContainer.current;
     const padding = container ? getDynamicPadding(container) : 40;
-    map.fitBounds(defaultBounds, { padding, duration: 1000 });
+    map.fitBounds(DEFAULT_BOUNDS, { padding, duration: 1000 });
 
     // Clear any highlighted zip
     if (highlightedZipRef.current) {
@@ -890,35 +996,40 @@ export function MapLibreMap({
           ) : (
             <>
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-              {loadingProgress?.phase && (
-                <div className="w-56 flex flex-col items-center gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {loadingProgress.phase}
-                  </span>
-                  {loadingProgress.total ? (
-                    <>
+              {/* Always captioned. `phase` only exists once the snapshot worker
+                  starts reporting, so the wait on the map style, which is the
+                  first and longest one on a cold load, used to be a bare spinner
+                  on a white screen with nothing saying what it was for. */}
+              <div className="w-56 flex flex-col items-center gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {/* `||`, not `??`: the worker reports an empty phase string
+                      before it has a stage to name, and `??` let that through
+                      as a blank caption. */}
+                  {loadingProgress?.phase || "Loading map…"}
+                </span>
+                {loadingProgress?.total ? (
+                  <>
+                    <div
+                      className="w-full h-1.5 rounded-full bg-muted overflow-hidden"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={loadingProgress.total}
+                      aria-valuenow={loadingProgress.processed ?? 0}
+                      aria-label="Loading housing data"
+                    >
                       <div
-                        className="w-full h-1.5 rounded-full bg-muted overflow-hidden"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={loadingProgress.total}
-                        aria-valuenow={loadingProgress.processed ?? 0}
-                        aria-label="Loading housing data"
-                      >
-                        <div
-                          className="h-full bg-primary transition-[width] duration-200"
-                          style={{
-                            width: `${Math.min(100, Math.round(((loadingProgress.processed ?? 0) / loadingProgress.total) * 100))}%`,
-                          }}
-                        />
-                      </div>
-                      <span className="text-[10px] tabular-nums text-muted-foreground/80">
-                        {(loadingProgress.processed ?? 0).toLocaleString()} of {loadingProgress.total.toLocaleString()} ZIP codes
-                      </span>
-                    </>
-                  ) : null}
-                </div>
-              )}
+                        className="h-full bg-primary transition-[width] duration-200"
+                        style={{
+                          width: `${Math.min(100, Math.round(((loadingProgress.processed ?? 0) / loadingProgress.total) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[10px] tabular-nums text-muted-foreground/80">
+                      {(loadingProgress.processed ?? 0).toLocaleString()} of {loadingProgress.total.toLocaleString()} ZIP codes
+                    </span>
+                  </>
+                ) : null}
+              </div>
             </>
           )}
         </div>

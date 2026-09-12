@@ -41,7 +41,11 @@ export function formatMetricValue(value: number | null | undefined, format: Form
 
   switch (format) {
     case "price":
-      return `$${value.toLocaleString()}`;
+      // Whole dollars. `toLocaleString()` with no options keeps up to three
+      // fraction digits, so the per-square-foot metrics printed whatever their
+      // value happened to carry — $1,744.3 sat directly above $1,786.29 in the
+      // same column. Cents are below the noise floor of a median anyway.
+      return `$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
     case "percent":
       return `${value.toFixed(1)}%`;
     case "days":

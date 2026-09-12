@@ -2378,3 +2378,171 @@ the scale follows an expensive region instead of flooding the dark end of the ra
 not to update on wheel zoom. It does. Back-to-back scripted `scroll` actions keep maplibre's
 scroll-zoom gesture open, so `moveend` never fires between them and the breaks look stale.
 Arm a `moveend` listener first, then scroll once: the event fires and the breaks recompute.
+
+
+---
+
+## 2026-09-12: mobile layout and UX pass
+
+Separate from the B1-B9 UI/UX pass, and touching none of the same code. Audited live
+against the dev server at 375x812, 820x900 and 1440x900, measuring element geometry in
+the page rather than eyeballing screenshots. Desktop and tablet came back clean: the
+header degrades to icon-only below 1280, nothing overflows at any width tested, and the
+legend never collides with the 360 px sidebar. Everything below was a mobile or
+cross-cutting defect. `tsc -b`, 142 vitest and eslint green; each fix verified in the
+browser.
+
+**The continental US did not fit a phone viewport, and that was the main one.** The map
+hard-coded `minZoom: 3`, so the opening `fitBounds` was clamped: fitting 57.83 deg of
+longitude into 375 px needs z2.19, and the map opened at z3 with both coasts off-screen.
+A housing map of the country that cannot show the country on load. `minZoom` is now
+`zoomFloorFor(container.clientWidth)`, which is the zoom at which the lower 48 fills 92%
+of the container width, clamped to [2, 3].
+
+The z3 floor exists because the z2 cut of the tileset is 75 ZCTAs short of 33,780
+(`geometry.lock.json`, `strict_from: 3`), so relaxing it is a real decision and it is
+deliberately bounded: **every viewport at or above 715 px keeps the full-coverage floor
+untouched**, measured across 320 to 1920 px. Only phones and narrow portrait tablets
+reach below it, they reach at most z2, and at z2 one pixel is about 39 km, so the 75 it
+loses are sub-pixel however they are tiled. If that trade is ever unwanted, raise
+`FIT_WIDTH_FRACTION` or pin `TILESET_MIN_ZOOM` to 3 and the old behaviour returns.
+
+`DEFAULT_BOUNDS` was hoisted to a module constant in the same change. It had been written
+out twice already, at init and in the reset button, and the zoom floor needs its width.
+
+**Fit padding took a quarter of a phone screen.** `min(minDim * 0.12, 100)` is 45 px a
+side at 375 px wide, because on a phone the short side IS the width. Capped at 6% of
+width below 700 px. Verified numerically that desktop and tablet padding is unchanged:
+at 768 it was 92.2 px before and after, and 100 px at 1024 and above, so the default
+framing the benchmarks pin did not move.
+
+**The basemap attribution was completely covered on mobile.** The metric and ZIP-search
+bar is `fixed` at `z-[1001]` over the bottom of the map, and `elementFromPoint` inside
+the attribution box returned the bar, not the attribution. "© CARTO, © OpenStreetMap
+contributors" is a condition of using those tiles. The bottom-left controls now clear the
+bar below 767 px. 767 and not 768: it has to track `useIsMobile`, which renders that bar
+at `innerWidth < 768`, so at 768 itself there is no bar to clear. The pre-existing
+`max-width: 768px` block next to it has the off-by-one; that was left alone.
+
+**Searching a ZIP showed no numbers.** `handleSearch` set the fly-to target and the URL,
+and the panel only ever auto-opened from the once-guarded initial-URL effect, so a search
+flew the map there, highlighted the polygon, and stopped. The reader then had to find the
+ZIP they had just typed and click it. Search now routes through `handleZipSelect`, so
+however a ZIP is picked it does the same thing, compare-mode rule included. A miss used
+to be silent, which reads as a broken search box rather than as an answer; it now raises
+a toast, and distinguishes "no such reporting ZIP" from "details still loading". The
+`<Toaster />` in `App.tsx` had been mounted since the beginning with nothing in the app
+ever calling it.
+
+**The metric selector truncated to "Zillow Hom..." inside a 343 px bar**, because
+`SelectTrigger` was a fixed `w-36` at every width. Full width below `md`, unchanged in
+the desktop header where the row also has to hold the search field and five buttons.
+
+**The cold-load spinner was unlabelled.** The caption only rendered once
+`loadingProgress.phase` existed, so the wait on the map style, the first and longest one
+on a cold load, was a bare spinner on white. Now always captioned, defaulting to
+"Loading map...". Note `||` and not `??`: the worker reports an **empty phase string**
+before it has a stage to name, and `??` passed that through as a blank caption. That was
+caught only because the rendered span was inspected rather than assumed.
+
+**Prices rendered with a ragged number of decimals.** The `price` format was
+`value.toLocaleString()`, which keeps up to three fraction digits, so the per-square-foot
+metrics printed `$1,744.3` directly above `$1,786.29` in the same column. Whole dollars
+now. Sparkline axis labels are formatted separately and still carry their `$3.63M`
+precision, which is correct for an axis.
+
+### Noted, not changed
+
+- `npm run dev` serves at `http://localhost:3677/` and not `/Domapus/`. `vite.config.ts`
+  sets `base: "/Domapus/"` for production only, so in dev `BASE_URL` is `/` and the
+  router's basename follows it. The Commands section of `CLAUDE.md` says `/Domapus/`,
+  which sends you to the 404 route. Left for whoever owns that file to correct.
+- `SponsorBanner` is mounted in `HousingDashboard` but `showSponsorBanner` is never set
+  true, so it is unreachable. Pre-existing dead code.
+- `handleResetBounds` has an eslint `exhaustive-deps` warning for `getDynamicPadding`.
+  Pre-existing: HEAD already called it from a callback with an empty dep array.
+- The fit padding has a discontinuity at exactly 700 px width (42 px to 84 px) where the
+  narrow cap switches off. It only shows on a reset-view click at that width; smoothing
+  it costs more code than the case is worth.
+
+---
+
+## 2026-09-12: a labelled way back from methodology, and borders that fade out
+
+### Back to map
+
+The methodology page's only exit was `TopBarShell nav="map"`, which renders a map
+glyph whose "Map" label appears at `xl` and above. Below that it is an unlabelled
+icon sitting between GitHub and Sponsor, and a reader who has scrolled into a
+4,677 px document is not going to find it.
+
+Two explicit `Back to map` links now, arrow and text, one above the `<h1>` and one
+after the release-generated footnote. The top one is rendered by the page component
+rather than inside `Body`, deliberately: when the manifest fetch fails this page is
+one line of error text, and that is precisely when the reader most needs the exit.
+
+Both are plain `<a href>` and not `<Link>`, for the reason `TopBar` already sets
+out: `index.html` starts the manifest and paint fetches during head parse and a
+client-side mount cannot, so routing into the map would trade this page's exit for
+a slower first paint on arrival. Both carry `location.search`, so metric, ZIP,
+centre and zoom come back with the reader. Verified: the round trip from
+`/methodology?metric=zhvi&zip=90210` lands on the map with the 90210 panel open.
+
+### ZIP borders hold their ink below the default view
+
+The border layer draws every ZCTA's own ring, so both sides of each shared edge
+get painted. `geometry.lock.json` measures 5,624,668 segments at 292.9 m median
+spacing: about 1.6 million km of line over the lower 48's 8.08 million km2, or
+**0.198 km of ink per km2 of country**. At 39 N a CSS pixel spans 60.8 / 2^zoom km,
+so the share of the country's screen area covered by border ink is
+
+    ink = 0.198 x line-width(zoom) px x km-per-pixel(zoom)
+
+The default view opens near z4. Below it the ink roughly doubles per zoom step,
+because the same border network is packed into a quarter of the pixels, and the
+choropleth greys over. Darkening is `1 - 0.85^ink` for the 0.15-alpha stroke:
+
+| zoom | km/px | width px | ink/px | darkening before | after | metro (5x) before | after |
+|---|---|---|---|---|---|---|---|
+| 2 | 15.21 | 0.30 | 0.903 | 13.7% | 4.5% | 52.0% | 20.7% |
+| 3 | 7.60 | 0.30 | 0.452 | 7.1% | 4.6% | 30.7% | 21.2% |
+| 4 | 3.80 | 0.40 | 0.301 | 4.8% | 4.8% | 21.7% | 21.7% |
+| 5 | 1.90 | 0.50 | 0.188 | 3.0% | 3.0% | 14.2% | 14.2% |
+| 6 | 0.95 | 0.60 | 0.113 | 1.8% | 1.8% | 8.8% | 8.8% |
+| 10 | 0.06 | 1.50 | 0.018 | 0.3% | 0.3% | 1.4% | 1.4% |
+
+**z4 is the reference and nothing at or above it changes.** The fade only holds
+the product at the z4 level:
+
+    opacity(z) = ink(z4) / ink(z), capped at 1
+
+which is 1 at z4 and up, 0.67 at z3, 0.33 at z2, linearly interpolated and
+clamped past both ends. Darkening then sits flat near 4.6% nationally and 21% in
+a dense metro from z2 all the way to z4, instead of climbing to 13.7% and 52%.
+A hovered or searched ZIP keeps a full-strength outline at every zoom, so the
+interactive branch of each stop is a flat 1.
+
+The z2 row is **new exposure**: the mobile zoom floor landed earlier the same day,
+so phones now open near z2.07 where the unfaded ink was worst.
+
+**A first attempt was rejected, and the reason is the useful part.** It ramped
+0 -> 1 across z3 to z7 on the argument that a border means nothing until a ZIP is
+several pixels across, which drove national darkening under 1.3% everywhere. That
+is a different and more aggressive claim than the problem called for: it changed
+the default view and every zoom up to z7, gutting borders at zooms nobody had
+complained about. Holding the ink at the level of a view that already looks right
+is the smaller and better-founded rule, and it needs two stops instead of five.
+
+The stops are written out literally on the layer rather than generated from a
+constant: MapLibre's expression types only narrow on a literal, and `["zoom"]` is
+rejected anywhere but the input of a top-level `interpolate` or `step`, so the
+zoom interpolation has to be the outer expression with a `case` at every stop.
+That is the same shape `line-width` beside it already has.
+
+Verified in the browser: the live layer's `line-opacity` reads back as
+(2, 0.33), (3, 0.67), (4, 1) with the interactive branch at 1; the national
+default view is indistinguishable from before; z8 over the New York metro still
+outlines every ZCTA.
+
+**If that layer's `line-width` ever changes, recompute the table.** Ink is linear
+in it.

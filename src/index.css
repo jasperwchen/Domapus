@@ -228,6 +228,18 @@ html:has(body.app-scroll-locked) {
   }
 }
 
+/* 767, not 768, because this has to track `useIsMobile` exactly: the bar it
+   clears is rendered at `innerWidth < 768` and does not exist at 768 itself.
+   The metric and ZIP-search bar is fixed over the bottom of the map at
+   z-index 1001 and was covering the basemap attribution outright, which is a
+   condition of using CARTO and OpenStreetMap rather than a decoration. The bar
+   is ~7rem tall and sits 1rem above the safe area. */
+@media (max-width: 767px) {
+  .maplibregl-ctrl-bottom-left {
+    bottom: calc(8.5rem + env(safe-area-inset-bottom));
+  }
+}
+
 /* Animation utilities */
 @layer utilities {
   .animate-fade-in {
