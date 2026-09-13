@@ -70,9 +70,22 @@ SHIPPED_HORIZON = 12
 #
 #   >= 60 obs   full per-ZIP AR(1)                                   tier 3
 #   24-59       W = min(36, T-1), cross-sectional median rho, own mu tier 2
-#   12-23       the METRO's growth path on the ZIP's last level      tier 1
-#   < 12        no forecast. The UI says so; it never draws an empty chart.
-TIER_FULL, TIER_SHORT, TIER_METRO = 60, 24, 12
+#   < 24        no forecast. The UI says so; it never draws an empty chart.
+#
+# There used to be a tier 1 for 12-23 observations, documented as "the METRO's
+# growth path on the ZIP's last level". THAT BRANCH WAS NEVER WRITTEN. `_tier`
+# assigned the integer and the fill loop special-cased only tier 0, so a ZIP in
+# that band would have been handed the ordinary shrunk AR(1) output wearing a
+# weaker label — an identical forecast, mislabelled. It never fired, because the
+# shortest ZHVI history in the shipped panel is 31 months [M, 2026-09-06: tier
+# counts 0/0/1250/25019 over 26,269 ZIPs], so nothing was ever published under it.
+#
+# Collapsed into tier 0 on 2026-09-12 (user decision). The band now gets no
+# forecast, which is the conservative reading and the only one that cannot ship a
+# wrong number. Implementing the metro path is still open if a short-history ZIP
+# ever shows up and the band stops being empty; reinstating a label without the
+# branch behind it is not.
+TIER_FULL, TIER_SHORT = 60, 24
 
 # Nominal coverage of the shipped band, and the levels the client slider offers.
 NOMINAL = 0.80
@@ -136,8 +149,11 @@ def closed_form_sd(rho: np.ndarray, sigma: np.ndarray, h: int) -> np.ndarray:
 
 
 def _tier(counts: np.ndarray) -> np.ndarray:
+    """0 = no forecast, 2 = shrunk fit, 3 = full per-ZIP AR(1).
+
+    1 is deliberately never assigned; see the ladder above.
+    """
     t = np.zeros(counts.shape, dtype=np.int8)
-    t[counts >= TIER_METRO] = 1
     t[counts >= TIER_SHORT] = 2
     t[counts >= TIER_FULL] = 3
     return t
@@ -315,7 +331,9 @@ def run(panel_path, records: dict) -> dict:
         "median_rho": round(model["median_rho"], 4),
         "vintage": months[-1],
         "zips_forecast": filled,
-        "tier_counts": {t: int((tiers == t).sum()) for t in range(4)},
+        # 1 is not emitted: no ZIP can be assigned it. A key that is structurally
+        # always zero reads as a measurement rather than an absence.
+        "tier_counts": {t: int((tiers == t).sum()) for t in (0, 2, 3)},
         "median_sd_h12": round(float(np.nanmedian(sd)), 6),
         "backtest": bt,
     }

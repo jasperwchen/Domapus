@@ -1,23 +1,12 @@
-// Quantile helpers. Previously three slightly different implementations lived
-// in map/utils, PrintStage, and the worker (under similar names).
-
-import * as d3 from "d3-scale";
-
-/**
- * Computes quantile bucket thresholds (numBuckets - 1 boundaries) from positive values.
- * Returns the thresholds used to step a choropleth color ramp.
- */
-export function computeQuantileBuckets(values: number[], numBuckets = 8): number[] {
-  const validValues = values.filter((v) => v > 0).sort((a, b) => a - b);
-  if (validValues.length === 0) return [];
-
-  const scale = d3
-    .scaleQuantile<number>()
-    .domain(validValues)
-    .range(Array.from({ length: numBuckets }, (_, i) => i));
-
-  return scale.quantiles();
-}
+// Quantile helpers for READING a distribution — legend ticks and axis bounds.
+//
+// Nothing here cuts class boundaries. `computeQuantileBuckets` used to, and was
+// deleted 2026-09-12: it cut plain equal-count quantiles for every metric, which
+// is the scheme mismatch `class-source.ts` documents at length. Auto-scale asks
+// `fitBreaks` in `classing.ts` instead, because that reads the scheme and the
+// break gate out of the manifest and so reproduces the pipeline's own cuts.
+// Reach for `fitBreaks`, never for a quantile helper, when the question is
+// "which class is this ZIP in".
 
 /** Linear-interpolated quantiles at the given percentiles. */
 export function computeQuantiles(values: number[], percentiles: number[]): number[] {

@@ -26,11 +26,20 @@ interface LegendProps {
   /** How many ZIPs break their neighbourhood's price pattern. Null until the
    *  manifest lands, and absent entirely if the spatial stage did not run. */
   outliers?: { total: number } | null;
+  /** How many ZIPs the pipeline put in each class, straight from
+   *  `manifest.classing[metric].class_counts`. A class holding zero is drawn as
+   *  a notch rather than a block, because the map never paints that colour.
+   *
+   *  NULL WHENEVER THE COUNTS DO NOT DESCRIBE THE BREAKS ON SCREEN — chiefly in
+   *  auto-scale, where the live source re-cuts to the viewport and the published
+   *  counts belong to a different set of boundaries. Marking nothing is the
+   *  honest answer there; marking the national empties would be a lie. */
+  classCounts?: readonly number[] | null;
 }
 
 export function Legend({
   selectedMetric, metricValues, breaks, autoScale, onAutoScaleChange,
-  showLisa, onShowLisaChange, reliability, outliers,
+  showLisa, onShowLisaChange, reliability, outliers, classCounts,
 }: LegendProps) {
   const isMobile = useIsMobile();
   const { search } = useLocation();
@@ -74,6 +83,28 @@ export function Legend({
   const ticks = useMemo(
     () => (hasBreaks ? tickAt(breaks!, 5, selectedMetric) : null),
     [hasBreaks, breaks, selectedMetric],
+  );
+
+  // A class the map cannot paint. It happens for real: `homes_sold` and
+  // `active_listings` are cut on all reporting ZIPs, and over a quarter of those
+  // sold exactly one home, so the first of thirteen quantile edges lands on 1.0.
+  // A ZIP is class 0 only strictly below the first edge and nothing reports under
+  // one sale, so class 0 draws nobody and every one-sale ZIP paints class 1.
+  //
+  // The break is right — ties collapsing classes is a real property of the
+  // distribution, and `pipeline/classify.py` says so. What was wrong is the key
+  // showing a swatch for a colour with no owner.
+  //
+  // Only guarded against a count array of the expected length; a manifest from an
+  // older pipeline has none, and then nothing is marked.
+  const isEmptyClass = useMemo(() => {
+    const n = CHOROPLETH_COLORS.length;
+    if (!classCounts || classCounts.length !== n) return () => false;
+    return (i: number) => classCounts[i] === 0;
+  }, [classCounts]);
+  const emptyCount = useMemo(
+    () => CHOROPLETH_COLORS.reduce((n, _, i) => n + (isEmptyClass(i) ? 1 : 0), 0),
+    [isEmptyClass],
   );
   const mobileTicks = useMemo(
     () => (hasBreaks ? tickAt(breaks!, 3, selectedMetric) : null),
@@ -147,21 +178,33 @@ export function Legend({
       <div className="space-y-2">
         {hasBreaks ? (
           <>
-            <div className="flex" aria-hidden="true">
-              {CHOROPLETH_COLORS.map((c, i) => (
-                <div
-                  key={c + i}
-                  className="h-4 flex-1 first:rounded-l-sm last:rounded-r-sm"
-                  style={{ background: c }}
-                  title={
-                    i === 0
-                      ? `below ${formatLegendValue(breaks![0], selectedMetric)}`
-                      : i === CHOROPLETH_COLORS.length - 1
-                        ? `${formatLegendValue(breaks![breaks!.length - 1], selectedMetric)} and above`
-                        : `${formatLegendValue(breaks![i - 1], selectedMetric)} to ${formatLegendValue(breaks![i], selectedMetric)}`
-                  }
-                />
-              ))}
+            {/* An unused class keeps its slot and its colour but shrinks to a
+                centred sliver, so the strip reads as a ramp with a notch in it.
+                The width is deliberately untouched: the tick positions below are
+                derived from (i + 1) / CLASSES, so dropping a band outright would
+                silently move every label off the boundary it names.
+
+                Height, not lightness. A faded swatch on a lightness ramp is the
+                same channel the value is encoded in, which is why the reliability
+                fade was taken off the map in the first place. */}
+            <div className="flex items-center h-4" aria-hidden="true">
+              {CHOROPLETH_COLORS.map((c, i) => {
+                const empty = isEmptyClass(i);
+                const range =
+                  i === 0
+                    ? `below ${formatLegendValue(breaks![0], selectedMetric)}`
+                    : i === CHOROPLETH_COLORS.length - 1
+                      ? `${formatLegendValue(breaks![breaks!.length - 1], selectedMetric)} and above`
+                      : `${formatLegendValue(breaks![i - 1], selectedMetric)} to ${formatLegendValue(breaks![i], selectedMetric)}`;
+                return (
+                  <div
+                    key={c + i}
+                    className={`flex-1 first:rounded-l-sm last:rounded-r-sm ${empty ? "h-1" : "h-4"}`}
+                    style={{ background: c }}
+                    title={empty ? `${range} — no ZIP codes` : range}
+                  />
+                );
+              })}
             </div>
             {/* Each tick sits under the boundary it marks: break i is the edge
                 between swatch i and swatch i+1, so its centre is at
@@ -206,6 +249,15 @@ export function Legend({
           />
           <span>No data reported</span>
         </div>
+
+        {/* Says what the notch means. Without a caption a thin band reads as a
+            rendering fault; with one it reads as information about the data. */}
+        {emptyCount > 0 && (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {emptyCount === 1 ? "One class holds" : `${emptyCount} classes hold`} no ZIP
+            codes, drawn thin above. Ties in the data collapse the class.
+          </p>
+        )}
       </div>
 
       {/* DO NOT CHANGE TEXT */}

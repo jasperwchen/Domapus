@@ -135,7 +135,9 @@ function legendGeom(metricLabel: string) {
  * guess where one link rectangle went. `exportToCanvas` now returns the boxes it
  * actually drew.
  */
-const FOOTER_SEGMENTS: { text: string; url?: string }[] = [
+type FooterSegment = { text: string; url?: string };
+
+const BRAND_SEGMENTS: FooterSegment[] = [
   { text: "Built by " },
   { text: "Domapus", url: "https://jasperwchen.github.io/Domapus/" },
   { text: "   ·   Data: " },
@@ -143,6 +145,27 @@ const FOOTER_SEGMENTS: { text: string; url?: string }[] = [
   { text: " & " },
   { text: "Zillow", url: "https://www.zillow.com/research/data/" },
 ];
+
+/**
+ * The attribution row, with the data period folded in when nothing else on the
+ * page carries it.
+ *
+ * An untitled export used to leave the page with no date at all: the period is
+ * drawn in the subtitle, and the subtitle belongs to the title block. The
+ * filename says which metric and which region, so a file on disk was always
+ * identifiable — but a PNG pasted into a deck is not a file any more, and it had
+ * nothing on it saying which month it described.
+ *
+ * Only when the title is OFF. With the title on, the subtitle already says it,
+ * and printing the date twice is worse than printing it once. The row is
+ * right-aligned from `mapRight` and grows leftward; at 1200 stage units the key
+ * ends around x=650 even for the longest metric name, so the extra ~150 units
+ * cannot reach it.
+ */
+function footerSegments(dataDate: string, includeTitle: boolean): FooterSegment[] {
+  if (includeTitle || !dataDate) return BRAND_SEGMENTS;
+  return [{ text: `${dataDate}   ·   ` }, ...BRAND_SEGMENTS];
+}
 
 const BOUNDS_BUFFER = 0.15;
 
@@ -238,6 +261,10 @@ export interface ExportLink {
 export interface ExportRender {
   canvas: HTMLCanvasElement;
   links: ExportLink[];
+  /** The ISO period the export describes, for the filename. Comes from the same
+   *  place the subtitle's date does, so the name and the picture cannot disagree.
+   *  Null only when no row carried a period. */
+  period: string | null;
 }
 
 export interface PrintStageRef {
@@ -360,17 +387,22 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
    * not come from. That is the regression to guard against — the date still comes
    * from the data, never from the clock.
    */
-  const dataDate = useMemo(() => {
-    if (selectedMetric.startsWith("zhvi")) {
-      return zhviPeriod ? `Data through ${formatPeriod(zhviPeriod)}` : "";
-    }
+  const dataPeriod = useMemo(() => {
+    if (selectedMetric.startsWith("zhvi")) return zhviPeriod;
     let newest: string | null = null;
     for (const zip of filteredData) {
       const pe = zip.period_end;
       if (pe && (newest === null || pe > newest)) newest = pe;
     }
-    return newest ? `Data through ${formatPeriodDay(newest)}` : "";
+    return newest;
   }, [filteredData, selectedMetric, zhviPeriod]);
+
+  const dataDate = useMemo(() => {
+    if (!dataPeriod) return "";
+    return selectedMetric.startsWith("zhvi")
+      ? `Data through ${formatPeriod(dataPeriod)}`
+      : `Data through ${formatPeriodDay(dataPeriod)}`;
+  }, [dataPeriod, selectedMetric]);
 
   /**
    * The class of every ZIP being drawn, from the boundaries the pipeline
@@ -477,6 +509,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   regionScopeRef.current = regionScope;
   const dataDateRef = useRef(dataDate);
   dataDateRef.current = dataDate;
+  const dataPeriodRef = useRef(dataPeriod);
+  dataPeriodRef.current = dataPeriod;
   const cityLabelsOnRef = useRef(cityLabelsOn);
   cityLabelsOnRef.current = cityLabelsOn;
   const metricLabelRef = useRef(metricLabel);
@@ -629,17 +663,18 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     // grey string.
     ctx.font = font(p(L.band.foot.size));
     ctx.textAlign = "left";
-    const widths = FOOTER_SEGMENTS.map(s => ctx.measureText(s.text).width);
+    const footer = footerSegments(dataDateRef.current, includeTitleRef.current);
+    const widths = footer.map(s => ctx.measureText(s.text).width);
     const total = widths.reduce((a, b) => a + b, 0);
     let x = p(g.mapRight) - total;
-    FOOTER_SEGMENTS.forEach((seg, i) => {
+    footer.forEach((seg, i) => {
       ctx.fillStyle = seg.url ? LINK : MUTED;
       ctx.fillText(seg.text, x, p(g.footTop + L.band.foot.h / 2));
       if (seg.url) links.push({ x, y: p(g.footTop), w: widths[i], h: p(L.band.foot.h), url: seg.url });
       x += widths[i];
     });
 
-    return { canvas: out, links };
+    return { canvas: out, links, period: dataPeriodRef.current };
   }, [alaskaZips.size, hawaiiZips.size]);
 
   useImperativeHandle(ref, () => ({
@@ -1131,7 +1166,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
             fontSize: L.band.foot.size, color: MUTED, whiteSpace: "pre",
           }}
         >
-          {FOOTER_SEGMENTS.map((seg, i) => seg.url ? (
+          {footerSegments(dataDate, includeTitle).map((seg, i) => seg.url ? (
             <a
               key={i}
               href={seg.url}

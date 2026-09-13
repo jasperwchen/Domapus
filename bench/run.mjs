@@ -47,7 +47,11 @@ const METRIC_KEYS = [
   // Invariants that must not drift. sourceReloads MUST be 0: any other value
   // means something wrote a data-driven paint value and paid a full source
   // reload, which is the 3375 ms regression choropleth-painter.ts exists to stop.
-  "sourceReloads", "featureStateWrites",
+  // `featureStateWrites` only means something next to `featureStateSkipped`: 0 writes
+  // beside a large skip count means the painter ran and found every ZIP already
+  // correct, while 0 beside 0 means it never ran. The write count alone printed
+  // those two cases identically.
+  "sourceReloads", "featureStateWrites", "featureStateSkipped",
 ];
 
 // PMTiles fetches by range request, so tile volume depends on the viewport.
@@ -285,16 +289,19 @@ async function measureOnce(browser) {
   // which is a null and not a pass.
   const invariants = await page.evaluate(() => {
     const perf = window.__domapusPerf;
-    if (!perf) return { sourceReloads: null, featureStateWrites: null };
+    if (!perf) return { sourceReloads: null, featureStateWrites: null, featureStateSkipped: null };
     let writes = null;
+    let skipped = null;
     try {
       const es = performance.getEntriesByName("map:applyChoropleth");
       const last = es[es.length - 1];
       writes = last?.detail?.writes ?? null;
+      skipped = last?.detail?.skipped ?? null;
     } catch { /* detail not exposed on this build */ }
     return {
       sourceReloads: perf.counterValue?.("map:sourceReload") ?? null,
       featureStateWrites: writes,
+      featureStateSkipped: skipped,
     };
   });
 
@@ -415,6 +422,12 @@ if (summary.metricSwitchMs) console.log(`  metric switch  ${Math.round(summary.m
 if (summary.sourceReloads) {
   console.log(`  source reloads ${summary.sourceReloads.max}` +
     `${summary.sourceReloads.max > 0 ? "   *** MUST BE 0" : "   (correct)"}`);
+}
+if (summary.featureStateWrites || summary.featureStateSkipped) {
+  const w = summary.featureStateWrites?.median ?? null;
+  const k = summary.featureStateSkipped?.median ?? null;
+  console.log(`  feature state  ${w ?? "n/a"} written / ${k ?? "n/a"} skipped` +
+    `${w === 0 && !k ? "   *** painter never ran" : ""}`);
 }
 
 const any = Object.values(summary.scenarios).some(Boolean);

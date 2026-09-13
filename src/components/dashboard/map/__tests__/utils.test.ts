@@ -4,7 +4,6 @@ import {
   formatMetricValue,
   formatChange,
   getComparison,
-  computeQuantileBuckets,
   getStateName,
   createMetricPopupContent,
 } from '../utils';
@@ -154,33 +153,6 @@ describe('getComparison', () => {
     expect(getComparison(null, 100)).toBe('lower'); // 0 < 100
     expect(getComparison(100, null)).toBe('higher'); // 100 > 0
     expect(getComparison(NaN, 100)).toBe('same'); // NaN comparisons are 'same'
-  });
-});
-
-describe('computeQuantileBuckets', () => {
-  it('should compute quantile buckets for normal data', () => {
-    const values = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-    const buckets = computeQuantileBuckets(values, 4);
-    expect(buckets.length).toBe(3); // n-1 quantiles for n buckets
-    expect(buckets[0]).toBeGreaterThan(10);
-    expect(buckets[buckets.length - 1]).toBeLessThan(100);
-  });
-
-  it('should return empty array for empty input', () => {
-    expect(computeQuantileBuckets([], 8)).toEqual([]);
-  });
-
-  it('should filter out zero and negative values', () => {
-    const values = [0, -5, 10, 20, 30];
-    const buckets = computeQuantileBuckets(values, 2);
-    expect(buckets.length).toBeGreaterThan(0);
-  });
-
-  it('should handle single value', () => {
-    const values = [50];
-    const buckets = computeQuantileBuckets(values, 4);
-    // Should return empty or minimal buckets for single value
-    expect(Array.isArray(buckets)).toBe(true);
   });
 });
 

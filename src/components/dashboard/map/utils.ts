@@ -4,12 +4,11 @@ import {
   type ChangeFormat, type FormatType, type MetricInfo,
 } from "@/lib/metrics";
 import { getMetricValue } from "@/lib/metric-value";
-import { computeQuantileBuckets } from "@/lib/quantiles";
 
 // Re-exports so existing call sites continue to work without churn.
 export {
   METRICS as METRIC_DEFINITIONS, PAINTED_METRICS,
-  getMetricLabel, getMetricValue, computeQuantileBuckets,
+  getMetricLabel, getMetricValue,
 };
 export type { ChangeFormat, FormatType, MetricInfo };
 

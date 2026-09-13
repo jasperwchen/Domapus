@@ -449,6 +449,13 @@ export function HousingDashboard() {
                 outliers={outlierCount(manifest) !== null
                   ? { total: outlierCount(manifest)! }
                   : null}
+                // Published counts describe the PUBLISHED breaks. In auto-scale
+                // the live source re-cuts to the viewport, so the two describe
+                // different boundaries and pairing them would mislabel the key.
+                // Withholding them there marks nothing, which is the safe miss.
+                classCounts={
+                  autoScale ? null : manifest?.classing?.[selectedMetric]?.class_counts ?? null
+                }
               />
             </div>
           )}

@@ -5,17 +5,34 @@ import {
 import { PaintTableSource, ViewportClassSource, classify } from "../class-source";
 import { CHOROPLETH_COLORS, CLASSES, NO_DATA_COLOR } from "../choropleth";
 import { PaintTable } from "../paint-table";
-import { computeQuantileBuckets } from "../quantiles";
 import { ZipTable } from "../zip-table";
 import { NULL_SENTINEL } from "../snapshot";
 import type { ZipData } from "@/components/dashboard/map/types";
+
+// Plain equal-count cuts, local to this file on purpose.
+//
+// These tests are about the BYTE LAYOUT, so they need some monotone boundary
+// list and do not care which scheme produced it. Production has no such helper
+// any more — `fitBreaks` in `classing.ts` is scheme-aware and refuses a sample
+// under CLASSES, and several fixtures here are deliberately smaller than that.
+function quantileCuts(values: number[], n: number): number[] {
+  const v = values.filter((x) => x > 0).sort((a, b) => a - b);
+  if (v.length === 0) return [];
+  const at = (p: number) => {
+    const idx = (v.length - 1) * p;
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    return v[lo] * (1 - (idx - lo)) + v[hi] * (idx - lo);
+  };
+  return Array.from({ length: n - 1 }, (_, i) => at((i + 1) / n));
+}
 
 // Encodes a paint table exactly the way `pipeline/paint.py` does, so these tests
 // exercise the SHIPPED byte layout rather than a stand-in:
 //   byte = (reliability_tier << 4) | (class_index + 1),  0 = no data for this ZIP.
 function encodePaint(values: Record<string, number | null>, tier = 3) {
   const present = Object.values(values).filter((v): v is number => v !== null);
-  const breaks = computeQuantileBuckets(present, CLASSES);
+  const breaks = quantileCuts(present, CLASSES);
   const bytes = new Uint8Array(100_000);
   for (const [zip, v] of Object.entries(values)) {
     if (v === null) continue;

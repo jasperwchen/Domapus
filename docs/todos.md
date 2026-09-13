@@ -79,52 +79,61 @@ deploy footprint (92.6 -> 46.9 MB) and the coverage fix itself.
   §5.9's release path is not dead — `geometry.yml` still cuts a `geometry-vN` release when
   handed a tag, which is the escape hatch if repo size ever does become the problem.
 
-## Phase 7 — remaining
+---
 
-- [ ] **The history buckets are not on the `data-2026-07` release, so a standalone deploy
-      ships a broken sidebar chart.** `public/data/history/` is gitignored, so a CI checkout
-      has none of it. `update_data.yml` tars it onto the release and `deploy.yml` unpacks it —
-      that path is whole, but the release predates Phase 7 and carries no `history-*.tar.gz`.
-      `deploy.yml` *warns* rather than fails here (deliberately, unlike the geometry asset), so
-      a `workflow_dispatch` deploy today would publish silently without history. Either run
-      `update_data.yml` (which builds and uploads it) or upload
-      `tar -czf history-2026-07-31.tar.gz -C public/data/history .` to `data-2026-07` by hand
-      before deploying.
+## Decided 2026-09-12 and implemented. Rationale in CHANGES.md.
 
-## Verification still owed
+All five answered by the user in one pass; each landed the same session. Kept here only as
+the short form of what was decided, because each one changes an invariant someone could
+otherwise undo by accident.
 
-- [ ] Run `bench/verify-choropleth.mjs` against the **deployed** site, not only a local build.
-      **How:** `BENCH_URL='https://jasperwchen.github.io/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi' node bench/verify-choropleth.mjs --cpu 4`
-      Exits non-zero if a metric switch causes any tile request or if `map:sourceReload` is not 0.
-      Locally both hold: measured `map:sourceReload = 0` through a metric switch.
-- [ ] **The deploy has not run against the new wire format.** `public/data/` now carries a
-      50-column column-major snapshot, a manifest with `assets.paint`, and `paint/*.u8`.
-      `vite.config.ts` inlines the paint filenames from that manifest at build time and
-      `deploy.yml` verifies it with `sha256sum -c`; that path is untested end to end on CI.
-- [ ] **Phase 5's forecast tier-1 rung is dead code against real data. MEASURED 2026-09-06:
-      tier 0 = 0 ZIPs, tier 1 = 0, tier 2 = 1,250, tier 3 = 25,019** over the 26,269 ZIPs in the
-      shipped ZHVI panel. The shortest history is **31 months**, seven clear of tier 2's floor,
-      so both the "no forecast" rung and the metro-growth-path rung are unreachable. Left in
-      place: deleting one is a decision about what a newly-added Zillow ZIP does, not a cleanup.
-      Decide it, do not re-measure it.
+1. **`computeQuantileBuckets` deleted.** It cut plain equal-count quantiles for every metric,
+   which is the scheme mismatch `class-source.ts` documents. Auto-scale uses `fitBreaks`.
+   `d3-scale` went with it — nothing else in `src/` imported it.
+2. **Forecast tiers 0 and 1 collapsed.** Under 24 observations now gets no forecast. Tier 1
+   was documented as a metro growth path that was never written, so a 12-23-observation ZIP
+   would have been handed the ordinary shrunk AR(1) output under a weaker label.
+3. **Empty classes are notched in the legend, not dropped.** The break stays as cut.
+4. **Both halves of export identity.** The period is in the filename and, when the title is
+   off, in the attribution row.
+5. **Kaggle: shelved.** Redfin's terms are the answer; see below.
+
+## Kaggle — CLOSED 2026-09-12. Do not re-open without new terms from Redfin.
+
+**The terms were read, and they do not permit it.** Redfin's Terms of Use grant only "a
+limited, personal, non-exclusive, non-transferable, non-sublicensable, revocable license to
+access, view, and use the Services" (2.3.2), prohibit creating "derivative works based upon,
+or attempt to commercially gain from your use" (2.3.3), and state the Terms "do not provide
+you a license to use, reproduce, distribute, display or provide access to any portion of the
+Services on Third Party Sites" (2.3.4). Redfin sells enterprise licensing separately for
+large-scale commercial use.
+
+**The distinction that matters.** Redfin explicitly welcomes *citing* the data — its support
+documentation asks only for a citation and a link on first reference. That is what Domapus
+does today, and it is squarely permitted. Uploading a dataset to Kaggle is the other thing:
+redistributing the data itself on a third-party site, which is what 2.3.4 names.
+
+**And the benefit was never large.** The honest case for Kaggle was discovery — reaching a
+data-science audience that will not find a GitHub Pages map. That is a marketing channel, and
+a "download the data" link on Domapus itself buys most of it, because the artifacts are
+already public static files. To be interesting to a Kaggle audience the upload would have to
+carry the full 173-period panel rather than one month, which is the maximal version of exactly
+the redistribution the terms refuse.
+
+Publishing only Domapus's *own* derived columns — the `rel` tier, `msp_rse`, `lisa`, the
+forecast — would be a much weaker redistribution claim, since those are computed here rather
+than copied. It is also much less useful without the levels they describe, which is the part
+that cannot be shipped. That is the trade if this is ever revisited.
 
 ---
 
-## Open decisions
+## Standing rule, not an open item
 
-- [ ] **±20% diverging bound: confirmed by derivation, but re-derive each release.**
-      `classify.derive_diverging_bound()` recomputes it from the pooled ZHVI panel every run
-      (p95 |yoy| = 18.85% over 6,137,683 lag-12 cells, share clamped 4.07%). It has rounded to
-      20 on every start window tested. If a release ever produces a different bound, that is a
-      regime change worth seeing, not a number to override.
-
-## Kaggle — DEFERRED, not rejected
-
-Mechanically cheap (one Actions step, `kaggle datasets version`), but it is a fourth publishing
-surface with its own credentials, it republishes a derivative of Redfin's data whose
-**redistribution terms have not been checked — that is the actual blocker**, and it is
-outward-facing so it needs an explicit decision. Revisit after Phase 7, when there is something
-to publish that is not just a copy of Redfin's file.
+**±20% diverging bound is derived, never chosen.** `classify.derive_diverging_bound()`
+recomputes it from the pooled ZHVI panel every run (p95 |yoy| = 18.85% over 6,137,683 lag-12
+cells, share clamped 4.07%). It has rounded to 20 on every start window tested. If a release
+ever produces a different bound, that is a regime change worth seeing, not a number to
+override.
 
 ---
 
@@ -228,20 +237,19 @@ for three more weeks and stopped 2026-06-02 — no deprecation notice, no 404.
 
 Verified by a full offline run: 33,771 ZIPs, **0 moved, 0 cells**, where the old code
 reported a constant 28,919. Content correctly reported CHANGED, because the `zhvi_yoy`
-paint table moved (the diverging fix below).
+paint table moved (the symmetric diverging scale, now published).
 
-`[ ]` **The diverging fix is not published.** `public/data/` still carries the asymmetric
-scale (`-20 -14.29 -8.57 -2.86 +2.86 +8.57`, top class saturating 2,298 ZIPs against 31
-now). The data itself is unchanged — 8 of the 9 paint hashes are byte-identical — so this
-is purely a colour change. It reaches the site either on the next monthly run or
-immediately via a **`force_rebuild`** workflow dispatch. Decide which.
-
-`[ ]` **Acceptance-test the workflow changes on a dispatch before trusting them.** Three
-of the four are step-ordering or `if:` guards that CI cannot exercise:
+`[ ]` **Acceptance-test the `update_data.yml` changes on a dispatch before trusting them.**
+Three of the four are step-ordering or `if:` guards that CI cannot exercise, and
+`update_data.yml` has not been dispatched since they landed:
 - the `Did upstream change?` short-circuit (dispatch with nothing changed upstream),
 - the `sha256sum -c` paint verification (should pass; corrupt a table locally to see it
   fail — done locally, not in CI),
 - `git add -A public/data/paint` staging last month's hashed files as deletions.
+
+**The `sha256sum -c` check lives in `update_data.yml`, not `deploy.yml`.** An earlier note
+here said `deploy.yml`; it has no such step. Deploy trusts what the data run committed. So a
+hand-committed `public/data/paint` bypasses the verification entirely.
 
 ---
 
@@ -253,50 +261,37 @@ that MapLibre rejected on 670 of 869 metros, draws preview and file from one set
 numbers, and keeps its legend and insets off the data (measured: 0 ZCTAs covered, down from
 164 under the legend and 8 under the Hawaii inset). Open follow-ups:
 
-- [ ] `computeQuantileBuckets` (`src/lib/quantiles.ts`) has no production caller left - only
-      `map/utils.ts` re-exporting it and two test files. Delete it, or keep it as the helper
-      an auto-scale path would reach for. Not decided, not deleted.
-- [ ] The main export map renders at `pixelRatio: 3`, a 3408x2232 backing store. That is what
-      makes `drawImage` 1:1 instead of a 1.51x upscale, and it is ~30 MB of GPU memory held
-      while the dialog is open. Not measured on a low-end device.
-- [ ] With the title off the file carries no region name and no date. That is what the toggle
-      asks for, but it means an untitled export cannot be identified later. Left as is.
+- [ ] **Export memory, MEASURED 2026-09-12 on the dev host. The estimate was right; the
+      question of whether a phone survives it is still open.** Chrome, national view,
+      `median_ppsf`, title and legend on:
+
+      | | |
+      |---|---|
+      | JS heap before opening the dialog | 54.8 MB |
+      | JS heap with the dialog open | 196.0 MB (**+141.2**) |
+      | main export map GL canvas | 3402 x 2148 = 7.31 Mpx = **29.2 MB** at 4 B/px |
+      | two inset canvases | 648 x 504 each = 2.6 MB total |
+      | live map behind the dialog | 1280 x 880 = 4.3 MB |
+      | all canvas backing while open | **34.7 MB**, of which ~30.4 is the dialog's |
+      | transient full export canvas | 3600 x 2700 = **38.9 MB**, only during the export call |
+
+      So peak is roughly **196 MB of heap plus ~74 MB of canvas**. `EXPORT_SCALE = 3` is what
+      buys `drawImage` a 1:1 copy instead of a 1.51x upscale, and the earlier "~30 MB" note was
+      accurate for the persistent GL backing store.
+
+      **What is still unknown is the only part that matters.** A desktop measurement cannot
+      tell you whether a phone with a few hundred MB of per-tab budget loses the WebGL context
+      here, and memory pressure is not something the harness can emulate. This needs a real
+      low-end device, or a decision to drop `EXPORT_SCALE` to 2 (a 1.51x upscale, ~13 MB
+      instead of 29) and accept the softer image.
 
 ---
 
-## Reviewed but not actioned — pipeline and scripts
+## UI/UX pass — LANDED 2026-09-12. B1-B9 all shipped; rationale in CHANGES.md.
 
-All six items from the 2026-09-06 read are **done** — one shared `panel.dense`, predicate
-pushdown in `changes._period_map`, `zhvi.read` parsing once, the `forecast.fit` warning, the
-calibration script off its 3 GB dict-of-dicts, and `DIVERGING_BOUND_PCT` deleted. Measurements
-and the equivalence proofs are in CHANGES.md under 2026-09-06 evening. Nothing open here.
-
----
-
-## UI/UX pass — IN PROGRESS 2026-09-06
-
-Plan and the measurements behind it: `docs/UIUX-PLAN.md`. User-approved scope is the whole
-plan. Batches, in implementation order:
-
-All landed on the working tree except where noted. `npx tsc -b`, 86 vitest, 54 pytest and
-eslint are green; verified in a production build in the browser.
-
-- `[x]` **B1 contrast + legend + methodology plumbing.**
-- `[x]` **B2 compare-mode state lift.** Both bugs verified fixed in the browser.
-- `[x]` **B3 sidebar layout.**
-- `[x]` **B4 history chart.**
-- `[x]` **B5 map.** Verified: 117 labels for 117 distinct ZIPs at z10, zero duplicates,
-  against 423 polygon instances (78 ZIPs split across tiles, 90022 into 4 pieces).
-- `[x]` **B6 methodology rewrite + `docs/METHODOLOGY.md`.**
-- `[~]` **B7 `classify.py` break population.** CODE LANDED, **NOT PUBLISHED**. Needs a data
-  run and republish before the map changes. Simulated against the shipped snapshot:
-  bottom-class share goes homes_sold 68%->12%, active_listings 70%->13%,
-  pending_sales 69%->11%, new_listings 69%->10%, inventory 66%->10%.
-- `[x]` **B8 cluster reframe.** Verified: 47 markers (20 LH + 27 HL), choropleth intact
-  underneath, `map:sourceReload` still 0.
-- `[x]` **B9 bench.** Fixed versioned metric set, 11 interaction scenarios, LoAF + Event
-  Timing, cross-schema comparison refused. **Baseline recorded:** `bench/results/uiux.json`,
-  schema 2, gitSha bca751e, slow4g / 4x CPU / 1440x900 / 5 runs, pinned view.
+Plan and the measurements behind it: `docs/UIUX-PLAN.md`. The batch record below is kept
+only because it is the **schema-2 bench baseline**: `bench/results/uiux.json`, gitSha
+bca751e, slow4g / 4x CPU / 1440x900 / 5 runs, pinned view.
 
   | | phase7 (schema 1) | uiux (schema 2) |
   |---|---|---|
@@ -326,24 +321,17 @@ eslint are green; verified in a production build in the browser.
   **pan.z4 and the two legend toggles are the worst rows, and are where an interaction fix
   should start.** There is no prior number for any of them, so these are the first.
 
-- `[ ]` **`featureStateWrites` reads 0 and that may be spurious.** It is taken from the last
-  `map:applyChoropleth` measure detail after the metric cycle. 0 is a legitimate value — the
-  painter skips a ZIP whose packed (k, rel) is unchanged — but 0 sitting next to
-  `sourceReloads: 0` invites reading it as "the painter did nothing". Confirm it is real or
-  make it report null.
-
 ### Open after this pass
 
 - `[ ]` **Deferred, not cancelled: the reliability texture overlay.** A diagonal hatch on
   tier-0 ZIPs, gated to zoom >= 6, via a runtime-generated canvas pattern and one extra fill
   layer whose `fill-opacity` is a constant `case` on the existing `rel` feature-state.
   Texture is orthogonal to lightness, which is the property that made opacity unusable.
-- `[ ]` **Run the new bench and check in a schema-2 baseline.** Until one exists there is
-  nothing to compare an interaction change against, and `compare.mjs` will refuse to line up
-  a schema-1 file.
-- `[ ]` **B7 needs a publish.** The bbox scale fix in `geom.offsets` also only reaches the
-  site on a republish; until then `ZipTable.checkBounds` logs and auto-scale falls back to
-  the national scale, which is the safe degradation and is confirmed working in the browser.
+- `[ ]` **Re-baseline the bench at 14 classes.** `bench/results/uiux.json` is a valid
+  schema-2 baseline, but it was taken at gitSha `bca751e` — seven classes, before the colour
+  work. Any interaction comparison against it now straddles a palette change. Same pinned
+  conditions. Do this before touching `pan.z4` or the legend toggles, or the fix has nothing
+  honest to be measured against.
 
 ### Measured facts this pass depends on — do not re-derive
 
@@ -355,15 +343,20 @@ eslint are green; verified in a production build in the browser.
   1.0 and the channel moved.
 - `classing.median_sale_price.selection_effect`: faded ZIPs median $275,953 vs $394,885
   ranked. The fade and the class assignment skew the same direction.
-- Bottom-class share: sold_above_list 74%, active_listings 70%, homes_sold 68%. Price and
-  time metrics are 13-21%. This is B7.
+- Bottom-class share **before B7**: sold_above_list 74%, active_listings 70%, homes_sold 68%;
+  price and time metrics 13-21%. **Those numbers are superseded — do not quote them.** As
+  shipped 2026-09-12: sold_above_list 33.8%, active_listings 0.0%, homes_sold 0.0%,
+  median_sale_price 10.6%, median_ppsf 12.7%, median_dom 9.1%, months_of_supply 7.1%,
+  zhvi 7.3%, zhvi_yoy 0.2%.
 - LISA area share: ns 80.1%, LL 13.1%, HH 5.9%, LH 0.60%, HL 0.26%. HH polygons are median
   40 km2 against LL's 153 km2, which is why only blue is visible. Moran's I at k=8 is 0.7343,
   so HH/LL largely restates the choropleth. LH+HL is 47 ZIPs. This is B8.
-- **Bbox decode bug (fixed in B1).** `geom.offsets()` multiplies by 1e4 and `serialize` applies
-  the declared 1e4 scale again, so the wire value is degrees x 1e8. `boundsOf` divided once.
-  Confirmed by decoding at 1e8 and recovering exactly 8.3966 deg max longitude span, the
-  figure `geom.py` cites for Anchorage 99503.
+- **Bbox decode bug (fixed in B1, published 2026-09-12).** `geom.offsets()` multiplied by 1e4
+  and `serialize` applied the declared 1e4 scale again, so the wire value was degrees x 1e8.
+  Verified against the shipped `public/data/zip-data.json`: max `be - bw` is 83,966 raw, which
+  at the declared 1e4 scale is **8.3966 deg** — exactly the figure `geom.py` cites for
+  Anchorage 99503. `ZipTable.checkBounds` no longer has anything to log and auto-scale runs on
+  real bounds.
 
 ---
 

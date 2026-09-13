@@ -249,9 +249,15 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: E
     setIsExporting(true);
 
     try {
-      const { canvas, links } = await printStageRef.current.exportToCanvas();
+      const { canvas, links, period } = await printStageRef.current.exportToCanvas();
       const safeRegionName = regionName.replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
-      const stem = `Domapus-${selectedMetric}-${safeRegionName}`;
+      // The period is in the name because the name is the only thing that
+      // survives a download with the title toggled off — and because two exports
+      // of the same region a quarter apart otherwise overwrite each other in the
+      // downloads folder. It comes back from `exportToCanvas` rather than being
+      // fetched here, so the filename and the drawn subtitle read one value.
+      const stem = [`Domapus`, selectedMetric, safeRegionName, period]
+        .filter(Boolean).join("-");
 
       if (fileFormat === "png") {
         // A blob, not a data URL. The same image as a base64 `href` is an 8.7 MB

@@ -2677,3 +2677,227 @@ already had arrow keys, Enter and type-to-jump.
 colour bar starts, so it is measured ONCE in stage units and handed to both renderers rather
 than measured independently in each.
 
+---
+
+## 2026-09-12 evening — todos reconciled against the artifacts, not against the file
+
+Five open items in `docs/todos.md` were already finished. Each was checked against the thing
+it described rather than taken on the file's word, and then deleted.
+
+**The history buckets are on the release.** `history-2026-07-31.tar.gz`, 37,164,615 B, uploaded
+to `data-2026-07` on 2026-09-06. Today's Deploy log ends that step with `Unpacked 6086 history
+files from data-2026-07/history-2026-07-31.tar.gz`, so the gitignored-buckets path is proven end
+to end and a standalone deploy no longer ships a dead sidebar chart.
+
+**The deploy has run against the new wire format, repeatedly.** The 50-column column-major
+snapshot, `assets.paint`, and all nine `paint/*.u8` ship on every Deploy.
+
+**The diverging fix and B7 are both published and live.** `public/data/manifest.json` carries
+14 classes and the symmetric scale `[-20 … +20]` at even 3.3333 steps, and `break_gate` reads
+`all_reporting` for `homes_sold` (population 25,603) and `active_listings` (28,493).
+`gh-pages` and the CDN both serve it; the Pages build sat queued for about fourteen minutes
+after the Deploy job succeeded, which is what made the site look stale at 7 classes for a while.
+
+**A schema-2 bench baseline already existed.** `bench/results/uiux.json` is `schemaVersion: 2`
+and valid. The todo asking for one sat two bullets below the entry that recorded it.
+
+**`verify-choropleth.mjs` passed against the deployed site**, which was the last item under
+"verification still owed":
+
+    BENCH_URL='https://jasperwchen.github.io/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi' \
+      node bench/verify-choropleth.mjs --cpu 4
+
+`tileRequestsCausedBySwitch: 0`, `sourceReloadCounter` 0 before and 0 after, `switchMs` 594 at
+4x CPU throttle, exit 0. The `map:applyChoropleth` marks read 2063 ms on first paint then 28
+and 33 ms for the switch, so the painter is demonstrably doing work rather than being skipped.
+
+### Two things the file said that were not true
+
+**The `sha256sum -c` paint verification is in `update_data.yml`, not `deploy.yml`.** Deploy has
+no such step and trusts whatever the data run committed. The practical consequence is that a
+hand-committed `public/data/paint` bypasses the check entirely.
+
+**The bbox decode fix is published and can be verified from the wire.** Max `be - bw` in the
+shipped `public/data/zip-data.json` is 83,966 raw, which at the declared 1e4 scale is 8.3966
+degrees — exactly the figure `geom.py` cites for Anchorage 99503. `ZipTable.checkBounds` has
+nothing left to log and auto-scale runs on real bounds.
+
+### `featureStateWrites` now reports its skip count
+
+`bench/run.mjs` reads `detail.skipped` off the same `map:applyChoropleth` measure it already
+read `detail.writes` from, and prints `N written / M skipped`. Zero writes beside a large skip
+count means the painter ran and found every ZIP already at its packed `(k, rel)`; zero beside
+zero means it never ran. Those two printed identically before.
+
+The old note also had the source wrong. The read happens after the whole scenario suite, and
+`toggle.outliers` runs after `metric.cycle`, so the last measure comes from the legend toggle
+rather than from the metric switch. One bench run will now say which case the observed 0 was.
+
+### The B7 publish raised one thing nobody predicted
+
+`homes_sold` and `active_listings` both draw **zero ZIPs in class 0**. `_quantile_breaks` takes
+the (i+1)/14 percentile for thirteen edges; over 25,603 reporting ZIPs more than 7.14% sold
+exactly one home, so the first edge lands on 1.0. A ZIP is class 0 only when its value is
+strictly below the first edge, and no reporting ZIP has `homes_sold < 1`. Every one-sale ZIP
+paints class 1 and the first swatch goes unused.
+
+The break is right — `_quantile_breaks` is already commented *"Ties collapse classes; that is
+real."* The legend is what is wrong, and it can be fixed without a data run because
+`class_counts` is already in the manifest and already typed in `src/lib/manifest.ts`.
+
+Bottom-class shares as shipped, superseding the pre-B7 figures: sold_above_list 33.8%,
+active_listings 0.0%, homes_sold 0.0%, median_sale_price 10.6%, median_ppsf 12.7%, median_dom
+9.1%, months_of_supply 7.1%, zhvi 7.3%, zhvi_yoy 0.2%.
+
+### Forecast tier 1 is worse than dead code
+
+The earlier note called it unreachable. It is also unimplemented. `pipeline/forecast.py`
+documents tier 1 as *"the METRO's growth path on the ZIP's last level"*, but `_tier()` only
+assigns the integer and the fill loop special-cases tier 0 alone. There is no metro-growth
+branch in the file. A ZIP with 12-23 observations would receive the ordinary shrunk AR(1)
+output stamped `f_tier: 1` — a weaker label on an identical forecast. Nothing in the frontend
+reads `f_tier` either; it is declared in `map/types.ts` and used in no component.
+
+That changes the decision from "delete dead code" to "the ladder documents four rungs and
+implements two, and the day Zillow adds a short-history ZIP it starts lying."
+
+### `computeQuantileBuckets` has no successor role either
+
+The todo kept it on the theory that an auto-scale path would reach for it. Auto-scale already
+exists and does not: `ViewportClassSource` calls `fitBreaks` in `src/lib/classing.ts`, which
+reads the scheme and the break gate out of the manifest. Cutting plain quantiles for every
+metric is the exact bug `class-source.ts` documents in its own header — it moved 28.6% of ZIPs
+into the two darkest classes against the fixed scale's 6.0%. `d3-scale` is imported by nothing
+else in `src/`, so deleting the function drops the dependency with it.
+
+### And the export filename was never the problem
+
+`ExportSidebar.tsx` builds the stem as `Domapus-{metric}-{region}`, so metric and region
+survive on disk with the title off. What is missing from both the filename and an untitled
+image is the **data period**. A PNG pasted into a deck six months later cannot be dated.
+
+---
+
+## 2026-09-12, later — the five open decisions, answered and implemented
+
+All five were answered in one pass and all five landed the same session. `npx tsc -b` clean,
+144 vitest, 54 pytest, verified in the browser on the dev server.
+
+### `computeQuantileBuckets` is gone, and `d3-scale` with it
+
+Deleted from `src/lib/quantiles.ts`, its re-export dropped from `map/utils.ts`, its four tests
+removed, and `d3-scale` + `@types/d3-scale` uninstalled — nothing else in `src/` imported them.
+
+The function cut plain equal-count quantiles for every metric. That is the bug
+`class-source.ts` documents in its own header: on the full national extent, classing the same
+ZIPs the pipeline classed, it put 28.6% of them in the two darkest classes against the fixed
+scale's 6.0%. Auto-scale has used `fitBreaks` for a while, which reads the scheme and break
+gate out of the manifest, so the only thing keeping the old helper alive was a note in the
+todos guessing an auto-scale path might want it one day. It already existed and did not.
+
+`quantiles.ts` now carries a header saying what it is NOT for, because the next person
+reaching for a quantile helper to answer "which class is this ZIP in" should be sent to
+`fitBreaks` instead.
+
+`choropleth-painter.test.ts` grew a local `quantileCuts`. That test is about the byte layout
+and needs any monotone boundary list; several of its fixtures are deliberately smaller than
+CLASSES, which `fitBreaks` refuses, so a production helper is the wrong dependency for it.
+
+### Forecast tiers 0 and 1 are now one rung
+
+`TIER_METRO` deleted, `_tier` no longer assigns 1, and `tier_counts` reports `(0, 2, 3)` — a
+key that is structurally always zero reads as a measurement rather than an absence.
+
+The earlier note called tier 1 unreachable. It was also unimplemented: the ladder documented
+it as "the METRO's growth path on the ZIP's last level" and no such branch was ever written,
+so a ZIP with 12-23 observations would have been handed the ordinary shrunk AR(1) output
+stamped `f_tier: 1` — an identical forecast wearing a weaker label. It never fired because the
+shortest ZHVI history in the shipped panel is 31 months, so nothing was ever published under
+it. Under 24 observations now gets no forecast, which is the only reading that cannot ship a
+wrong number.
+
+The comment in `forecast.py` keeps the whole story, including that implementing the metro path
+is still open if the band ever stops being empty, and that reinstating a label without the
+branch behind it is not.
+
+### Empty classes are notched in the legend
+
+`homes_sold` and `active_listings` draw zero ZIPs in class 0, because the first of thirteen
+quantile edges lands on 1.0 and nothing reports under one sale. The break is right — ties
+collapsing classes is a real property of the distribution. The legend showing a swatch for a
+colour with no owner was not.
+
+An unused class now keeps its slot and its colour but shrinks to a 4 px sliver inside the
+16 px band, with the title "… — no ZIP codes" and a caption under the key. Two things about
+that choice:
+
+**Width is untouched on purpose.** The tick labels are positioned from `(i + 1) / CLASSES`, so
+dropping a band outright would silently move every label off the boundary it names.
+
+**Height, not lightness.** A faded swatch on a lightness ramp is the same channel the value is
+encoded in — the reason the reliability fade came off the map in the first place.
+
+`classCounts` is withheld whenever the counts do not describe the breaks on screen. In
+auto-scale the live source re-cuts to the viewport, so the published counts belong to a
+different set of boundaries; marking nothing there is the safe miss, marking the national
+empties would be a lie.
+
+Verified in the browser: `homes_sold` national shows 14 bands all 15.9 px wide, the first 4 px
+tall titled "below 1 — no ZIP codes", caption present. `median_sale_price` shows 14 full bands
+and no caption. `homes_sold` with auto-scale on shows 14 full bands and no caption.
+
+### Export identity, both halves
+
+**The filename carries the period.** `Domapus-median_ppsf-United-States-2026-07-31.png`,
+confirmed by intercepting the download. The period comes back from `exportToCanvas` rather
+than being fetched again in the sidebar, so the name and the drawn subtitle read one value.
+It also stops two exports of the same region a quarter apart from colliding in the downloads
+folder.
+
+**The image carries it too, when nothing else does.** `FOOTER_SEGMENTS` became
+`footerSegments(dataDate, includeTitle)`, which prepends "Data through …" only when the title
+is off. With the title on the subtitle already says it and printing it twice is worse. The row
+is right-aligned from `mapRight`; measured clearance to the key at the worst case
+(`median_ppsf`, longest painted label with a day-format date) is 112 px at preview scale,
+about 260 stage units.
+
+The earlier note framed this as "an untitled export cannot be identified later", which was
+wrong about the file — the stem already had metric and region. What it was right about is the
+picture: a PNG pasted into a deck is not a file any more.
+
+### Kaggle is closed, not deferred
+
+The terms were read. Redfin's Terms of Use grant "a limited, personal, non-exclusive,
+non-transferable, non-sublicensable, revocable license to access, view, and use the Services"
+(2.3.2), prohibit "derivative works based upon, or attempt to commercially gain from your use"
+(2.3.3), and say the Terms "do not provide you a license to use, reproduce, distribute,
+display or provide access to any portion of the Services on Third Party Sites" (2.3.4).
+
+The distinction that settles it: Redfin welcomes *citing* the data and asks only for a
+citation and a link on first reference, which is what Domapus does today and is squarely
+permitted. A Kaggle upload is the other act — redistributing the data on a third-party site,
+which 2.3.4 names directly.
+
+The benefit was never large enough to chase written permission. The case was discovery, which
+is a marketing channel; a download link on Domapus itself buys most of it, since the artifacts
+are already public static files. And to interest a Kaggle audience the upload would need the
+full 173-period panel rather than one month — the maximal version of exactly what the terms
+refuse.
+
+### Export memory, measured
+
+The `pixelRatio: 3` note said "~30 MB, not measured on a low-end device". The first half is
+now measured and correct; the second half is unchanged and cannot be settled from a desktop.
+
+Chrome, national view, `median_ppsf`, title and legend on: JS heap 54.8 MB before the dialog
+and 196.0 MB with it open, a rise of 141.2 MB. The main export map's GL canvas is
+3402 x 2148 = 7.31 Mpx = 29.2 MB at 4 B/px; two insets at 648 x 504 add 2.6 MB; the live map
+behind the dialog is 4.3 MB. Total canvas backing while open is 34.7 MB, of which roughly 30.4
+belongs to the dialog. During the export call itself a further 3600 x 2700 = 38.9 MB canvas
+exists transiently.
+
+Peak is therefore about 196 MB of heap plus ~74 MB of canvas. What a phone does under that is
+still unknown — memory pressure is not something the harness can emulate, so this needs a real
+low-end device or a decision to drop `EXPORT_SCALE` to 2 (~13 MB instead of 29, at a 1.51x
+upscale).
+
