@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, X, MousePointerClick } from 'lucide-react';
+import { Search, X, MousePointerClick, ArrowUp } from 'lucide-react';
 import { ZipData } from './map/types';
 import type { ZipTable } from '@/lib/zip-table';
 import { formatMetricValue, METRIC_DEFINITIONS, FormatType } from './map/utils';
@@ -111,12 +111,19 @@ export function ZipComparison({
 /**
  * One group as a four-column table: metric, A, B, difference.
  *
- * NO GOOD/BAD COLOURING. The old version painted the larger value green unless
- * the metric was days-on-market, which is wrong for months-of-supply — more
- * inventory is good for a buyer and bad for a seller — and meaningless for homes
- * sold. Which direction is "better" depends on which side of the transaction the
- * reader is on, and the panel does not know that. The difference is shown; the
- * judgement is the reader's.
+ * COLOUR MARKS DIRECTION, NOT QUALITY, and the distinction is the whole reason
+ * this is safe to do. An earlier version painted the *better* value green and
+ * flipped the rule for days-on-market, which is wrong for months-of-supply —
+ * more inventory is good for a buyer and bad for a seller — and meaningless for
+ * homes sold. The panel does not know which side of the transaction the reader
+ * is on and must not guess.
+ *
+ * What it does now is uniform: green means B is above A, red means B is below A,
+ * on every metric, with no exceptions to remember. That is the same sign rule
+ * the detail panel already uses for every year-over-year delta, so the two
+ * panels no longer disagree about what a green number means. The arrow marks
+ * which column is larger so the direction survives for a reader who cannot
+ * separate the two hues.
  */
 function Group({
   label, keys, a, b,
@@ -144,38 +151,77 @@ function Group({
         {label}
       </h4>
       <div className="rounded-lg border border-border bg-card divide-y divide-border/60">
-        {rows.map(({ m, av, bv }) => (
-          <div key={m.key as string} className="flex items-baseline gap-2 px-3 py-2">
-            {/* Four columns in a 384 px panel means the label column truncates.
-                The title keeps the full name reachable rather than lost. */}
-            <span
-              className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-              title={m.label}
-            >
-              {m.label}
-            </span>
-            <span className="w-[72px] shrink-0 text-right text-xs font-semibold tabular-nums text-foreground">
-              {formatMetricValue(av, m.format as FormatType)}
-            </span>
-            <span className="w-[72px] shrink-0 text-right text-xs font-semibold tabular-nums text-foreground">
-              {formatMetricValue(bv, m.format as FormatType)}
-            </span>
-            <span className="w-[56px] shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-              {relative(av, bv)}
-            </span>
-          </div>
-        ))}
+        {rows.map(({ m, av, bv }) => {
+          const rel = relative(av, bv);
+          return (
+            <div key={m.key as string} className="flex items-baseline gap-2 px-3 py-2">
+              {/* The label column is whatever the three fixed columns leave,
+                  which at the panel's 360 px floor is about eleven characters.
+                  The title keeps the full name reachable rather than lost. */}
+              <span
+                className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+                title={m.label}
+              >
+                {m.label}
+              </span>
+              <Value v={av} format={m.format as FormatType} higher={rel.dir < 0} />
+              <Value v={bv} format={m.format as FormatType} higher={rel.dir > 0} />
+              <span
+                className={`w-[52px] shrink-0 text-right text-[11px] tabular-nums ${
+                  rel.dir > 0
+                    ? 'text-emerald-600 dark:text-emerald-500'
+                    : rel.dir < 0
+                      ? 'text-rose-600 dark:text-rose-500'
+                      : 'text-muted-foreground'
+                }`}
+              >
+                {rel.text}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-/** B against A as a percentage, or an em dash where the ratio is undefined.
- *  Percent of A, not a difference in the metric's own unit: the column is one
- *  width for fifteen metrics on five different scales. */
-function relative(a: number | null, b: number | null): string {
-  if (!Number.isFinite(a as number) || !Number.isFinite(b as number) || a === 0) return 'n/a';
+/** One side's value, with an arrow when it is the larger of the two.
+ *
+ *  The arrow is inside the 72 px column and the number keeps its own width, so
+ *  the two value columns still line up whether or not either carries one. */
+function Value({
+  v, format, higher,
+}: {
+  v: number | null;
+  format: FormatType;
+  higher: boolean;
+}) {
+  return (
+    <span className="flex w-[66px] shrink-0 items-baseline justify-end gap-0.5">
+      {higher && (
+        <ArrowUp
+          className="h-3 w-3 shrink-0 self-center text-foreground/70"
+          aria-label="higher"
+        />
+      )}
+      <span className="text-xs font-semibold tabular-nums text-foreground">
+        {formatMetricValue(v, format)}
+      </span>
+    </span>
+  );
+}
+
+/** B against A as a percentage, plus which way it points.
+ *
+ *  Percent of A, not a difference in the metric's own unit: one column width has
+ *  to serve fifteen metrics on five different scales. `dir` is the sign of that
+ *  percentage and is 0 wherever the ratio is undefined or the two round to the
+ *  same number, which is what keeps a 0.2% gap from being painted as a move. */
+function relative(a: number | null, b: number | null): { text: string; dir: -1 | 0 | 1 } {
+  if (!Number.isFinite(a as number) || !Number.isFinite(b as number) || a === 0) {
+    return { text: 'n/a', dir: 0 };
+  }
   const pct = ((b as number) - (a as number)) / Math.abs(a as number) * 100;
-  if (Math.abs(pct) < 0.5) return '±0%';
-  return `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`;
+  if (Math.abs(pct) < 0.5) return { text: '±0%', dir: 0 };
+  return { text: `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`, dir: pct > 0 ? 1 : -1 };
 }

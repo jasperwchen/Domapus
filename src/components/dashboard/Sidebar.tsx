@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   X, ArrowLeft, TrendingUp, TrendingDown, BarChart3, ChevronDown, Loader2,
 } from "lucide-react";
@@ -33,12 +33,66 @@ interface SidebarProps {
   onCompareZipChange: (zip: ZipData | null) => void;
 }
 
+// Desktop panel width, in px.
+//
+// MIN is set by the widest thing the panel has to hold, which is the comparison
+// table and not the detail list. Comparison is four columns — label, A, B, and
+// the percentage — so 184 px of it is fixed no matter how narrow the panel gets,
+// plus 56 px of padding and gaps. At 360 that leaves the metric name 96 px,
+// about eleven characters before the ellipsis, which is the point where the
+// truncated label plus its tooltip is still usable. Below that the name is three
+// words of nothing. MAX keeps the map the larger half of the window at any
+// viewport the md breakpoint admits.
+const MIN_W = 360;
+const MAX_W = 720;
+const DEFAULT_W = 384; // what `w-96` was
+const WIDTH_KEY = "domapus:sidebar-width";
+
+function clampWidth(px: number): number {
+  return Math.min(Math.max(px, MIN_W), Math.min(MAX_W, Math.round(window.innerWidth * 0.5)));
+}
+
+/** Panel width, remembered across sessions. Reading localStorage in the
+ *  initializer rather than in an effect avoids a frame at the default width. */
+function useSidebarWidth(): [number, (px: number) => void] {
+  const [width, setWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(WIDTH_KEY));
+      return Number.isFinite(saved) && saved > 0 ? clampWidth(saved) : DEFAULT_W;
+    } catch {
+      return DEFAULT_W;
+    }
+  });
+
+  const set = useCallback((px: number) => {
+    const w = clampWidth(px);
+    setWidth(w);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(w));
+    } catch {
+      // Private mode, or storage disabled. The width still works this session.
+    }
+  }, []);
+
+  // A window narrow enough to violate the cap must not leave the panel over it.
+  useEffect(() => {
+    const onResize = () => setWidth((w) => clampWidth(w));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return [width, set];
+}
+
 export function Sidebar({
   isOpen, zipData, store, onClose,
   selectedMetric, mode, onModeChange, compareZip, onCompareZipChange,
 }: SidebarProps) {
   const isMobile = useIsMobile();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useSidebarWidth();
+  const [dragging, setDragging] = useState(false);
 
   // Focus management: move focus to heading when sidebar opens
   useEffect(() => {
@@ -57,7 +111,21 @@ export function Sidebar({
   const comparing = mode === "compare";
 
   return (
-    <div className={`bg-dashboard-panel border-r border-dashboard-border shadow-lg flex flex-col h-full ${isMobile ? "w-full" : "w-96"}`}>
+    <div
+      ref={rootRef}
+      className={`relative bg-dashboard-panel border-r border-dashboard-border shadow-lg flex flex-col h-full ${
+        isMobile ? "w-full" : ""
+      } ${dragging ? "select-none" : ""}`}
+      style={isMobile ? undefined : { width }}
+    >
+      {!isMobile && (
+        <ResizeHandle
+          width={width}
+          onWidth={setWidth}
+          onDragging={setDragging}
+          rootRef={rootRef}
+        />
+      )}
       <Header
         zipData={zipData}
         comparing={comparing}
@@ -101,6 +169,77 @@ export function Sidebar({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The drag target on the panel's right edge.
+ *
+ *  Pointer events rather than mouse events so a pen or a touchpad drag works the
+ *  same way, and pointer capture so a fast drag that outruns the 12 px strip
+ *  keeps tracking instead of dropping. The panel is absolutely positioned over
+ *  the map, so nothing reflows while this runs — only the fill of the overlay
+ *  changes, and MapLibre never sees a resize.
+ *
+ *  `separator` with arrow keys because a drag handle that only responds to a
+ *  pointer is unreachable by keyboard, and the width it sets is real state. */
+function ResizeHandle({
+  width, onWidth, onDragging, rootRef,
+}: {
+  width: number;
+  onWidth: (px: number) => void;
+  onDragging: (v: boolean) => void;
+  rootRef: React.RefObject<HTMLDivElement>;
+}) {
+  const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    onDragging(true);
+  };
+
+  const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+    const left = rootRef.current?.getBoundingClientRect().left ?? 0;
+    onWidth(e.clientX - left);
+  };
+
+  const up = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    onDragging(false);
+  };
+
+  const key = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = e.shiftKey ? 48 : 16;
+    if (e.key === "ArrowLeft") { e.preventDefault(); onWidth(width - step); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); onWidth(width + step); }
+    else if (e.key === "Home") { e.preventDefault(); onWidth(MIN_W); }
+    else if (e.key === "End") { e.preventDefault(); onWidth(MAX_W); }
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize panel"
+      aria-valuenow={width}
+      aria-valuemin={MIN_W}
+      aria-valuemax={MAX_W}
+      tabIndex={0}
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+      onKeyDown={key}
+      onDoubleClick={() => onWidth(DEFAULT_W)}
+      title="Drag to resize · double-click to reset"
+      className="group absolute right-0 top-0 z-30 h-full w-3 translate-x-1/2 cursor-col-resize touch-none outline-none"
+    >
+      {/* The hit area is 12 px wide; the thing the eye sees is a 2 px rule that
+          only appears under the pointer or focus. A permanently visible grip
+          would read as a border on a panel that already has one. */}
+      <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-primary/0 transition-colors group-hover:bg-primary/40 group-focus-visible:bg-primary" />
     </div>
   );
 }
@@ -181,14 +320,17 @@ function Details({ zipData, selectedMetric }: { zipData: ZipData; selectedMetric
         </Suspense>
       </Section>
 
-      {METRIC_GROUPS.map((group, i) => (
+      {/* Every group starts open. Collapsing two of the three hid nine of the
+          fifteen metrics behind a chevron that reads as a section heading, so
+          the panel looked like it carried six numbers. The groups still
+          collapse; they just do not start that way. */}
+      {METRIC_GROUPS.map((group) => (
         <MetricGroup
           key={group.id}
           label={group.label}
           keys={group.keys}
           zipData={zipData}
           highlight={selectedMetric}
-          defaultOpen={i === 0}
         />
       ))}
     </div>
@@ -274,15 +416,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * that and the values line up in a column the eye can run down.
  */
 function MetricGroup({
-  label, keys, zipData, highlight, defaultOpen,
+  label, keys, zipData, highlight,
 }: {
   label: string;
   keys: string[];
   zipData: ZipData;
   highlight: string;
-  defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(true);
 
   const rows = useMemo(() => keys
     .map((k) => METRIC_DEFINITIONS[k])
@@ -313,6 +454,17 @@ function MetricGroup({
 
       {open && (
         <div className="rounded-lg border border-border bg-card divide-y divide-border/60">
+          {/* The change column is year-over-year for fourteen of the fifteen
+              metrics, so it is named once here rather than repeated on every
+              row. ZHVI is the exception — it is the only series Redfin's rolling
+              window does not apply to, so it is the only one with a real
+              month-over-month — and that row carries its own "MoM" marker. */}
+          <div className="flex items-baseline gap-2 px-3 py-1">
+            <span className="min-w-0 flex-1" aria-hidden="true" />
+            <span className="w-[88px] shrink-0 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              vs last year
+            </span>
+          </div>
           {rows.map(({ m, value }) => {
             const mom = m.momKey ? formatChange(zipData[m.momKey] as number | null, m.momFormat) : null;
             const yoy = m.yoyKey ? formatChange(zipData[m.yoyKey] as number | null, m.yoyFormat) : null;
@@ -334,8 +486,15 @@ function MetricGroup({
                 <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                   {formatMetricValue(value, m.format as FormatType)}
                 </span>
-                <span className="w-[76px] shrink-0 text-right">
-                  {change && <Delta change={change} suffix={changeIsYoy ? "YoY" : "MoM"} compact />}
+                <span className="w-[88px] shrink-0 text-right">
+                  {change && (
+                    <Delta
+                      change={change}
+                      suffix={changeIsYoy ? "YoY" : "MoM"}
+                      compact
+                      showSuffix={!changeIsYoy}
+                    />
+                  )}
                 </span>
               </div>
             );
@@ -347,13 +506,18 @@ function MetricGroup({
 }
 
 function Delta({
-  change, suffix, compact,
+  change, suffix, compact, showSuffix,
 }: {
   change: { formatted: string; isPositive: boolean; isZero: boolean };
   suffix: string;
   compact?: boolean;
+  /** Defaults to the inverse of `compact`: the hero has room for the period,
+   *  a 32 px row does not. A compact row overrides this to mark the one
+   *  metric whose change is NOT the column header's year-over-year. */
+  showSuffix?: boolean;
 }) {
   const Icon = change.isPositive ? TrendingUp : TrendingDown;
+  const withSuffix = showSuffix ?? !compact;
   return (
     <span
       className={`inline-flex items-center gap-0.5 tabular-nums ${compact ? "text-[11px]" : "text-xs"} ${
@@ -363,7 +527,7 @@ function Delta({
     >
       <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
       {change.formatted}
-      {!compact && <span className="ml-0.5 text-muted-foreground font-normal">{suffix}</span>}
+      {withSuffix && <span className="ml-0.5 text-muted-foreground font-normal">{suffix}</span>}
     </span>
   );
 }

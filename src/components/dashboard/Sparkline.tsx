@@ -49,6 +49,9 @@ const PLOT_H = H - PAD.t - PAD.b;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+// Which forecast intervals the reader is offered.
+const OFFERED_LEVELS = new Set(["0.5", "0.8", "0.95"]);
+
 function fmt(v: number, money: boolean): string {
   if (!money) return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v));
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
@@ -126,7 +129,10 @@ function Chart({
 }) {
   const { index, series: hist } = data;
   const meta = SERIES.find((s) => s.key === series)!;
-  const levels = useMemo(() => levelsOf(index), [index]);
+  const levels = useMemo(
+    () => levelsOf(index).filter((l) => OFFERED_LEVELS.has(l)),
+    [index],
+  );
   const level = levels[Math.min(levelIdx, levels.length - 1)] ?? "0.8";
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<number | null>(null);
@@ -327,8 +333,14 @@ function Chart({
 
       {geom.band && levels.length > 1 && (
         <div className="flex items-center justify-between gap-2">
+          {/* The caption has to say what the percentage MEANS, because the
+              selector alone reads as a display option. It is not: it is the
+              share of backtest origins whose actual value landed inside the
+              shaded band, so a higher level draws a wider band for the same
+              forecast, not a better one. */}
           <p className="text-[10px] leading-snug text-muted-foreground">
-            12-month forecast of the Zillow index, not of the sale price.
+            12-month forecast of the Zillow index, not of the sale price. The band is
+            where the value landed this often in backtesting.
           </p>
           <label className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
             <span className="sr-only">Forecast confidence level</span>
