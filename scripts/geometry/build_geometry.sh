@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Spec §5 — the whole geometry workflow: simplify, tile, sidecar, tiny points, verify.
+# The whole geometry workflow: simplify, tile, sidecar, tiny points, verify.
 #
-# This script plus Dockerfile.tippecanoe is the reproducibility record §5.9 asks the release
-# notes to carry. Do not paraphrase the invocations below into the notes; paste them.
+# This script plus Dockerfile.tippecanoe is the reproducibility record the release
+# notes carry. Do not paraphrase the invocations below into the notes; paste them.
 #
 # tippecanoe does not build natively on Windows, so it runs in the committed container.
 # mapshaper runs on the host. Both are version-pinned.
@@ -36,7 +36,7 @@ docker image inspect "$IMAGE" >/dev/null 2>&1 || {
 
 mkdir -p build
 
-# --- §5.2 step 1 -------------------------------------------------------------------------
+# --- source, bounds, simplify -------------------------------------------------------------------------
 # Bounds are captured BEFORE any point conversion: after `-points inner` the geometry is a
 # point and `this.bounds` is degenerate, which would silently zero every bbox column.
 #
@@ -52,14 +52,14 @@ mkdir -p build
 # border shared by two ZCTAs is a single arc that simplifies identically for both. Slivers
 # and gaps become impossible by construction rather than merely unlikely.
 if [ "${SKIP_MASTER:-0}" != "1" ]; then
-  echo "== A4: record the territory-filtered features before dropping them =="
+  echo "== record the territory-filtered features before dropping them =="
   $MS mapshaper-xl 8gb "$SHP" -proj wgs84 \
     -filter "ZCTA5CE20 != null" \
     -filter "$TERRITORY" invert \
     -filter-fields ZCTA5CE20 \
     -o build/zcta-territory-dropped.csv format=csv
 
-  echo "== 5.2 step 1: bounds, then simplify =="
+  echo "== bounds, then simplify =="
   $MS mapshaper-xl 8gb "$SHP" -proj wgs84 \
     -filter "ZCTA5CE20 != null" \
     -filter "$TERRITORY" \
@@ -67,7 +67,7 @@ if [ "${SKIP_MASTER:-0}" != "1" ]; then
     -simplify visvalingam interval=20 keep-shapes \
     -clean \
     -o build/zcta-master.json format=geojson precision=0.00001
-  echo "== 5.7 A1 + A4: source count and the dropped list, against $LOCK =="
+  echo "== source count and the dropped list, against $LOCK =="
   node -e '
     const fs = require("fs");
     const lock = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -78,21 +78,21 @@ if [ "${SKIP_MASTER:-0}" != "1" ]; then
     const source = kept + dropped.length;
     const drift = Math.abs(source - lock.source.feature_count) / lock.source.feature_count;
     let bad = 0;
-    if (drift > 0.005) { console.error(`A1 FAIL: source ${source} vs lock ${lock.source.feature_count} (${(drift*100).toFixed(2)}%)`); bad = 1; }
-    if (String(dropped) !== String(expectDropped)) { console.error(`A4 FAIL: dropped [${dropped}] != lock [${expectDropped}]`); bad = 1; }
-    if (kept !== lock.tileset.feature_count) { console.error(`A1 FAIL: kept ${kept} vs lock ${lock.tileset.feature_count}`); bad = 1; }
+    if (drift > 0.005) { console.error(`source count FAIL: source ${source} vs lock ${lock.source.feature_count} (${(drift*100).toFixed(2)}%)`); bad = 1; }
+    if (String(dropped) !== String(expectDropped)) { console.error(`dropped list FAIL: dropped [${dropped}] != lock [${expectDropped}]`); bad = 1; }
+    if (kept !== lock.tileset.feature_count) { console.error(`source count FAIL: kept ${kept} vs lock ${lock.tileset.feature_count}`); bad = 1; }
     if (bad) process.exit(1);
-    console.log(`A1 ok: ${source} source, ${kept} kept. A4 ok: ${dropped.length} territory features dropped.`);
+    console.log(`source count ok: ${source} source, ${kept} kept. dropped list ok: ${dropped.length} territory features dropped.`);
   ' "$LOCK" build/zcta-territory-dropped.csv build/zcta-master.json
 else
-  echo "== 5.2 step 1: SKIPPED, reusing build/zcta-master.json =="
+  echo "== simplify: SKIPPED, reusing build/zcta-master.json =="
 fi
 
-echo "== 5.2 step 2: drop everything but the id for tiling =="
+echo "== drop everything but the id for tiling =="
 $MS mapshaper build/zcta-master.json -filter-fields ZCTA5CE20 \
   -o build/zcta-tiles.json format=geojson
 
-# --- §5.3 --------------------------------------------------------------------------------
+# --- tile --------------------------------------------------------------------------------
 # -Z2 because underzoom does not exist: MapLibre renders NOTHING below a vector source's
 #     minzoom, unlike the maxzoom side where overzoom is native. The export insets fit Alaska
 #     and Hawaii below z3 and rendered blank because of it.
@@ -104,7 +104,7 @@ $MS mapshaper build/zcta-master.json -filter-fields ZCTA5CE20 \
 # NOT --drop-densest-as-needed: it drops the densest features first, i.e. urban.
 # NOT --coalesce-densest-as-needed: coalescing only merges features with identical
 #     attributes, and every ZCTA has a unique id, so it degenerates to dropping.
-echo "== 5.3: tippecanoe =="
+echo "== tippecanoe =="
 rm -f build/us_zip_codes.pmtiles
 tippecanoe_run tippecanoe \
   -o /work/build/us_zip_codes.pmtiles \
@@ -142,34 +142,34 @@ node -e '
   console.log("strategies:", JSON.stringify(meta.strategies ?? null), "(null = nothing was dropped)");
 '
 
-# --- §5.5 --------------------------------------------------------------------------------
+# --- geometry sidecar --------------------------------------------------------------------------------
 # `-points inner` is mapshaper's ST_PointOnSurface: guaranteed inside the polygon. The
 # lat/lng in zcta-meta.csv are centroids, which for a C-shaped or multipart ZCTA land in the
 # neighbouring ZIP or in open water.
-echo "== 5.5: geometry sidecar =="
+echo "== geometry sidecar =="
 $MS mapshaper build/zcta-master.json -points inner \
   -each 'lon = +this.x.toFixed(6), lat = +this.y.toFixed(6)' \
   -filter-fields ZCTA5CE20,lon,lat,bw,bs,be,bn \
   -o public/data/zcta-geom.csv format=csv
 
-# --- §5.6 --------------------------------------------------------------------------------
+# --- tiny-ZIP dots --------------------------------------------------------------------------------
 # The honest answer to sub-pixel ZCTAs: a dot layer under the fill, coloured by the same
 # constant match on the same feature id, so dense downtown ZIPs show as 3 px dots instead of
-# vanishing. There is no county overview layer — see §10.3.
-echo "== 5.6: tiny-ZIP dot layer =="
+# vanishing. There is no county overview layer.
+echo "== tiny-ZIP dot layer =="
 $MS mapshaper public/data/zcta-geom.csv \
   -filter '(be-bw)*88 + (bn-bs)*111 < 2' \
   -points x=lon y=lat \
   -o public/data/zcta-tiny-points.geojson format=geojson precision=0.00001
 
-# --- §5.7 --------------------------------------------------------------------------------
+# --- verify --------------------------------------------------------------------------------
 # awk, not `wc -l`: mapshaper writes the CSV with no trailing newline, so wc undercounts by
-# one and A7 would compare against 33,779 while the archive correctly carries 33,780.
+# one and the coverage check would compare against 33,779 while the archive correctly carries 33,780.
 EXPECT=$(awk 'END{print NR-1}' public/data/zcta-geom.csv)
-echo "== 5.7 A7: coverage against ${EXPECT} source features =="
+echo "== coverage against ${EXPECT} source features =="
 # --strict-from 3: the main map sets minZoom 3. z2 is reported but not gated — see the
 # comment in verify_coverage.mjs.
-# --max-tile-bytes 1000000: A6's 500 KB was written when the tileset still dropped features
+# --max-tile-bytes 1000000: the original 500 KB cap was written when the tileset still dropped features
 # to stay small. Carrying every ZCTA at low zoom is the point of this rebuild, and the
 # measured worst tile is 806,400 B raw at z2 (0.71 MB stored across all three z2 tiles). The
 # cap stays a tripwire against a genuinely pathological future vintage, with ~24% headroom

@@ -394,8 +394,8 @@ def test_30309_reports_the_all_residential_truth(ingested):
     for 30309. The all-residential truth is **$402,500 across 146 sales**. The
     published figure was whichever property type an unstable quicksort happened to
     leave last in its chunk, so it was not merely wrong, it was a DIFFERENT wrong
-    number on every run — which is why the value here does not match the one the
-    spec quotes ($575,000 across 9 sales, a Townhouse row observed on some earlier
+    number on every run — which is why the value here does not match the one
+    once quoted ($575,000 across 9 sales, a Townhouse row observed on some earlier
     run of the same broken code).
 
     This test does not re-check the arithmetic; it checks that the pipeline reads

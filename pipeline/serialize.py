@@ -86,7 +86,7 @@ SNAPSHOT_COLUMNS = [short for short, _, _ in COLUMNS]
 SCALES = {short: scale for short, _, scale in COLUMNS}
 SOURCE_OF = {short: src for short, src, _ in COLUMNS}
 
-assert len(SNAPSHOT_COLUMNS) == 50, f"f is {len(SNAPSHOT_COLUMNS)} names, spec section 4.3 says 50"
+assert len(SNAPSHOT_COLUMNS) == 50, f"f is {len(SNAPSHOT_COLUMNS)} names, the wire format has 50"
 assert len(set(SNAPSHOT_COLUMNS)) == 50, "duplicate short name in SNAPSHOT_COLUMNS"
 
 # Long painted name -> wire name. Only these may carry `breaks`.

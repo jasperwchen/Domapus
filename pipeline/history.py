@@ -1,6 +1,6 @@
 """Per-ZIP time series in `history/<zip4>.json`, fetched on click.
 
-ZIP4 buckets (~6 ZIPs, ~6 KB gz) rather than spec 4.4's ZIP3 (~43 KB gz, measured): the
+ZIP4 buckets (~6 ZIPs, ~6 KB gz) rather than ZIP3 (~43 KB gz, measured): the
 panel is dense. Series: `msp`, `hs` on the Redfin axis, `zhvi` monthly.
 
 The May 2026 Redfin restatement redefined `sold_above_list` and `median_list_price` across

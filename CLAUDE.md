@@ -1,6 +1,6 @@
 # Global instructions
 
-agent: Maintain a todos.md file updating your current objective, active subagent tasks, completed files, and next immediate steps. Update this file before launching parallel batches. this is to prevent lost when limit reached and everything shutdown.
+agent: Maintain `docs/TODOS.md` updating your current objective, active subagent tasks, completed files, and next immediate steps. Update this file before launching parallel batches. this is to prevent lost when limit reached and everything shutdown.
 
 ## Short, plain, and easy to understand
 
@@ -59,7 +59,7 @@ file before deploy.
 ## Commands
 
 ```bash
-npm run dev            # Vite dev server on http://localhost:3677
+npm run dev            # Vite dev server on http://localhost:3677. The correct local dev url is actually http://localhost:3677/ without the /Domapus/ at the end which returns 404
 npm run build          # tsc -b, vite build, then scripts/prune-dist.mjs
 npm test               # vitest (frontend)
 npm run lint           # eslint
@@ -231,10 +231,10 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 
 ## Docs
 
-- `docs/FINAL-SPEC-08-2026.md` — authoritative plan. Numbers are tagged `[M]` measured,
-  `[E]` estimated, `[C]` contract. Section 1.5 supersedes every earlier Redfin column name.
-- `docs/todos.md` — running state. Read before starting work.
-- `docs/ENGINEERING-LOG.md`, `docs/CHANGES.md` — decision history.
+- `docs/TODOS.md` — open work only. Read before starting work.
+- `docs/CHANGES.md` — decision history and reference facts moved out of the todos.
+- `docs/METHODOLOGY.md` — developer reference: stage-to-manifest map, constants, wire format,
+  break populations, invariants and what enforces each.
 - `tree.txt` — generated file list. Never edit by hand.
 
 
@@ -253,7 +253,7 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 | `scripts/` | Build and maintenance scripts (tree, dist pruning, palette derivation, workflow lint). |
 | `bench/` | Cold-load benchmark harness. Playwright-driven, results checked in. |
 | `tests/` | pytest for the pipeline, plus golden fixtures and the diff-gate baseline. |
-| `docs/` | Spec, logs, running todos. |
+| `docs/` | Open todos, change history, methodology reference. |
 
 `@/` is a path alias for `src/`, defined in both `vite.config.ts` and `vitest.config.ts`.
 

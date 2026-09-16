@@ -99,8 +99,8 @@ def assert_columns_absent(header, name: str) -> None:
             f"{name}: column(s) {present} have REAPPEARED. This file used to be the "
             f"all-residential aggregate with one row per (period, ZIP). A breakout "
             f"dimension means the declared key is no longer unique and every reduction "
-            f"in this pipeline would silently pick an arbitrary row. Stop and re-read "
-            f"spec section 1.5.5 before changing the key."
+            f"in this pipeline would silently pick an arbitrary row. Stop and check the "
+            f"feed's row grain before changing the key."
         )
 
 

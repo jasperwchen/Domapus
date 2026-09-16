@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Spec 5.7 A7 (coverage) + A6 (max raw tile size), and 5.8's implementation notes.
+// Coverage and max raw tile size checks on the finished tileset.
 //
 // A choropleth whose tiles quietly dropped 6% of its polygons still renders, still passes a
 // build, and still looks plausible — the missing ZIPs read as "no data". Nothing in the old
@@ -17,7 +17,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { bytesToHeader, tileIdToZxy } from "pmtiles";
 
-const MAX_RAW_TILE_BYTES = 500_000; // A6
+const MAX_RAW_TILE_BYTES = 500_000;
 const ID_ATTRIBUTE = "ZCTA5CE20";
 
 // ---------------------------------------------------------------- byte plumbing
@@ -209,7 +209,7 @@ function readValue(buf) {
     const field = tag >> 3;
     const wire = tag & 7;
     if (field === 1 && wire === 2) return r.bytes(r.varint()).toString("utf8");
-    // A non-string id would itself be the bug (spec 5.4: leading zeros must survive), so
+    // A non-string id would itself be the bug (leading zeros must survive), so
     // surface the type rather than coercing it into something that compares equal.
     if (field === 4 || field === 5) return `#int:${r.varint()}`;
     skipField(r, wire);
@@ -253,7 +253,7 @@ const tileCap = Number(arg("max-tile-bytes", MAX_RAW_TILE_BYTES));
 const strictFrom = Number(arg("strict-from", minZoom));
 
 if (!Number.isFinite(expect)) {
-  console.error("--expect <feature-count> is required: A7 compares against the source count.");
+  console.error("--expect <feature-count> is required: coverage compares against the source count.");
   process.exit(2);
 }
 
@@ -261,7 +261,7 @@ console.log(`archive   ${file}`);
 console.log(`header    z${header.minZoom}..z${header.maxZoom}, tileCompression=${header.tileCompression}, ${fs.statSync(file).size.toLocaleString()} B`);
 console.log(`expecting ${expect.toLocaleString()} distinct ${ID_ATTRIBUTE} at every zoom z${minZoom}..z${maxZoom}\n`);
 
-// §5.6: the tiny-ZIP dot layer renders under the fill across z2..z10, coloured by the same
+// The tiny-ZIP dot layer renders under the fill across z2..z10, coloured by the same
 // constant match on the same feature id. A ZCTA that reaches the reader as a 3 px dot is
 // represented on the map, so it counts toward coverage. Without this the check demands that
 // a 0.05 px polygon survive tile quantisation at z2, which no tiling can deliver — and
@@ -392,27 +392,27 @@ if (failed) {
   const worst = summary.filter((s) => s.missing > 0).sort((a, b) => b.missing - a.missing)[0];
   if (worst) {
     console.error(
-      `\nFAIL (A7): z${worst.zoom} is missing ${worst.missing} ${ID_ATTRIBUTE} that neither ` +
+      `\nFAIL (coverage): z${worst.zoom} is missing ${worst.missing} ${ID_ATTRIBUTE} that neither ` +
         `the tileset nor the dot layer carries, e.g. ${worst.missing_ids.slice(0, 8).join(" ")}`,
     );
   }
   process.exit(1);
 }
 console.log(
-  `\nOK (A7): every one of the ${expect.toLocaleString()} ${ID_ATTRIBUTE} is represented at ` +
+  `\nOK (coverage): every one of the ${expect.toLocaleString()} ${ID_ATTRIBUTE} is represented at ` +
     `every zoom z${strictFrom}..z${maxZoom}, as a polygon or as a dot.`,
 );
 const capped = summary.filter((s) => s.over_raw_cap).map((s) => `z${s.zoom}`);
 if (capped.length) {
   console.log(
-    `NOTE (A6): raw tile size exceeds ${tileCap.toLocaleString()} B at ${capped.join(", ")}. ` +
+    `NOTE (tile size): raw tile size exceeds ${tileCap.toLocaleString()} B at ${capped.join(", ")}. ` +
       `Raw is the decode cost, not the wire cost — see stored MB above.`,
   );
 }
 const lax = summary.filter((s) => s.missing > 0 && s.zoom < strictFrom);
 if (lax.length) {
   console.log(
-    `NOTE (A7): z${lax.map((s) => s.zoom).join(", z")} below the strict floor z${strictFrom} ` +
+    `NOTE (coverage): z${lax.map((s) => s.zoom).join(", z")} below the strict floor z${strictFrom} ` +
       `— ${lax.map((s) => `${s.missing} uncovered`).join(", ")}. The main map does not render ` +
       `below z${strictFrom}; z2 exists for the AK/HI export insets.`,
   );

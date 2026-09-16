@@ -46,7 +46,7 @@ jobs:
           unzip -q -o /tmp/cb.zip -d temp-data/temp-geo/cb_2020_us_zcta520_500k
           ls -l temp-data/temp-geo/cb_2020_us_zcta520_500k
 
-      # A1, A4, A5, A6 and A7 all run inside this script and all of them fail the job.
+      # Every geometry check runs inside this script and fails the job.
       - name: Build and verify
         run: bash scripts/geometry/build_geometry.sh
 
@@ -58,7 +58,7 @@ jobs:
             ls -l build/us_zip_codes.pmtiles public/data/zcta-geom.csv \
                   public/data/zcta-tiny-points.geojson
             echo '```'
-            echo '#### Coverage (A7)'
+            echo '#### Coverage'
             echo '```'
             jq -r '.per_zoom[] | "z\(.zoom)  polygons \(.polygons)  +dots \(.covered_by_dots)  missing \(.missing)  stored \(.stored_bytes)"' \
               build/coverage-after.json
@@ -75,7 +75,7 @@ jobs:
             public/data/zcta-tiny-points.geojson
           retention-days: 14
 
-      # Spec 5.9: the release notes carry the exact invocations, because they are the only
+      # The release notes carry the exact invocations, because they are the only
       # reproducibility record for a binary that no longer lives in git.
       - name: Publish the geometry release
         if: inputs.release_tag != ''
@@ -94,7 +94,7 @@ jobs:
             cat scripts/geometry/build_geometry.sh
             echo '```'
             echo
-            echo '## Coverage (A7)'
+            echo '## Coverage'
             echo '```json'
             cat build/coverage-after.json
             echo '```'

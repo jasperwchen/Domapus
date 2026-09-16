@@ -125,7 +125,7 @@ bench/results/superseded/
 # to leave a 1.33 GB file that `git add -A` would happily commit.
 temp-data/
 
-# The working spec
+# Deprecated plan and old engineering log, local only (see docs/CHANGES.md)
 docs/FINAL-SPEC*.md
 docs/ENGINEERING-LOG.md
 

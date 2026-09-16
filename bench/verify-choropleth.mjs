@@ -1,4 +1,4 @@
-// Phase 3 acceptance check. The spec names two conditions and this asserts both:
+// Phase 3 acceptance check. It asserts two conditions:
 //
 //   1. `map:sourceReload` is 0 after setup.
 //   2. A metric switch causes ZERO new tile requests.

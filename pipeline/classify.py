@@ -30,8 +30,8 @@ PAINTED = (
     "zhvi_yoy",
 )
 
-# `active_listings`, `median_dom` and `months_of_supply` are not in spec 6.6's table;
-# all three are right-skewed with no natural anchor, so they join the quantile family.
+# `active_listings`, `median_dom` and `months_of_supply` are right-skewed with no natural
+# anchor, so they join the quantile family.
 SCHEMES = {
     "zhvi": "log_equal_p1_p99",
     "median_sale_price": "log_equal_p1_p99",
@@ -157,7 +157,7 @@ def compute(records: dict, diverging_bound: float = DIVERGING_BOUND) -> dict:
     """Breaks and class counts for the painted columns.
 
     Counts are taken over every ZIP with a value, breaks over `break_population`; the
-    sum assertion below catches the two drifting apart (spec 6.6's 398-ZIP shortfall).
+    sum assertion below catches the two drifting apart (once a 398-ZIP shortfall).
     """
     rankable = [r for r in records.values() if noise.rankable(r)]
     if not rankable:

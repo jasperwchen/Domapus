@@ -5,8 +5,7 @@ wrong". It is not the reader-facing page — that is `src/pages/Methodology.tsx`
 which explains what the numbers mean to someone looking at the map. The two have
 different jobs and different audiences; keep them that way.
 
-`docs/FINAL-SPEC-08-2026.md` is the plan and is untracked. This file is the
-tracked reference for the shipped behaviour.
+This file is the reference for the shipped behaviour.
 
 ---
 

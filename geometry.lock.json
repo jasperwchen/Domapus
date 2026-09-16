@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Spec 5.7. What the geometry build asserted last time it ran, so a silent change in the",
+    "What the geometry build asserted last time it ran, so a silent change in the",
     "source vintage cannot silently change the map. Every number here is measured, not",
     "recalled; scripts/geometry/build_geometry.sh compares against it and fails the run.",
     "Bump `version` and the release tag together when the source vintage changes."
@@ -33,7 +33,7 @@
     "max_zoom": 10,
     "feature_count": 33780,
     "bytes": 46948252,
-    "$comment": "92,590,855 B before. The cut is 2.0x, not the 4.6x the spec estimated, because that estimate assumed tippecanoe would keep dropping features to stay small — which is the bug this rebuild exists to fix. Carrying every ZCTA at low zoom is what costs the difference.",
+    "$comment": "92,590,855 B before. The cut is 2.0x, not the 4.6x first estimated, because that estimate assumed tippecanoe would keep dropping features to stay small — which is the bug this rebuild exists to fix. Carrying every ZCTA at low zoom is what costs the difference.",
     "previous_bytes": 92590855,
     "z2_marginal_stored_bytes": 743661,
     "max_raw_tile_bytes": 806400,
@@ -47,7 +47,7 @@
   },
   "tiny_points": {
     "file": "public/data/zcta-tiny-points.geojson",
-    "$comment": "Rendered as a circle layer under the fill, coloured by the same constant match on the same feature id, so a sub-pixel ZCTA reaches the reader as a dot instead of vanishing. This is the entire low-zoom answer; there is no county overview layer (spec 10.3).",
+    "$comment": "Rendered as a circle layer under the fill, coloured by the same constant match on the same feature id, so a sub-pixel ZCTA reaches the reader as a dot instead of vanishing. This is the entire low-zoom answer;. There is no county overview layer.",
     "filter_km": 2,
     "features": 991,
     "bytes": 200770

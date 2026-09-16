@@ -24,7 +24,7 @@ requests==2.33.0
 # its temp directories at the predictable path `/tmp/pytest-of-{user}` on UNIX,
 # which lets a local user cause a denial of service or possibly escalate. The pin
 # was 8.4.2, which is inside the vulnerable range — Dependabot alert 46 on the
-# default branch was this, and the spec's `pytest==9.0.3` was the fix rather than
+# default branch was this, and `pytest==9.0.3` was the fix rather than
 # an arbitrary newer number.
 #
 # Pinned to the LATEST 9.x rather than the 9.0.3 minimum, on the same reasoning as
@@ -65,7 +65,7 @@ numpy==2.5.2
 
 # scipy is Phase 5's, for `spatial.py`'s KNN (cKDTree over ~10k inner points).
 # It is NOT here to bring in a spatial-statistics library: libpysal and esda are
-# deliberately refused (spec section 6.11). Local Moran's I is ~15 lines of numpy
+# deliberately refused. Local Moran's I is ~15 lines of numpy
 # and is more explainable hand-written, and KNN weights are the right choice on
 # their own merits — ZCTA islands and disjoint parts produce zero-neighbour units
 # for which contiguity-based Moran's I is undefined.

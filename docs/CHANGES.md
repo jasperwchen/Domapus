@@ -1,6 +1,6 @@
 # Domapus — agent log and decision record
 
-Append-only history. Moved out of `docs/todos.md` on 2026-09-03 so that file holds only
+Append-only history. Moved out of `docs/TODOS.md` on 2026-09-03 so that file holds only
 open work. Nothing here is a task; everything here is *why* something is the way it is.
 
 Log things here mid work to avoid losing progresas or context when hit limit.
@@ -11,7 +11,7 @@ add the correction below it rather than editing it — the reversals are the val
 
 Any agent working this project appends to **this** file: what it verified, what it changed,
 what it could not finish, and what the next session needs to know. Open work goes in
-`docs/todos.md`; finished work and rationale go here.
+`docs/TODOS.md`; finished work and rationale go here.
 
 ---
 
@@ -3352,3 +3352,21 @@ breaks but still paints them, and the fill has carried no reliability channel si
 opacity fade was removed (it was a lightness signal on a lightness ramp). The deferred
 texture overlay in `choropleth-painter.ts` is the intended fix. 14 classes makes the
 speckle more visible without making it more or less honest.
+
+---
+
+## 2026-09-16: FINAL-SPEC-08-2026 deprecated
+
+The phase `docs/FINAL-SPEC-08-2026.md` planned is complete, so the spec is retired. It stays on
+the primary dev machine and stays gitignored (`docs/FINAL-SPEC*.md`), but it is no longer an
+authority for anything. Where it and the code disagree, the code and `docs/METHODOLOGY.md` win.
+
+Every live reference to it was removed: `CLAUDE.md`, `docs/METHODOLOGY.md`, and the comments,
+assertion messages and log labels in the pipeline, geometry scripts, workflows and tests. The
+geometry checks that printed spec acceptance codes (A1, A4, A6, A7) now print what they check
+(source count, dropped list, tile size, coverage). Mentions of the spec in the entries above are
+history and were left as written.
+
+`docs/todos.md` was renamed to `docs/TODOS.md` in git to match the file on disk.
+
+The correct local dev url is actually http://localhost:3677/ without the /Domapus/ at the end which returns 404

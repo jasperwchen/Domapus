@@ -1,6 +1,6 @@
 # tippecanoe, pinned and committed.
 #
-# Spec 5.9 asks the geometry release notes to carry the exact invocations as the only
+# The geometry release notes carry the exact invocations as the only
 # reproducibility record for a binary that no longer lives in git. A third-party image
 # would leave the *compiler* unpinned, so the image is built here instead: this file plus
 # scripts/geometry/build_geometry.sh is the whole record.
