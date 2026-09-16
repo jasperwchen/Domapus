@@ -251,11 +251,7 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: E
     try {
       const { canvas, links, period } = await printStageRef.current.exportToCanvas();
       const safeRegionName = regionName.replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
-      // The period is in the name because the name is the only thing that
-      // survives a download with the title toggled off — and because two exports
-      // of the same region a quarter apart otherwise overwrite each other in the
-      // downloads folder. It comes back from `exportToCanvas` rather than being
-      // fetched here, so the filename and the drawn subtitle read one value.
+      // Period in the filename: it survives an untitled export and avoids overwrites.
       const stem = [`Domapus`, selectedMetric, safeRegionName, period]
         .filter(Boolean).join("-");
 
@@ -304,11 +300,7 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: E
 
         pdf.addImage(imgData, "PNG", offsetX, offsetY, drawWidth, drawHeight);
 
-        // One clickable box per brand name, placed from the boxes the canvas
-        // actually drew. This used to re-measure the attribution with a throwaway
-        // canvas in this file and put a single rectangle where it guessed the
-        // text had gone — over a line that, with the title off, was not even
-        // visible, because the map had been painted on top of it.
+        // One link box per brand name, from the boxes the canvas actually drew.
         const scaleX = drawWidth / EXPORT_CANVAS_W;
         const scaleY = drawHeight / EXPORT_CANVAS_H;
         for (const l of links) {

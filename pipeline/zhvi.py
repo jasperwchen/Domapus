@@ -1,14 +1,5 @@
-"""Zillow ZHVI ingest.
-
-Semantics are unchanged from the old pipeline, and that is deliberate: ZHVI is
-`sm_sa` — smoothed and seasonally adjusted on true calendar months — so its MoM
-is the thing MoM is supposed to mean.
-
-`zhvi_mom` therefore ships while no Redfin `*_mom` does. That asymmetry is not an
-oversight; Redfin publishes no MoM at ZIP level because its window is a rolling
-three months, NSA (spec section 1.5.6). It must be stated on the methodology page
-or it reads as one.
-"""
+"""Zillow ZHVI ingest. ZHVI is smoothed and seasonally adjusted on calendar months, which
+is why `zhvi_mom` ships while no Redfin MoM does."""
 
 import logging
 import re
@@ -34,16 +25,7 @@ PANEL_SCHEMA = pa.schema([
 
 
 def read(content: bytes) -> tuple[pd.DataFrame, list[str]]:
-    """Parse the ZHVI CSV once. Returns (frame indexed by ZIP, sorted date columns).
-
-    S2 writes the panel and S3 takes three months out of the same file, and each
-    used to call `read_csv` on the same 123 MB of bytes. Parsing once and handing
-    the frame across the stage boundary drops a full parse and lets the caller
-    release the raw bytes, which is the larger of the two copies.
-
-    Every schema check the two callers shared lives here: the date columns exist,
-    `RegionName` exists, and one row means one ZIP.
-    """
+    """Parse once; S2 and S3 share the frame. Returns (frame indexed by ZIP, sorted date columns)."""
     df = pd.read_csv(BytesIO(content), dtype={"RegionName": str})
     if "RegionName" not in df.columns:
         raise PipelineError("Zillow CSV missing 'RegionName' column — schema drift")
@@ -60,23 +42,10 @@ def read(content: bytes) -> tuple[pd.DataFrame, list[str]]:
 
 
 def write_panel(frame: pd.DataFrame, date_cols: list[str], panel_path: Path) -> dict:
-    """Every ZHVI month for every ZIP, long-format, non-null cells only.
+    """Every ZHVI month per ZIP, long format, non-null only.
 
-    `process()` below reads all 319 date columns and returns three of them. That
-    is the same defect the old Redfin script had — it kept one period per ZIP and
-    threw away the other 172 — and it is why nothing that needs ZHVI history could
-    be built. Forecasting fits AR(1) on log growth and the backtest walks 82
-    origins; both read this file, neither can read a three-column summary.
-
-    Long rather than wide, matching `panel.parquet`: ZHVI is ragged (a ZIP that
-    started reporting in 2014 has no 2000 cells) and storing the nulls would cost
-    ~17% more rows for nothing.
-
-    ZILLOW OVERWRITES HISTORY IN PLACE. This file is a CURRENT-VINTAGE view, not a
-    point-in-time record, so any backtest run against it is optimistic by an
-    unknown amount. The newest month is recorded as the vintage with every result,
-    and the fix is to start archiving each monthly pull as a release asset now so
-    genuine vintages accumulate. Both facts belong on the methodology page.
+    Zillow overwrites history in place, so this is a current-vintage view and any backtest
+    on it is optimistic; the vintage is recorded with every result.
     """
     long = frame.stack().rename("zhvi").reset_index()
     long.columns = ["zip", "month", "zhvi"]
@@ -119,12 +88,7 @@ def process(frame: pd.DataFrame, date_cols: list[str]) -> tuple[dict, str]:
     three = three[three[curr].notna()]
 
     def pct(base: np.ndarray, val: np.ndarray) -> list:
-        """Percent, matching every other change column on the wire.
-
-        A zero base divides to +/-inf and a missing one to NaN; both mean "no
-        change to report", which is the same None the row-at-a-time version
-        returned for `pd.isna(base) or base == 0`.
-        """
+        """Percent change; a zero or missing base gives None."""
         with np.errstate(divide="ignore", invalid="ignore"):
             out = np.round((val / base - 1.0) * 100.0, 2)
         return [None if not np.isfinite(x) else float(x) for x in out]
@@ -146,21 +110,10 @@ def process(frame: pd.DataFrame, date_cols: list[str]) -> tuple[dict, str]:
 
 
 def pooled_yoy(panel_path: Path) -> np.ndarray:
-    """Every finite lag-12 percent change in the panel, as one flat array.
-
-    This is the sample the diverging class bound is derived from. Pooled across
-    ZIPs *and* across 26 years on purpose: the point of a fixed diverging scale is
-    that it describes booms and flat years the same way, so a bound fitted to one
-    regime would defeat it.
-    """
-    import pyarrow.compute as pc
-
+    """Every finite lag-12 percent change, pooled across ZIPs and years (the diverging bound sample)."""
     from . import panel
 
-    tbl = pq.read_table(panel_path, columns=["zip", "month", "zhvi"])
-    months = sorted(pc.unique(tbl["month"]).to_pylist())
-    zips = sorted(pc.unique(tbl["zip"]).to_pylist())
-    a = panel.dense(tbl, "month", "zip", "zhvi", months, zips)
+    months, zips, a = panel.zhvi_matrix(panel_path)
 
     if len(months) <= 12:
         raise PipelineError(f"zhvi panel has {len(months)} months; need > 12 for a lag-12 change")

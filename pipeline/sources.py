@@ -1,19 +1,8 @@
 """Acquisition: HEAD probe, download, integrity.
 
-Two decisions here are load-bearing and both were argued the other way first.
-
-**Range-GET is rejected for data.** At ~8 MB per period the lag-12 endpoint sits
-~97 MB into the file and the full panel needs all 173 periods, so a 20 MB range
-buys raw levels and nothing else. Worse, S3 returns the *whole-object* ETag on a
-206, so a ranged path would carry a digest that cannot verify the bytes actually
-received — a silently-dead integrity check, which is the exact failure mode the
-data-safety rules forbid. The full download is ~60 s on a runner. One 1 MB shape
-probe survives, and nothing derived from it is published.
-
-**MD5-vs-ETag is scoped to Redfin only.** Zillow's ETag ends `-12`: it is a
-multipart upload, so it is an MD5-of-MD5s and can never equal the body digest.
-A generic check would fail every run or, worse, be quietly skipped. Zillow gets
-Content-Length plus the structural assertions in zhvi.py instead.
+- No range-GET for data: S3 returns the whole-object ETag on a 206, so a partial download
+  could not be verified.
+- MD5-vs-ETag applies to Redfin only. Zillow's ETag is multipart (MD5 of MD5s).
 """
 
 import hashlib
@@ -37,8 +26,7 @@ ZHVI_URL = (
     "Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv"
 )
 
-# The final URL after redirects must be one of these. A redirect to somewhere
-# else is a supply-chain event, not a transient error.
+# Redirects elsewhere are treated as a supply-chain event.
 ALLOWED_HOSTS = {
     "redfin-public-data.s3.us-west-2.amazonaws.com",
     "files.zillowstatic.com",
@@ -46,9 +34,7 @@ ALLOWED_HOSTS = {
 
 PROBE_BYTES = 1 << 20
 CHUNK = 1 << 20
-# requests' timeout caps the gap between reads, not total elapsed time, so a
-# stalled-but-trickling connection can hang forever under it. These two are the
-# actual bounds.
+# requests' timeout bounds gaps between reads, not total time; these bound a trickle.
 MAX_ELAPSED_S = 45 * 60
 MIN_THROUGHPUT_BPS = 200_000
 
@@ -151,19 +137,8 @@ def is_multipart_etag(etag: str) -> bool:
 
 
 def fingerprint(probe_info: dict) -> str:
-    """Identity of the bytes upstream is currently serving.
-
-    `Last-Modified` is recorded but EXCLUDED from the hash, and `LAST UPDATED` is
-    excluded from everything: both are stamps the publisher controls, not
-    properties of the bytes. A republish of identical content must produce an
-    identical fingerprint, or the "warn once per fingerprint" rule degenerates
-    into "warn every run".
-
-    Two uses:
-      * unchanged fingerprint -> nothing new exists, exit 0 without downloading.
-        That is not a failure.
-      * a stale feed warns ONCE per fingerprint, not once per cron tick.
-    """
+    """Identity of the upstream bytes. Excludes Last-Modified and LAST UPDATED, which change
+    on republish without content changing."""
     parts = "|".join(str(probe_info.get(k, "")) for k in
                      ("etag", "content_length", "probe_sha256", "first_row"))
     return hashlib.sha256(parts.encode("utf-8")).hexdigest()[:16]

@@ -15,28 +15,10 @@ import { classPaintExpression, FULL_OPACITY } from "@/lib/choropleth-painter";
 import { tickAt } from "@/lib/legend-format";
 import { fetchDataDates, formatPeriod, formatPeriodDay } from "@/lib/data-dates";
 
-// ---------------------------------------------------------------------------
-// ONE LAYOUT, TWO RENDERERS.
-//
-// Every number in `L` is in STAGE UNITS — the coordinate space of the 1200x900
-// preview. The exported canvas is that same layout at EXPORT_SCALE, so the
-// preview and the PNG are the same picture by construction rather than by two
-// sets of numbers somebody has to keep in step.
-//
-// They were two sets, and they had drifted. The Alaska and Hawaii insets were
-// drawn at 400 px in both places, which is 35% of the width of a 1200-px preview
-// and 11% of the width of a 3600-px canvas: on screen they dominated the map, in
-// the downloaded file they were unreadable thumbnails.
-//
-// Text follows the same rule. Every run is placed as a BOX, and both renderers
-// centre the glyphs in it — canvas with `textBaseline = "middle"`, the DOM with
-// `lineHeight` equal to the box height — so neither has to reason about
-// ascenders to agree with the other.
-//
-// The maps keep the guarantee too: each MapLibre canvas renders at a backing
-// size of exactly `stage units x EXPORT_SCALE`, so `drawImage` onto the export
-// canvas is 1:1. No resampling, and no aspect change between preview and file.
-// ---------------------------------------------------------------------------
+// One layout, two renderers. Every number in `L` is in stage units (the 1200x900 preview);
+// the export canvas is the same layout at EXPORT_SCALE. Text is placed as boxes and centred
+// by both renderers, and map canvases render at stage units x EXPORT_SCALE so `drawImage`
+// is 1:1.
 const STAGE_W = 1200;
 const STAGE_H = 900;
 const EXPORT_SCALE = 3;
@@ -65,15 +47,8 @@ const L = {
   title: { top: 32, h: 32, size: 27 },
   sub: { top: 66, h: 20, size: 15 },
   /**
-   * The strip below the map frame. Everything that is not the map lives here:
-   * the key on the left, the attribution on the right.
-   *
-   * The key used to float inside the map, bottom right, on a white panel. On the
-   * national view that is the Atlantic east of Florida — except the panel was
-   * 324 x 94 and reached inland: measured against the shipped snapshot it was
-   * drawn on top of 148 to 164 Florida ZCTAs, depending on the metric. At state
-   * and metro scope there is no ocean at all and it simply covered whatever was
-   * under it. A band costs 42 units of map height and cannot cover anything.
+   * The strip below the map frame: key on the left, attribution on the right. A key floating
+   * inside the map covered 148-164 Florida ZCTAs nationally.
    */
   band: { gap: 12, foot: { h: 20, size: 12 } },
   inset: { w: 216, h: 168, labelH: 20, labelSize: 10, gap: 10, margin: 14 },
@@ -128,12 +103,8 @@ function legendGeom(metricLabel: string) {
 }
 
 /**
- * The attribution, as segments, so the PDF can put a link box around each brand
- * name and both renderers can colour them the same.
- *
- * The sidebar used to re-measure this text with a throwaway canvas of its own to
- * guess where one link rectangle went. `exportToCanvas` now returns the boxes it
- * actually drew.
+ * The attribution as segments, so the PDF can link each brand name. `exportToCanvas`
+ * returns the boxes it drew.
  */
 type FooterSegment = { text: string; url?: string };
 
@@ -147,20 +118,8 @@ const BRAND_SEGMENTS: FooterSegment[] = [
 ];
 
 /**
- * The attribution row, with the data period folded in when nothing else on the
- * page carries it.
- *
- * An untitled export used to leave the page with no date at all: the period is
- * drawn in the subtitle, and the subtitle belongs to the title block. The
- * filename says which metric and which region, so a file on disk was always
- * identifiable — but a PNG pasted into a deck is not a file any more, and it had
- * nothing on it saying which month it described.
- *
- * Only when the title is OFF. With the title on, the subtitle already says it,
- * and printing the date twice is worse than printing it once. The row is
- * right-aligned from `mapRight` and grows leftward; at 1200 stage units the key
- * ends around x=650 even for the longest metric name, so the extra ~150 units
- * cannot reach it.
+ * The attribution row, with the data period appended when the title (which carries it) is
+ * off, so a pasted PNG still says which month it shows.
  */
 function footerSegments(dataDate: string, includeTitle: boolean): FooterSegment[] {
   if (includeTitle || !dataDate) return BRAND_SEGMENTS;
@@ -169,17 +128,9 @@ function footerSegments(dataDate: string, includeTitle: boolean): FooterSegment[
 
 const BOUNDS_BUFFER = 0.15;
 
-// The offscreen insets render into a container EXPORT_SCALE times the box they
-// are shown in, at pixelRatio 1, so the backing store lands on the export canvas
-// at 1:1 — and, more importantly, so `fitBounds` has room to work.
-//
-// `fitBounds` picks a zoom from the container's CSS size and then clamps it to
-// `minZoom`, which must be at least the tileset's own minimum or the choropleth
-// layer has no tiles and renders nothing. Alaska spans 0.109 of the world's
-// Mercator height; fitting that inside 504 px asks for zoom 3.14, which clears
-// the floor. Inside the 168 px the inset is DISPLAYED at, the same fit asks for
-// 1.4, gets clamped to 3, and Alaska is cropped to whatever third of the state
-// the viewport happens to land on.
+// Insets render into a container EXPORT_SCALE times their displayed box: 1:1 onto the
+// canvas, and room for `fitBounds` (at display size Alaska asks for z1.4, gets clamped to the
+// tileset's z3, and is cropped).
 const INSET_RENDER_W = L.inset.w * EXPORT_SCALE;
 const INSET_RENDER_H = L.inset.h * EXPORT_SCALE;
 const ALASKA_DEFAULT_BOUNDS: [[number, number], [number, number]] = [[-168.0, 54.5], [-130.0, 70.0]];
@@ -196,20 +147,8 @@ const mercY = (lat: number) =>
   (180 - (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))) / 360;
 
 /**
- * Padding for the main map's fit, with the bottom grown to keep the data off
- * the insets.
- *
- * The insets sit in the map's lower left, which on a map of the lower 48 is the
- * Pacific and northern Mexico. They used to be placed at a fixed margin from the
- * frame with no idea where the data was, and measured against the shipped
- * snapshot the Hawaii box was drawn on top of 3 to 8 Texas ZCTAs around Big
- * Bend, depending on the metric.
- *
- * The lower 48 are wider than the frame they are drawn in, so the fit is
- * width-bound and the leftover height is empty. Spending that leftover as bottom
- * padding pushes the states up off the insets and costs nothing: the width still
- * binds, so the map is drawn at exactly the same size. Measured after: 0 ZCTAs
- * covered, on all eight painted metrics.
+ * Main-map fit padding with the bottom grown to keep states off the insets. The fit is
+ * width-bound, so the map keeps its size (measured: 0 ZCTAs covered, all metrics).
  */
 function mainPadding(bounds: Bounds, w: number, h: number, reserveBottom: number) {
   if (reserveBottom <= 0) return MAIN_PAD;
@@ -225,13 +164,8 @@ function mainPadding(bounds: Bounds, w: number, h: number, reserveBottom: number
 }
 
 /**
- * How large the inset draws its state compared with the main map, as a
- * multiplier. Alaska lands near 0.2x and Hawaii near 2x, which is the thing a
- * reader cannot otherwise work out: the two boxes are the same size on the page
- * but one holds a state ten times wider than the other.
- *
- * The inset renders into a container EXPORT_SCALE times its displayed box, so
- * its reported zoom is that much higher than what the page shows.
+ * Inset scale relative to the main map (Alaska ~0.2x, Hawaii ~2x), corrected for the inset
+ * rendering at EXPORT_SCALE.
  */
 function scaleSuffix(ratio: number | undefined): string {
   if (!ratio || !Number.isFinite(ratio) || ratio <= 0) return "";
@@ -273,8 +207,7 @@ export interface PrintStageRef {
 }
 
 /** The metric's value for one ZIP, or null. Distinguishes a real zero — a ZIP
- *  where nothing sold above list — from a ZIP that reports nothing at all;
- *  `getMetricValue` maps both to 0 and cannot. */
+ *  where nothing sold above list, from a ZIP that reports nothing at all. */
 function rawValue(zip: ZipData, metric: string): number | null {
   const v = zip[metric as keyof ZipData];
   return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -373,19 +306,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   }, []);
 
   /**
-   * The period this export describes, written as "Data through <date>".
-   *
-   * DO NOT CHANGE THIS BACK TO `formatRedfinWindow`. That helper is correct and
-   * stays correct everywhere else: Redfin's ZIP rows are a rolling three-month
-   * window, so "3 months ending Jul 31, 2026" is the honest description of the
-   * statistic. On a printed map it reads as a puzzle — the reader has to work out
-   * whether the number is July's or the quarter's before they can look at the
-   * colours. The window caveat belongs on the methodology page, which the footer
-   * links to the site for; a chart subtitle says how current the data is.
-   *
-   * This was once `today minus one month`, which named a month the numbers did
-   * not come from. That is the regression to guard against — the date still comes
-   * from the data, never from the clock.
+   * "Data through <date>", from the data, never the clock. Deliberately not
+   * `formatRedfinWindow`: the rolling-window caveat belongs on the methodology page.
    */
   const dataPeriod = useMemo(() => {
     if (selectedMetric.startsWith("zhvi")) return zhviPeriod;
@@ -405,19 +327,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   }, [dataPeriod, selectedMetric]);
 
   /**
-   * The class of every ZIP being drawn, from the boundaries the pipeline
-   * published and the live map is already painting.
-   *
-   * IT DOES NOT CUT ITS OWN. It used to: `computeQuantileBuckets` over whatever
-   * ZIPs the region contained, 14 plain quantiles, for every metric. The pipeline
-   * classes prices log-equal between their p1 and p99 anchors, on the rankable
-   * set only, so on the national extent — the same ZIPs, the same release — 73%
-   * of them came out a different colour in the file than on the screen they were
-   * exported from, and more than half of those by two classes or more. Measured
-   * per metric: zhvi 73.0%, median_sale_price 82.6%, median_ppsf 89.7%,
-   * sold_above_list 82.9%, months_of_supply 75.5%, median_dom 64.4%. Only the two
-   * exact counts agreed, because plain quantiles is what the pipeline uses for
-   * them. This was the last second class authority in the app.
+   * Each ZIP's class from the published breaks the live map paints. The export used to cut
+   * its own quantiles and 73% of ZIPs exported a different colour than on screen.
    */
   const classesByZip = useMemo(() => {
     const out = new Map<string, number>();
@@ -430,14 +341,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   }, [filteredData, selectedMetric, breaks, scaleOk]);
 
   /**
-   * Framing samples only the ZIPs that HAVE a value for this metric.
-   *
-   * Sampling every ZIP in the region let ZIPs that can never show a colour set
-   * the frame. Puerto Rico's 131 ZCTAs and the Virgin Islands' 6 report nothing
-   * for any metric, and they dragged the mainland frame from 24.59 deg N down to
-   * 17.73 — a fifth of the height of a map of the lower 48 spent on empty ocean.
-   * The same rule tightens Alaska from the 46.6 degrees of longitude its ZCTAs
-   * span, most of it empty Aleutian chain, to the 35.1 that have data.
+   * Frame only ZIPs that have a value: PR and USVI report nothing and dragged the mainland
+   * frame down to 17.7 N; Alaska tightens to the 35.1 degrees with data.
    */
   const { alaskaZips, hawaiiZips, mainlandZips, alaskaBounds, hawaiiBounds, mainlandBounds } = useMemo(() => {
     const ak = new Set<string>(), hi = new Set<string>(), ml = new Set<string>();
@@ -751,11 +656,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       const map = new maplibregl.Map({
         container,
         style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-        // The container is sized in stage units for the main map and in stage
-        // units x EXPORT_SCALE for the insets, so both back onto exactly the
-        // pixels the export canvas wants. The main map used to render 2272 px
-        // wide and get stretched into a 3440 px slot — a 1.51x upscale on a file
-        // whose whole selling point is that it is 3600 px across.
+        // Sized so each map backs onto exactly the export pixels (was a 1.51x upscale).
         pixelRatio: key === "main" ? EXPORT_SCALE : 1,
         interactive: false,
         attributionControl: false,
@@ -838,17 +739,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
             ? ["in", ["get", "ZCTA5CE20"], ["literal", Array.from(validZips)]]
             : ["has", "ZCTA5CE20"];
 
-          // The SAME constant `match` expression the live map uses. It reads a
-          // class out of feature-state, so it never needs rewriting and — the
-          // reason it replaced a `step` — it imposes no ordering on anything.
-          //
-          // The old expression took quantile thresholds as its stop values, and
-          // MapLibre requires those to be strictly ascending. Ties in a small
-          // region produce equal thresholds; `Style.addLayer` then fires an error
-          // event and RETURNS WITHOUT ADDING THE LAYER, so the export came out as
-          // ZIP outlines with no fill and still reported success. Measured across
-          // the shipped snapshot: 1,521 of 6,952 metro x metric combinations, 670
-          // of 869 metros. Reproduced on Pittsburgh, PA + Homes Sold.
+          // The live map's constant `match` expression. A `step` on quantile thresholds needed
+          // strictly ascending stops; ties made `addLayer` silently skip the fill for 670 of 869 metros.
           map.addLayer({
             id: "zips-fill", type: "fill", source: "zips", "source-layer": "us_zip_codes",
             filter: filterExpr as import("maplibre-gl").FilterSpecification,

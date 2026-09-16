@@ -1,15 +1,7 @@
-"""Redfin ingest: stream the 1.33 GB CSV once, write the panel, keep the latest period.
+"""Redfin ingest: stream the 1.33 GB CSV once into `panel.parquet`, keep the latest period.
 
-Two things this does that the old `process_redfin_data` did not:
-
-* It asserts (PERIOD END, REGION NAME) is unique BEFORE any reduction, instead of
-  using `drop_duplicates` as a filter on an unproven key.
-* It keeps all 173 periods. The old code kept one row per ZIP and discarded the
-  other 172, which is why nothing in Phase 5 or Phase 7 could be built.
-
-Memory is bounded by streaming: record batches go straight to `panel.parquet`, and
-the uniqueness check reads back only the two key columns (~120 MB) rather than
-holding the whole 1.5 GB table.
+Asserts (PERIOD END, REGION NAME) is unique before any reduction. Batches stream to disk;
+the uniqueness check reads back only the two key columns.
 """
 
 import logging
@@ -28,15 +20,13 @@ from .contracts import (
     assert_unique_key,
     assert_zip_format,
 )
-from .units import IDENTIFIERS, LEVELS, READ_COLUMNS, YOY_HEADER
+from .units import LEVELS, READ_COLUMNS, YOY_HEADER
 
 log = logging.getLogger(__name__)
 
 BLOCK_SIZE = 8 << 20
 
-# `REGION NAME` MUST be read as a string. As an integer, "00501" becomes 501 and
-# the leading zeros are gone with no error anywhere — a leftover scratch file in
-# this repo does exactly that, which is why it is pinned here.
+# String types so "00501" keeps its leading zeros.
 FORCED_TYPES = {
     "LAST UPDATED": pa.string(),
     "FREQUENCY": pa.string(),
@@ -77,12 +67,7 @@ def _rename_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
 
 
 def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
-    """Stream the CSV to `panel_path`. Returns (report, latest-period rows).
-
-    Assertions run in the order that makes a failure cheapest to diagnose: schema
-    first (before any bytes are parsed), constants and ZIP format per batch, key
-    uniqueness at the end over the finished panel.
-    """
+    """Stream the CSV to `panel_path`. Returns (report, latest-period rows). Schema checks run first."""
     header = read_header(csv_path)
     assert_columns_absent(header, "redfin_raw")
     missing = [c for c in READ_COLUMNS if c not in header]
@@ -119,33 +104,38 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
                 tbl = pa.Table.from_batches([batch])
                 assert_constants(tbl, "redfin_raw")
                 last_updated.update(pc.unique(tbl["LAST UPDATED"]).to_pylist())
-                # Verbatim, for the snapshot envelope. The UI labels the window
-                # with this string and never with a day count: the real window is
-                # 89-92 days, so "90 days" is false for most periods.
+                # Verbatim for the UI label; the real window is 89-92 days.
                 frequency.update(pc.unique(tbl["FREQUENCY"]).to_pylist())
 
-                names = tbl["REGION NAME"].to_pylist()
-                assert_zip_format(names, "redfin_raw REGION NAME")
-                zips.update(names)
+                # Checked in Arrow: materialising these as Python strings cost
+                # ~10M objects per run.
+                names = batch.column(batch.schema.get_field_index("REGION NAME"))
+                ok = pc.match_substring_regex(names, r"^\d{5}$")
+                if names.null_count or not pc.all(ok).as_py():
+                    assert_zip_format(names.to_pylist(), "redfin_raw REGION NAME")
+                zips.update(pc.unique(names).to_pylist())
 
-                ends = tbl["PERIOD END"].to_pylist()
-                if prev_period is not None and ends[0] > prev_period:
+                ends = batch.column(batch.schema.get_field_index("PERIOD END"))
+                first, last = ends[0].as_py(), ends[-1].as_py()
+                if prev_period is not None and first > prev_period:
                     raise PipelineError(
                         "redfin_raw: PERIOD END is not descending across batch boundary "
-                        f"({prev_period!r} then {ends[0]!r}). Row order has changed upstream."
+                        f"({prev_period!r} then {first!r}). Row order has changed upstream."
                     )
-                for i in range(1, len(ends)):
-                    if ends[i] > ends[i - 1]:
+                if len(ends) > 1:
+                    rises = pc.greater(ends.slice(1), ends.slice(0, len(ends) - 1))
+                    if pc.any(rises).as_py():
+                        i = pc.index(rises, True).as_py() + 1
                         raise PipelineError(
                             f"redfin_raw: PERIOD END is not descending at row {rows + i:,} "
-                            f"({ends[i - 1]!r} then {ends[i]!r})."
+                            f"({ends[i - 1].as_py()!r} then {ends[i].as_py()!r})."
                         )
-                prev_period = ends[-1]
-                periods.update(ends)
+                prev_period = last
+                periods.update(pc.unique(ends).to_pylist())
 
                 if latest_period is None:
-                    latest_period = ends[0]
-                if ends[0] == latest_period:
+                    latest_period = first
+                if first == latest_period:
                     keep = tbl.filter(pc.equal(tbl["PERIOD END"], latest_period))
                     if keep.num_rows:
                         latest_rows.extend(keep.to_pylist())
@@ -167,8 +157,6 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
             f"{sorted(last_updated)!r}. This file is supposed to carry one vintage."
         )
 
-    # Uniqueness over the finished panel. Reading back two string columns costs
-    # ~120 MB against the ~1.5 GB the whole table would take.
     keys = pq.read_table(panel_path, columns=["zip", "period_end"])
     assert_unique_key(keys, GRAINS["panel"], "redfin_panel")
 
@@ -193,12 +181,8 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
 
 
 def latest_records(latest_rows: list[dict]) -> dict:
-    """Latest-period rows -> {zip: {our_key: raw value}}.
-
-    Raw on purpose. `serialize.assemble` is the ONE place units.coerce runs; the
-    two mislabelled YoY columns are divided by 100 there, and applying coerce
-    here as well divided them twice and shipped them 100x too small.
-    """
+    """Latest-period rows -> {zip: {our_key: raw value}}. Raw: `serialize.assemble` is the one
+    place `units.coerce` runs (coercing twice once divided two columns by 10,000)."""
     out = {}
     for row in latest_rows:
         rec = {"period_end": row["PERIOD END"], "period_begin": row["PERIOD BEGIN"]}

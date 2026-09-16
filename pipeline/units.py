@@ -1,19 +1,10 @@
-"""Redfin header -> our key, and the scale each column arrives on.
+"""Redfin header -> our key, and each column's scale on arrival.
 
-THE ONE THING TO GET RIGHT HERE is that the new feed already ships percent.
-`101.34`, not `1.0134`. The old pipeline multiplied ratios and shares by 100 on
-the way out; doing that here is a silent 100x error, and the all-null column
-guard does not catch it because the column is not null, only wrong.
-
-There are exactly TWO exceptions and they run the OTHER way. See DIVIDE_BY_100.
+The feed already ships percent (101.34, not 1.0134): nothing is multiplied by 100. Two
+columns are divided by 100 instead; see DIVIDE_BY_100.
 """
 
-# Redfin header -> our key. Level columns only; YoY is derived from these
-# by suffixing the header with " YOY (%)" or " YOY (PPTS)" — see YOY_HEADER.
-#
-# The 14 MoM columns are never read: measured 0 non-null cells in 4,930,000 x 14
-# (spec section 1.5.9). Redfin does not publish MoM at ZIP level, deliberately —
-# the windows overlap by two thirds and the data is not seasonally adjusted.
+# Level columns. The 14 MoM columns are never read: 0 non-null cells at ZIP level.
 LEVELS = {
     "HOMES SOLD": "homes_sold",
     "MEDIAN SALE PRICE NSA ($)": "median_sale_price",
@@ -31,8 +22,6 @@ LEVELS = {
     "PERCENT OFF MARKET IN TWO WEEKS (%)": "off_market_in_two_weeks",
 }
 
-# The trend suffix is "(%)" for counts and prices and "(PPTS)" for rates and
-# shares. Both arrive already scaled; neither is multiplied here.
 YOY_HEADER = {
     "HOMES SOLD": "HOMES SOLD YOY (%)",
     "MEDIAN SALE PRICE NSA ($)": "MEDIAN SALE PRICE NSA YOY (%)",
@@ -58,24 +47,9 @@ IDENTIFIERS = [
 # 8 identifiers + 14 levels + 14 YoY = 36 of the file's 50 columns.
 READ_COLUMNS = IDENTIFIERS + list(LEVELS) + list(YOY_HEADER.values())
 
-# --- The two mislabelled columns -------------------------------------------
-# `MEDIAN DAYS ON MARKET YOY (%)` and `MONTHS OF SUPPLY YOY (%)` are NOT percents.
-# They are (value[t] - value[t-12]) * 100, carrying a "(%)" suffix that is a lie.
-#
-# Proof it cannot be a percent change: 43.2% of median_dom YoY and 27.7% of
-# months_of_supply YoY values in the latest period are below -100, and
-# (new - old)/old cannot be. Worked row: ZIP 29709 median_dom 50 vs 75 prior,
-# published YoY -2496.42, and (50 - 75) * 100 = -2500.
-#
-# THE TRAP, stated so nobody re-walks into it: the general rule for this feed is
-# "delete the * 100". The OLD pipeline's `_coerce_value` already skipped the * 100
-# for any key containing 'dom', because the old feed shipped that column in days.
-# Deleting a multiplication that is not there is a no-op, and the column then
-# ships 100x too large. These two need a DIVISION, not a removed multiplication.
-#
-# They are shipped as a change in DAYS and in MONTHS and are never labelled a
-# percent in any UI surface. See src/lib/metrics.ts, format "days_delta" /
-# "months_delta".
+# `MEDIAN DAYS ON MARKET YOY (%)` and `MONTHS OF SUPPLY YOY (%)` are (now - year_ago) * 100,
+# not percents (43.2% of DOM values are below -100). They need a division, not a removed
+# multiplication. Shipped as days / months, never labelled %.
 DIVIDE_BY_100 = {"median_dom_yoy", "months_of_supply_yoy"}
 
 # Integer on the wire. Everything else keeps decimals.
@@ -95,11 +69,7 @@ DEFAULT_DECIMALS = 2
 
 
 def coerce(key: str, val):
-    """Coerce one cell to its wire representation. Returns None for missing.
-
-    No column is multiplied by 100. Two are divided by it. That asymmetry is the
-    whole content of this function and it is documented at DIVIDE_BY_100.
-    """
+    """One cell to its wire value, or None."""
     if val is None:
         return None
     if isinstance(val, str):

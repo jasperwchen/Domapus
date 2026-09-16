@@ -1,15 +1,7 @@
 import { dataUrl } from "./data-url";
 
-// Fetches public/data/last_updated.json once and shares the result.
-//
-// Two different dates live in that file and they mean different things:
-//   - period_end        the newest Redfin reporting period actually in the data
-//   - zhvi_period_end   the newest Zillow ZHVI month actually in the data
-//   - last_updated_utc  when the pipeline last ran (NOT how fresh the data is)
-//
-// The UI must show the period_end dates. Showing last_updated_utc made the site
-// claim the data was current whenever the cron job ran, even if the upstream
-// feed had not published a new month in the meantime.
+// last_updated.json, fetched once. Show `period_end` / `zhvi_period_end` (data freshness),
+// never `last_updated_utc` (when the cron ran).
 
 export interface DataDates {
   last_updated_utc: string | null;
@@ -69,18 +61,8 @@ export function formatPeriodDay(period: string | null | undefined): string {
 }
 
 /**
- * "2026-07-31" -> "3 months ending Jul 31, 2026".
- *
- * Redfin's ZIP-level rows are a rolling three-month window, not a snapshot of
- * that month. Rendering "July 2026" claims a monthly figure the feed never
- * publishes.
- *
- * It says "3 months", NOT "90 days". The window is calendar-aligned, so its
- * inclusive length takes four values across the file: 92 days x 2,857,977 rows,
- * 91 x 1,026,380, 90 x 733,207, 89 x 312,436. The old feed's uniform
- * PERIOD_DURATION == 90 has no successor here, and `FREQUENCY == 'Rolling 3
- * Months'` is the contract the pipeline asserts instead. No UI copy may say
- * "90 days".
+ * "2026-07-31" -> "3 months ending Jul 31, 2026". Redfin rows are a rolling window of 89-92
+ * days, so never "July 2026" and never "90 days".
  */
 export function formatRedfinWindow(period: string | null | undefined): string {
   const parsed = parsePeriod(period);

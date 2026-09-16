@@ -1,16 +1,8 @@
 import { ZipData } from "./types";
-import {
-  METRICS, PAINTED_METRICS, getMetricLabel,
-  type ChangeFormat, type FormatType, type MetricInfo,
-} from "@/lib/metrics";
-import { getMetricValue } from "@/lib/metric-value";
+import { METRICS, type ChangeFormat, type FormatType } from "@/lib/metrics";
 
-// Re-exports so existing call sites continue to work without churn.
-export {
-  METRICS as METRIC_DEFINITIONS, PAINTED_METRICS,
-  getMetricLabel, getMetricValue,
-};
-export type { ChangeFormat, FormatType, MetricInfo };
+export { METRICS as METRIC_DEFINITIONS };
+export type { FormatType };
 
 // State code → full name
 const STATE_MAP: Record<string, string> = {
@@ -58,15 +50,8 @@ export function formatMetricValue(value: number | null | undefined, format: Form
 }
 
 /**
- * Format a change. NOT every change is a percent.
- *
- * `median_dom_yoy` and `months_of_supply_yoy` are level differences in days and
- * months. Redfin ships them as (now - year_ago) x 100 under a "(%)" suffix that
- * is a lie; the pipeline divides by 100 and ships the honest unit. Rendering
- * either with a "%" here would put the lie back.
- *
- * `ppt` is for changes on an already-percent level: a share going 48.5% -> 50.8%
- * moved 2.3 percentage POINTS, not 2.3 percent.
+ * Format a change. DOM and months-of-supply YoY are day/month differences, never %; `ppt` is
+ * a percentage-point change on a percent level.
  */
 export function formatChange(
   value: number | null | undefined,
@@ -95,17 +80,6 @@ export function formatChange(
       formatted = `${sign}${n.toFixed(1)}%`;
   }
   return { formatted, isPositive: n > 0, isZero: n === 0 };
-}
-
-// Compare two values for comparison views
-export function getComparison(current: number | null | undefined, compare: number | null | undefined): 'higher' | 'lower' | 'same' {
-  const currentNum = Number(current);
-  const compareNum = Number(compare);
-  if (isNaN(currentNum) || isNaN(compareNum)) return 'same';
-
-  const diff = currentNum - compareNum;
-  if (Math.abs(diff) < 0.01) return 'same';
-  return diff > 0 ? 'higher' : 'lower';
 }
 
 export function createMetricPopupContent(data: ZipData, selectedMetric: string): HTMLElement {
@@ -145,13 +119,7 @@ export function createMetricPopupContent(data: ZipData, selectedMetric: string):
   metricRow.append(label, val);
   root.appendChild(metricRow);
 
-  // The uncertainty line. This is the difference between this map and every
-  // other choropleth: a median over 4 sales and a median over 400 are not the
-  // same kind of number, and the popup is where that stops being invisible.
-  //
-  // `msp_rse` is the relative standard error of the MEDIAN SALE PRICE, and it is
-  // shown against that metric only. It would be wrong against `median_dom`, which
-  // has its own K and its own `dom_rse`, and meaningless against a listings count.
+  // Uncertainty line: `msp_rse` for median sale price, `dom_rse` for DOM, nothing otherwise.
   const rse = uncertaintyFor(data, selectedMetric);
   if (rse !== null && typeof data.homes_sold === "number") {
     const sales = data.homes_sold;
@@ -171,11 +139,7 @@ export function createMetricPopupContent(data: ZipData, selectedMetric: string):
   return root;
 }
 
-/** Which relative standard error, if any, describes THIS metric.
- *
- *  Deliberately a whitelist rather than a fallback. `msp_rse` describes the sale
- *  price sample; attaching it to a listings count or a supply ratio would put a
- *  precise-looking number next to a quantity it does not measure. */
+/** The RSE that describes this metric, if any. A whitelist, never a fallback. */
 function uncertaintyFor(data: ZipData, metric: string): number | null {
   const key = metric === "median_sale_price" ? "msp_rse"
     : metric === "median_dom" ? "dom_rse"
@@ -185,15 +149,8 @@ function uncertaintyFor(data: ZipData, metric: string): number | null {
   return typeof v === "number" && isFinite(v) ? v : null;
 }
 
-/** LISA classes 3 and 4 only — the ZIPs that break their neighbourhood's pattern.
- *
- *  Classes 1 and 2 (HH, LL) are deliberately absent. Price is strongly clustered
- *  nationally, so "in a cluster of higher-priced ZIPs" is true of most expensive
- *  ZIPs and tells the reader nothing the map has not already told them. Only the
- *  outliers are worth a line in a popup that has four lines to spend.
- *
- *  Descriptive clustering with a permutation screen — NOT a hypothesis test, so
- *  the wording avoids "significant". */
+/** Popup text for the outlier classes only (HH/LL restate the map). Descriptive wording, no
+ *  "significant": this is a permutation screen, not a hypothesis test. */
 export const LISA_LABELS: Record<number, string> = {
   3: "Cheaper than the ZIPs around it",
   4: "More expensive than the ZIPs around it",

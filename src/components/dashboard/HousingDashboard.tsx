@@ -13,7 +13,7 @@ import {
 import { CHOROPLETH_COLORS } from "@/lib/choropleth";
 import { boot, takeSnapshotPrefetch, fetchManifest, fetchPaint, outlierCount, type Manifest } from "@/lib/manifest";
 import { PaintTable } from "@/lib/paint-table";
-import { ZipTable, WIRE_OF } from "@/lib/zip-table";
+import { ZipTable } from "@/lib/zip-table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "@/hooks/use-toast";
 import { TopBar } from "./TopBar";
@@ -45,17 +45,8 @@ export function HousingDashboard() {
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>((initialUrlStateRef.current.metric as MetricType) || "zhvi");
   const [selectedZip, setSelectedZip] = useState<ZipData | null>(null);
-  // Compare mode lives HERE and not inside `Sidebar`, and that placement is the
-  // whole fix for two bugs that looked unrelated.
-  //
-  // It used to be a `useState` inside `Sidebar`. The dashboard therefore had no
-  // idea compare mode existed, so `handleZipSelect` did the only thing it knew
-  // how to do — replace `selectedZip`, which is the sidebar's `zipData`, which is
-  // the comparison's LEFT-HAND ZIP. Clicking a second ZIP on the map to compare
-  // it against the first silently replaced the first instead. And because
-  // `Sidebar` returns null when closed but stays mounted, that local state
-  // survived a close, so closing the panel in compare mode and clicking a new ZIP
-  // reopened in compare mode rather than showing that ZIP's details.
+  // Compare mode lives here, not in `Sidebar`: a map click in compare mode must set the
+  // comparison ZIP rather than replace the primary one, and closing the panel must reset it.
   const [mode, setMode] = useState<"detail" | "compare">("detail");
   const [compareZip, setCompareZip] = useState<ZipData | null>(null);
   const [searchZip, setSearchZip] = useState<string>(initialUrlStateRef.current.zip || "");
@@ -175,11 +166,7 @@ export function HousingDashboard() {
     hasUserInteractedRef.current = true;
     setUrlState({ zip, metric: selectedMetric });
 
-    // Searching is another way of picking a ZIP, so it goes through the same
-    // handler a map click does and obeys the same compare-mode rule. The search
-    // box used to only fly the map there and highlight the polygon, which left
-    // the reader to find the ZIP they had just typed and click it again before
-    // any numbers appeared.
+    // Search selects like a map click, obeying the same compare-mode rule.
     const row = store?.get(zip);
     if (row) {
       handleZipSelect(row);
@@ -239,11 +226,7 @@ export function HousingDashboard() {
     }
   }, [store]);
 
-  // The viewport set, from REAL polygon bounds. There is no index to build and
-  // no `isIndexReady` gate: `visibleZipRows` is a flat scan of four comparisons
-  // over the loaded ZIPs, ~0.1 ms at this size, so it just runs. The old
-  // R-tree-plus-readiness-flag machinery existed to amortise a cost that was
-  // never there, and three effects used to wait on that flag.
+  // Viewport rows from real polygon bounds; a flat scan (~0.1 ms), no index.
   const recomputeVisible = useCallback((
     loaded: () => readonly string[], bounds: maplibregl.LngLatBounds | null,
   ) => {
@@ -251,10 +234,7 @@ export function HousingDashboard() {
       setVisibleRows(null);
       return;
     }
-    // `loaded()` is only called here, on the auto-scale path. It is a
-    // `querySourceFeatures` over every loaded tile — 38,077 feature instances at
-    // z3 — and auto-scale is off by default, so calling it eagerly meant every
-    // pan and zoom allocated and discarded that set for a caller about to return.
+    // `loaded()` queries every loaded tile, so only the auto-scale path calls it.
     setVisibleRows(visibleZipRows(loaded(), store, bounds));
   }, [store]);
 
@@ -283,10 +263,7 @@ export function HousingDashboard() {
     hasUserInteractedRef.current = true;
   }, []);
 
-  // Both directions have to act on the click. Turning auto-scale off drops the
-  // viewport sample; turning it on re-reads the last map move's tile set and
-  // bounds rather than waiting for the next pan, which is what made the toggle
-  // look dead on a map nobody had moved yet.
+  // Toggling on re-reads the last move's tiles and bounds instead of waiting for a pan.
   useEffect(() => {
     if (!autoScale) {
       setVisibleRows(null);
@@ -316,26 +293,6 @@ export function HousingDashboard() {
       paint, breaks, store ? store.zips : paint.zips(), selectedMetric,
     );
   }, [paint, manifest, store, selectedMetric, autoScale, visibleRows]);
-
-  const legendValues = useMemo(() => {
-    if (!store) return [];
-    const wire = WIRE_OF[selectedMetric] ?? selectedMetric;
-    const out: number[] = [];
-    if (visibleRows && visibleRows.length > 0) {
-      for (let i = 0; i < visibleRows.length; i++) {
-        const v = store.valueAt(wire, visibleRows[i]);
-        if (v !== null && v > 0) out.push(v);
-      }
-      return out;
-    }
-    const col = store.col(wire);
-    if (!col) return out;
-    for (let row = 0; row < store.n; row++) {
-      const v = store.valueAt(wire, row);
-      if (v !== null && v > 0) out.push(v);
-    }
-    return out;
-  }, [visibleRows, store, selectedMetric]);
 
   // Only a failure of BOTH paths is fatal. A dead snapshot with a live paint
   // table still shows the map.
@@ -375,11 +332,7 @@ export function HousingDashboard() {
         <MapExport
           store={store}
           selectedMetric={selectedMetric}
-          // The PUBLISHED national boundaries, not `classSource.breaks`. In
-          // auto-scale mode the live source is cut to the viewport, and a
-          // viewport has nothing to do with the state or metro being exported;
-          // the national scale is the one the site defaults to and the one that
-          // makes two exports comparable.
+          // Published national breaks, not the viewport cut, so exports are comparable.
           breaks={manifest?.classing?.[selectedMetric]?.breaks ?? null}
           onExportModeChange={setIsExportMode}
         />
@@ -436,7 +389,6 @@ export function HousingDashboard() {
             <div className={`absolute ${isMobile ? 'top-4 left-4' : 'bottom-4 right-4'} ${isMobile ? 'w-auto' : 'w-64'} z-[10] pointer-events-auto`}>
               <Legend
                 selectedMetric={selectedMetric}
-                metricValues={legendValues}
                 breaks={classSource?.breaks ?? null}
                 autoScale={autoScale}
                 onAutoScaleChange={setAutoScale}
@@ -449,10 +401,7 @@ export function HousingDashboard() {
                 outliers={outlierCount(manifest) !== null
                   ? { total: outlierCount(manifest)! }
                   : null}
-                // Published counts describe the PUBLISHED breaks. In auto-scale
-                // the live source re-cuts to the viewport, so the two describe
-                // different boundaries and pairing them would mislabel the key.
-                // Withholding them there marks nothing, which is the safe miss.
+                // Counts describe the published breaks, so withhold them under auto-scale.
                 classCounts={
                   autoScale ? null : manifest?.classing?.[selectedMetric]?.class_counts ?? null
                 }

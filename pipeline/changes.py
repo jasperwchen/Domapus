@@ -1,48 +1,22 @@
-"""Year-over-year, recomputed from published levels at lag 12.
+"""Year-over-year, recomputed from published levels at lag 12. No Redfin `*_YOY` is shipped.
 
-ONE RULE: every change metric is computed by us from the levels Redfin publishes,
-in that metric's own native unit. No Redfin `*_YOY` column is ever republished.
+This keeps level and change describing the same quantity, and sidesteps two upstream
+defects: the DOM and months-of-supply "(%)" YoY columns are really differences x 100, and a
+percent change on a degenerate base ($1 sale -> +30,993,016%) is nulled rather than clamped.
 
-That rule is not tidiness. It is what makes the displayed level and the displayed
-change describe the SAME quantity, which is the premise the whole site rests on.
-It also disposes of two upstream defects without a correction factor:
-
-  * `MEDIAN DAYS ON MARKET YOY (%)` and `MONTHS OF SUPPLY YOY (%)` are not
-    percents. They are the absolute difference times 100, under a "(%)" suffix
-    that is a lie — 43.2% of median_dom YoY values in the latest period are below
-    -100, which a percent change cannot be. Recomputing means those columns are
-    never read, so there is no `/100` to remember and no trap left behind.
-
-  * A percent change against a degenerate base is a division artifact, not a
-    measurement. ZIP 12207 (Albany, NY) recorded a $1 median sale price in
-    2025-07 — one $1 transaction — so the published change to 2026-07 is
-    +30,993,016%. That number is arithmetically correct, useless to a reader, and
-    does not fit in the int32 the wire format uses. It is nulled here rather than
-    clamped, because there is no honest value to clamp it to: we do not know what
-    that ZIP's prices did, we know its year-ago sample was one $1 sale.
-
-**Three units, not one.** A change is not automatically a percent:
-
+Units per family:
     ratio (9)       msp mlp ppsf lppsf hs ps nl inv al   percent change
-    point (3)       s2l abv om2                          percentage-POINT difference
-    difference (2)  dom mos                              days / months, natively
-    index (1)       zhvi                                 percent change (in zhvi.py)
-
-The point family is the subtle one. `sold_above_list` is already a percentage, so
-the change from 40% to 45% is +5 percentage points, not +12.5%. Shipping that as a
-percent would be a second silent 100x-style error in a different disguise.
-
-YoY IS A PERCENT CHANGE, NOT A LOG DIFFERENCE. The two are equal only at zero — at
-+25% they differ by 2.686 pp. The log form survives only inside forecasting, where
-it never reaches the UI.
+    point (3)       s2l abv om2                          percentage-point difference
+    difference (2)  dom mos                              days / months
+    index (1)       zhvi                                 percent change (zhvi.py)
 """
 
 import logging
 
-import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 
+from . import panel
 from .contracts import RANGES, PipelineError
 from .units import DECIMALS, DEFAULT_DECIMALS, INTEGER_KEYS, LEVELS
 
@@ -63,56 +37,24 @@ DIFFERENCE = ("median_dom", "months_of_supply")
 assert set(RATIO) | set(POINT) | set(DIFFERENCE) == set(LEVELS.values()), \
     "every Redfin level must be assigned exactly one change family"
 
-# A ratio change needs a base that is actually a measurement. The floor is the
-# metric's own declared plausible range, so this introduces no new number: if a
-# level is too small for the range contract to accept it as a level, it is too
-# small to divide by.
+# A base below the metric's own range contract is too small to divide by.
 RATIO_FLOOR = {m: max(RANGES[m][0], 1e-9) for m in RATIO}
 
-# A flat tolerance on the YoY value, for the ordinary case.
 RECONCILE_TOL = 0.02
 
-# ...and the part a flat tolerance gets wrong. We recompute from the levels the
-# feed PUBLISHES, which are rounded; Redfin computed its own YoY from the
-# unrounded values. The base's rounding propagates into the percent change
-# multiplied by the size of the change itself, so a half-cent of rounding on a
-# $1.01/sqft base becomes 41 percentage points on an 8,400% change. That is not a
-# disagreement about method, it is information the published file does not carry.
-#
-#     tolerance = max(0.02, (|yoy| + 100) * quantisation / base)
-#
-# MEASURED on 2026-06-30 with that tolerance: median_sale_price 0 of 23,738
-# exceed, median_list_price 1 of 25,625, median_list_ppsf 42 of 25,570,
-# median_ppsf 62 of 23,673 — worst share 0.262%. The survivors are ZIPs whose
-# BASE has been restated since Redfin computed the YoY (ZIP 31905's published
-# figure implies a 2025-06 level of 491,058.7 against the 492,250.0 the file now
-# carries), which no tolerance on our side can reconcile.
-#
-# So the contract is a SHARE, not a per-ZIP absolute. That is what makes it
-# sharp against the failure it exists to catch: a lag error or a units error
-# moves essentially every ZIP, not 0.3% of them. The gate sits at 1%, a 3.8x
-# margin over the worst series measured.
+# We recompute from ROUNDED published levels; base rounding scales with the change size,
+# so the per-ZIP bound is max(0.02, (|yoy| + 100) * quantisation / base). Residual misses are
+# restated bases (worst 0.262% of ZIPs, 2026-06). The contract is a share: a lag or units
+# error moves nearly every ZIP. 1% is a 3.8x margin.
 RECONCILE_MAX_SHARE = 0.01
 
-# Prices and rates only. Count metrics are excluded because Redfin pre-emptively
-# uplifts the newest period's published YoY for expected revisions while leaving
-# the published LEVEL un-uplifted — so a blanket "recomputed must equal published"
-# check passes at 100% for prices and hard-fails on every count metric, for a
-# reason that is upstream policy rather than an error on either side.
+# Prices only: Redfin uplifts the newest count YoY for expected revisions but not the level.
 RECONCILE = ("median_sale_price", "median_ppsf", "median_list_price", "median_list_ppsf")
 
 
 def _period_map(panel_path, period: str, columns) -> dict:
-    """One period's rows, keyed by ZIP.
-
-    Called three times per run — once for the YoY base and twice more inside
-    `_reconcile` — and each call wants ~29k of the panel's 4.93M rows. The filter
-    goes to the dataset API so it reaches the row-group statistics: the panel is
-    written in feed order and `redfin.ingest` enforces that PERIOD END descends,
-    so a period sits in one or two of the 159 row groups and the rest are skipped
-    unread. MEASURED on the 2026-07 panel: 0.40 s reading every row group and
-    filtering afterwards, 0.09 s here, byte-identical output.
-    """
+    """One period's rows keyed by ZIP. The dataset filter skips row groups via statistics
+    (0.40 s -> 0.09 s), since the panel is written in descending period order."""
     tbl = ds.dataset(panel_path, format="parquet").to_table(
         columns=["zip", *columns], filter=ds.field("period_end") == period
     )
@@ -122,7 +64,7 @@ def _period_map(panel_path, period: str, columns) -> dict:
 
 def periods(panel_path) -> list[str]:
     keys = pq.read_table(panel_path, columns=["period_end"])
-    return sorted(set(pc.unique(keys["period_end"]).to_pylist()))
+    return panel.axis(keys, "period_end")
 
 
 def _quantisation(metric: str) -> float:
@@ -140,7 +82,7 @@ def _yoy(metric: str, now, before):
         if before < RATIO_FLOOR[metric]:
             return None
         return round((now / before - 1.0) * 100.0, 2)
-    if metric in DIFFERENCE and metric == "median_dom":
+    if metric == "median_dom":
         return round(now - before, 0)
     return round(now - before, 2)
 
@@ -193,15 +135,8 @@ def recompute(panel_path, records: dict, latest: str) -> dict:
 
 
 def _reconcile(panel_path, all_periods: list[str], latest_index: int) -> dict:
-    """CONTRACT: our recomputed YoY matches Redfin's published one, to 2 dp.
-
-    Run on the SECOND-newest period, not the newest. In the newest period only,
-    Redfin computes the level and the YoY on different bases — the published YoY
-    carries a curing uplift for expected revisions and the published level does
-    not — so the two legitimately disagree there by ~1-7 pp on count metrics. Any
-    older period is clean, and this is the check that would have caught a lag-4
-    error, which is the failure mode worth guarding against.
-    """
+    """CONTRACT: recomputed YoY matches Redfin's published column on the SECOND-newest period
+    (the newest carries a revision uplift on counts). Catches lag and units errors."""
     if latest_index < LAG + 1:
         return {"checked": False, "reason": "not enough history behind the newest period"}
 

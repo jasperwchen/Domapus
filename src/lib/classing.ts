@@ -1,20 +1,6 @@
-// How class boundaries are cut, ported from `pipeline/classify.py`.
-//
-// This exists so that AUTO-SCALE CHANGES THE SAMPLE AND NOTHING ELSE. The
-// viewport source used to cut plain quantiles for every metric no matter what
-// scheme the pipeline had used, so flipping the toggle swapped the classing
-// method as well as the sample. On the full national extent, where the sample is
-// the same data the pipeline classed, the two still disagreed violently:
-// `zhvi` is classed log-equal between its p1 and p99 anchors, which puts 6.0% of
-// ZIPs in the two darkest classes, while quantiles put 14.3% in every class by
-// construction — 28.6% in the darkest two, a 4.8x jump [M, 2026-09 release].
-// The map went dark on a toggle whose label promises only a change of sample.
-//
-// The pipeline stays the authority on WHICH scheme a metric gets: the scheme
-// name and the break gate are read from the manifest, never decided here. This
-// module only re-runs the named scheme over a smaller sample. Feeding it the
-// pipeline's own break population reproduces the pipeline's own breaks exactly,
-// which is what `classing.test.ts` asserts.
+// Class boundaries, ported from pipeline/classify.py, for auto-scale re-cuts. The scheme
+// comes from the manifest; given the pipeline's own sample this reproduces its breaks
+// exactly (classing.test.ts). The only place allowed to cut classes on the client.
 
 import { CLASSES } from "./choropleth";
 
@@ -26,7 +12,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[lo] * (1 - (idx - lo)) + sorted[hi] * (idx - lo);
 }
 
-/** Six equally-spaced quantiles. Ties collapse classes; that is real. */
+/** `CLASSES - 1` equally spaced quantiles. */
 function quantileBreaks(sorted: number[]): number[] {
   return Array.from({ length: CLASSES - 1 }, (_, i) =>
     percentile(sorted, (i + 1) / CLASSES));
@@ -43,16 +29,12 @@ function logEqualBreaks(sorted: number[]): number[] | null {
   return Array.from({ length: CLASSES - 1 }, (_, i) => 10 ** (lo + step * (i + 1)));
 }
 
-/** Equal intervals over the definitional [0, 100] domain. Reads no sample, so an
- *  auto-scaled view of a bounded share shows the same boundaries as the national
- *  map — which is the point: the domain does not change with the viewport. */
+/** Equal intervals over [0, 100]; viewport-independent by design. */
 function equalInterval0100Breaks(): number[] {
   return Array.from({ length: CLASSES - 1 }, (_, i) => (100 * (i + 1)) / CLASSES);
 }
 
-/** Equal-width classes whose grid is pinned to 100%, width from the p1..p99 span.
- *  For series that PIVOT at 100% (the sale-to-list ratio), not for shares bounded
- *  by it — see `equalInterval0100Breaks`. */
+/** Equal width from the p1..p99 span, pinned at 100 (sale-to-list ratio). */
 function equalAnchored100Breaks(sorted: number[]): number[] | null {
   const width = (percentile(sorted, 0.99) - percentile(sorted, 0.01)) / CLASSES;
   if (!(width > 0)) return null;
@@ -62,16 +44,9 @@ function equalAnchored100Breaks(sorted: number[]): number[] | null {
 }
 
 /**
- * `CLASSES - 1` boundaries for `sample` under the pipeline's named `scheme`, or
- * null when the scheme cannot honestly be re-cut on this sample.
- *
- * Null means FALL BACK TO THE SHIPPED BREAKS, not "invent something". Three
- * cases produce it, and all three are real:
- *   - `diverging`, which the pipeline fixes rather than recomputing, because a
- *     rescaled YoY map renders a flat year and a boom identically;
- *   - a sample too small or too degenerate to cut, where the pipeline raises;
- *   - a scheme name this build does not know, which means the manifest is from a
- *     newer pipeline and guessing would be worse than not moving.
+ * `CLASSES - 1` boundaries for `sample` under `scheme`, or null meaning "use the shipped
+ * breaks": for `diverging` (fixed by design), too small or degenerate a sample, or an
+ * unknown scheme from a newer pipeline.
  */
 export function fitBreaks(scheme: string | undefined, sample: number[]): number[] | null {
   if (!scheme || sample.length < CLASSES) return null;
@@ -87,8 +62,7 @@ export function fitBreaks(scheme: string | undefined, sample: number[]): number[
   }
   if (!edges) return null;
 
-  // The pipeline rounds to 4 dp before shipping, so rounding here is what makes
-  // a re-cut over the same sample compare equal rather than merely close.
+  // Match the pipeline's 4 dp rounding so identical samples compare equal.
   edges = edges.map((e) => Math.round(e * 1e4) / 1e4);
   for (let i = 1; i < edges.length; i++) {
     if (edges[i] <= edges[i - 1]) return null;

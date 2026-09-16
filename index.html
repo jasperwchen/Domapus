@@ -4,19 +4,9 @@
 <head>
   <meta charset="UTF-8" />
 
-  <!-- GitHub Pages serves public/404.html for every SPA route; it stashes the
-       requested path and bounces here. Put that path back BEFORE anything reads
-       the URL.
-
-       This has to happen in static HTML, not in a React effect. React Router
-       reads window.location once while mounting and does not observe a bare
-       history.replaceState — no popstate fires for it. Restoring from App.tsx's
-       effect therefore fixed the address bar and left the router on "/", which
-       is why /Domapus/methodology showed the map in production while dev, where
-       Vite serves the route directly and no bounce happens, looked fine.
-
-       First in <head> so GTM's pageview and the boot script below both see the
-       real URL, and well before the deferred module bundle. -->
+  <!-- public/404.html stashes the requested SPA path and bounces here. Restore it
+       in static HTML, before anything reads the URL: React Router reads location
+       once on mount and does not observe history.replaceState. -->
   <script>
     (function () {
       var stored;
@@ -24,12 +14,8 @@
         stored = sessionStorage.getItem('spaPath');
         if (stored) sessionStorage.removeItem('spaPath');
       } catch (err) { return; }
-      // Base-relative ("methodology"), so a leading slash is either a stale entry
-      // from an older format or something this script did not write. Drop it
-      // rather than navigate somewhere unintended.
+      // Stored base-relative; a leading slash is not ours, so ignore it.
       if (!stored || stored.charAt(0) === '/') return;
-      // The directory this shell was served from: "/Domapus/" in production,
-      // "/Domapus/pr-preview/pr-N/" in a preview, "/" in dev.
       var dir = window.location.pathname.replace(/[^/]*$/, '');
       window.history.replaceState(null, '', dir + stored);
     })();
@@ -64,62 +50,26 @@
   <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-  <!-- Preload what actually gates the first coloured pixel.
-       The paint table is ~24 KB against the snapshot's ~2.5 MB, and the two
-       fetches below start in the SAME TICK. Chaining them (manifest first, then
-       read the hashed filename out of it) would serialise two round trips in
-       front of a 24 KB download — ~600 ms of pure latency on slow 4G, which is
-       most of the win. The filename map is inlined at build time from the same
-       committed manifest the deploy verifies, so a stale inline fails the deploy
-       rather than shipping a 404 on the critical path.
-       The snapshot is fetched too, but nothing waits for it to paint. -->
-  <!-- `crossorigin` is REQUIRED for as="fetch" even same-origin: Chrome matches
-       preloads to fetch() in CORS mode, and without it the preload and the fetch
-       land in different cache entries and the file downloads TWICE. Measured on
-       the bench harness: bytes-before-first-colour went 27,780 -> 55,560 with the
-       attribute removed. Do not "tidy" it away.
-       Only the manifest is preloaded. The paint table cannot be: its filename is
-       metric-dependent and static HTML cannot read ?metric=, so preloading the
-       default would waste 100 KB on the critical path for any deep link to a
-       different metric. The inline script below runs during head parse and starts
-       that fetch itself, which is within a few milliseconds of what the preload
-       scanner would have managed. -->
+  <!-- Manifest and paint table start in the same tick; the paint filename map is
+       inlined at build time so the two fetches are not chained.
+       `crossorigin` is required on this as="fetch" preload even same-origin, or it
+       lands in a different cache entry from fetch() and downloads twice (measured:
+       bytes to first colour 27,780 -> 55,560 without it). The paint table is not
+       preloaded because its filename depends on ?metric=. -->
   <link rel="preload" href="%VITE_DATA_BASE%manifest.json" as="fetch" crossorigin />
   <script>
     (function () {
       var base = new URL('%VITE_DATA_BASE%', document.baseURI).href;
       var paint = JSON.parse('%VITE_PAINT_MAP%');
       var metric = new URLSearchParams(location.search).get('metric') || 'zhvi';
-      var file = paint[metric] || paint.zhvi;
+      // Own keys only: ?metric=__proto__ must not resolve to a prototype.
+      var file = Object.prototype.hasOwnProperty.call(paint, metric) ? paint[metric] : paint.zhvi;
 
-      // The methodology page draws no map. It needs the manifest, which it fetches
-      // itself and which the preload above already has in flight, but the paint
-      // table and the 2.5 MB snapshot are pure waste there, and a reader arriving
-      // from search or the sitemap pays for both before reading a word.
-      //
-      // The route is readable here because the restore script at the top of this
-      // file has already run, so location.pathname is the requested path and not
-      // the shell the 404 bounced through. Testing the tail rather than the whole
-      // path keeps this independent of the base, which differs per deployment.
-      //
-      // Both consumers already treat a missing boot as "fetch it yourself":
-      // HousingDashboard falls back to fetchManifest/fetchPaint and the worker
-      // fetches the snapshot from its own URL. So a reader who goes on to the map
-      // gets it one round trip later rather than not at all.
+      // The methodology page draws no map, so skip the paint table and snapshot.
+      // Consumers treat a null boot as "fetch it yourself".
       var mapless = /\/methodology\/?$/.test(location.pathname);
 
-      // No inlined map means this is a build from before the first pipeline run.
-      // Resolve to null rather than fetching `undefined`: the app then reads the
-      // manifest itself and pays one extra round trip, which is the correct
-      // degradation. Fetching a 404 here would cost the same round trip AND an
-      // error in the console.
-      // NO `crossorigin` on the preload links above, and a plain fetch here.
-      // Both files are same-origin, and the two have to agree on credentials mode
-      // or the browser keeps them in separate cache entries and downloads twice —
-      // it says so out loud: "preload found, but not used because the request
-      // credentials mode does not match". `crossorigin` (i.e. anonymous) means
-      // credentials mode SAME-ORIGIN, not omit, which is the trap: the obvious
-      // repair of adding `credentials: 'omit'` to the fetch makes it worse.
+      // No inlined map (a build before the first pipeline run): resolve null.
       window.__domapusBoot = file && !mapless
         ? Promise.all([
             fetch(base + 'manifest.json').then(function (r) { return r.json(); }),

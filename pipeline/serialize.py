@@ -1,36 +1,17 @@
-"""Assemble the latest-period snapshot and write the columnar envelope.
+"""Assemble the latest-period snapshot and write the column-major envelope.
 
-**The wire format changed shape in Phase 4, not just width.** The shipped
-snapshot was row-major — one array per ZIP, 38 values each — and this writes one
-array per COLUMN, 50 of them, each as long as `z`. That transposition is the whole
-point: a column of 33,771 numbers converts to an `Int32Array` in one pass and is
-*transferred* to the main thread rather than cloned, which deletes the measured
-173.0 ms object rebuild and the 237.8 ms structured clone. Row-major cannot do
-that, because every row is a separate small object.
+`d[j]` is column j for every ZIP, so the frontend converts each column to an Int32Array in
+one pass and transfers it (measured: removes a 173 ms object rebuild and 238 ms clone).
 
-THE ORDER OF `SNAPSHOT_COLUMNS` IS THE WIRE CONTRACT. The frontend reads `f` and
-indexes `d` by position, so inserting a name in the middle silently shifts every
-column after it. Add at the end, or change both sides in one commit.
-
-Three things the format has to get right, each of which was a real bug:
-
-**Every column declares its scale.** A missing scale is silent — the column
-decodes unscaled and a 4.6% relative standard error reaches the popup as the
-number 46. So `scales` is asserted to cover every name in `f`.
-
-**Null is not zero.** `0` is a legal value for `hs`, `dom`, `abv`, `om2`, `cov`,
-`rel` and `lisa`, so a one-pass Int32Array conversion mapping null to 0 destroys
-real zeros. `NULL_SENTINEL` is declared in the envelope and asserted to round-trip.
-
-**Four statistics columns ship all-null but declared.** `f` is 50 names from the
-first snapshot this emits, because a column added later shifts everything after
-it. `dom_rse`, `msp_yoy_se`, `f_h12`, `f_sigma`, `f_tier` and `lisa` have no
-producer until Phase 5 and ship as `null`, which is a legal value the sentinel
-already has to carry. What they must NOT have is an entry in `breaks` — none of
-them is painted.
+Wire contract:
+- `SNAPSHOT_COLUMNS` order is positional. Append, or change `FIELD_OF` in zip-table.ts in
+  the same commit.
+- Every column declares a scale; a missing one decodes silently wrong (4.6% RSE as 46).
+- Null is `NULL_SENTINEL`, never 0: several columns carry real zeros.
 """
 
 import hashlib
+import itertools
 import json
 import logging
 from datetime import date, datetime, timezone
@@ -44,8 +25,6 @@ log = logging.getLogger(__name__)
 FORMAT = "domapus-snapshot"
 VERSION = 3
 
-# Int32 minimum. Chosen over a companion presence bitmap because it costs no
-# second structure and the frontend's decode stays one comparison per cell.
 NULL_SENTINEL = -2147483648
 
 METADATA_KEYS = ["city", "county", "state", "metro", "lat", "lng", "period_end"]
@@ -56,8 +35,6 @@ REDFIN_KEYS: list[str] = []
 for _key in LEVELS.values():
     REDFIN_KEYS += [_key, f"{_key}_yoy"]
 
-# The keys `assemble()` produces. Internal, long, unambiguous. `SNAPSHOT_COLUMNS`
-# below is the wire projection of these plus geometry and statistics.
 SOURCE_KEYS = METADATA_KEYS + ZHVI_KEYS + REDFIN_KEYS
 
 # Statistics written by noise.py / classify.py / forecast.py / spatial.py.
@@ -67,17 +44,10 @@ STAT_KEYS = ["msp_rse", "dom_rse", "rel", "msp_yoy_se", "f_h12", "f_sigma", "f_t
 COVERAGE = ("both", "redfin_only", "zhvi_only", "no_data")
 COVERAGE_CODE = {"no_data": 0, "zhvi_only": 1, "redfin_only": 2, "both": 3}
 
-# --- The wire projection ---------------------------------------------------
-# (short name, source key, scale). `short` is chosen to be unambiguous: an
-# earlier draft used `stl` and `sal` side by side, which read as "sale-to-list"
-# and "sold-to-list" and could not be told apart.
-#
-# `dom_yoy_d` and `mos_yoy_m` carry their unit in the NAME. They are a change in
-# whole days and in months, not percents — Redfin ships both as (now - year_ago)
-# x 100 under a "(%)" suffix that is a lie, `units.py` divides by 100, and the
-# suffix here is what stops a future reader from formatting them with a % sign.
 DICT_COLUMNS = ("st", "ci", "co", "me")
 
+# (short name, source key, scale). `dom_yoy_d` and `mos_yoy_m` are whole-day and month
+# differences, not percents; the suffix is there so nobody formats them with %.
 COLUMNS: list[tuple[str, str, float]] = [
     ("st", "state", 1), ("ci", "city", 1), ("co", "county", 1), ("me", "metro", 1),
     ("lat", "lat", 1e5), ("lng", "lng", 1e5),
@@ -116,13 +86,10 @@ SNAPSHOT_COLUMNS = [short for short, _, _ in COLUMNS]
 SCALES = {short: scale for short, _, scale in COLUMNS}
 SOURCE_OF = {short: src for short, src, _ in COLUMNS}
 
-# 11 metadata + 8 painted + 7 panel-only + 8 painted YoY + 7 panel-only YoY +
-# zhvi_mom + 8 statistics.
 assert len(SNAPSHOT_COLUMNS) == 50, f"f is {len(SNAPSHOT_COLUMNS)} names, spec section 4.3 says 50"
 assert len(set(SNAPSHOT_COLUMNS)) == 50, "duplicate short name in SNAPSHOT_COLUMNS"
 
-# Painted columns get their class breaks shipped; nothing else may. Short names,
-# because that is what the frontend looks them up by.
+# Long painted name -> wire name. Only these may carry `breaks`.
 PAINTED_SHORT = {
     "zhvi": "zhvi", "median_sale_price": "msp", "median_ppsf": "ppsf",
     "homes_sold": "hs", "active_listings": "al", "median_dom": "dom",
@@ -134,14 +101,9 @@ def assemble(zcta_meta: dict, zhvi: dict, redfin: dict, geometry: dict | None = 
              ) -> tuple[dict, str | None, dict]:
     """Returns (records, newest period_end, coverage counts).
 
-    One row per ZCTA in the metadata file. Redfin ZIPs with no ZCTA polygon are
-    NOT dropped silently — they are counted and reported as orphans, because they
-    are real ZIPs (PO boxes, non-residential) that simply cannot be drawn.
-
-    The anchor comes from the geometry sidecar where one exists, because that
-    point is guaranteed to lie INSIDE the polygon; `zcta-meta.csv`'s lat/lng is a
-    centroid and can land outside a C-shaped or multi-part ZCTA. Falling back to
-    the centroid keeps the 20 ZCTAs the sidecar does not cover on the map.
+    One row per ZCTA. Redfin ZIPs with no ZCTA are counted as orphans, not dropped silently.
+    The anchor is the geometry sidecar's inner point where available (a centroid can fall
+    outside a C-shaped ZCTA), else the metadata centroid.
     """
     from .geom import offsets
 
@@ -210,37 +172,14 @@ def assemble(zcta_meta: dict, zhvi: dict, redfin: dict, geometry: dict | None = 
     return out, max_period, coverage
 
 
-# The old pipeline hard-failed at 120 days on `period_end`. That clock is wrong
-# for two independent reasons and both were shipped bugs:
-#
-#   1. `period_end` is inherently ~35 days behind even on a perfectly healthy
-#      feed — a rolling window ending Jul 31 cannot be published before August —
-#      and it ages to ~65 days before the next publication. A 45-day threshold on
-#      it false-trips every single month.
-#   2. A hard fail refuses to publish, so the manifest that carries the outage
-#      banner is never written and the banner can never render. The hard fail and
-#      the banner cancelled each other out.
-#
-# Publication silence is measured by HTTP Last-Modified (see sources.py), it
-# WARNS rather than failing, and stale data still publishes — stale data is the
-# best data available and refusing to ship it makes the site more wrong, not less.
+# `period_end` lags ~35-65 days on a healthy feed, so staleness WARNS at 45 and still
+# publishes: refusing to ship stale data also suppresses the banner that explains it.
+# 120 days (two missed publications) is a broken feed and fails.
 STALE_WARN_DAYS = 45
-# A ceiling that means something is genuinely broken, not merely late. Two
-# missed publications plus a month of slack.
 MAX_PERIOD_AGE_DAYS = 120
 
-# Redfin and Zillow publish on different days of the month — Redfin early, ZHVI
-# on the 16th — so a run scheduled between the two sees one feed a month ahead of
-# the other and ships half a release: this month's sale prices beside last
-# month's ZHVI, with the forecast anchored a month behind and nothing on the page
-# saying so. The monthly cron sits on the 18th to clear both. This is the guard
-# for the month that assumption breaks.
-#
-# One month apart WARNS and publishes. Fresh Redfin metrics beside a month-old
-# ZHVI column beat republishing last month's everything, and the cron is monthly,
-# so a hard fail here would strand the site until somebody dispatched a run by
-# hand. Two months apart is a feed that missed a publication outright, which is
-# the same judgement MAX_PERIOD_AGE_DAYS already makes about lateness.
+# Redfin publishes before ZHVI (16th); a run between the two ships half a release. One
+# month apart warns and publishes, two fails.
 MAX_PERIOD_GAP_MONTHS = 1
 
 
@@ -255,15 +194,7 @@ def validate(records: dict, redfin_period: str | None, zhvi_period: str | None) 
     if not records:
         raise PipelineError("Output is empty — no ZIPs assembled")
 
-    # An all-null column almost always means an input column was renamed and
-    # silently dropped. It will not catch a 100x units error, which is why the
-    # range contract exists separately.
-    #
-    # SOURCE columns only. This runs immediately after assembly, before noise.py
-    # and classify.py have written anything, so the statistics columns are all
-    # null here by construction — and four of them stay null until Phase 5 fills
-    # them. They are not exposed to upstream schema drift, which is the only thing
-    # this guard is for; their own producers assert their own outputs.
+    # All-null source column = renamed upstream header. Statistics columns are filled later.
     null_columns = [k for k in SOURCE_KEYS if all(r.get(k) is None for r in records.values())]
     if null_columns:
         raise PipelineError(
@@ -293,7 +224,6 @@ def validate(records: dict, redfin_period: str | None, zhvi_period: str | None) 
             )
         ages[label] = age
 
-    # Both periods parsed cleanly above, so this cannot raise.
     gap = _month_index(redfin_period) - _month_index(zhvi_period)
     if abs(gap) > MAX_PERIOD_GAP_MONTHS:
         behind, ahead = ("zhvi", "redfin") if gap > 0 else ("redfin", "zhvi")
@@ -316,12 +246,7 @@ def validate(records: dict, redfin_period: str | None, zhvi_period: str | None) 
 
 
 def read_live(path: Path) -> dict | None:
-    """The published snapshot, parsed, with nothing decoded. `None` if unusable.
-
-    Read ONCE per run. `decode_live` turns it into native-scale values for the
-    diff gate and `diff` compares its raw wire ints against this build's; those
-    two want different things out of the same file and neither should re-read it.
-    """
+    """The published snapshot, parsed once per run, or None if unusable."""
     if not path.exists():
         return None
     try:
@@ -335,25 +260,18 @@ def read_live(path: Path) -> dict | None:
     return payload
 
 
-def decode_live(payload: dict | None) -> tuple[str | None, dict]:
+def decode_live(payload: dict | None, keys=None) -> tuple[str | None, dict]:
     """The live snapshot as (timestamp, {zip: {source_key: value}}), native scales.
 
-    This is the DIFF GATE's view, and it is lossy on purpose: dividing by the wire
-    scale returns the published quantisation, not whatever precision the record it
-    came from held. That is fine for the gate, which asks whether a value moved
-    25%. It is wrong for the change report, which asks whether it moved at all —
-    which is why `diff` never calls this.
+    `keys` limits decoding to those source keys. Lossy by design (published quantisation),
+    which is fine for the gate's "moved 25%" and wrong for `diff`'s "moved at all".
     """
     if payload is None:
         return None, {}
 
     ts = payload.get("last_updated_utc") or payload.get("built_utc")
     if payload.get("format") != FORMAT or payload.get("version") != VERSION:
-        # A snapshot in an older shape decodes to garbage here, not to an error:
-        # `d[j]` would be ZIP j's row rather than column j. The gate must see no
-        # baseline instead of a scrambled one, and `diff` reports it as a format
-        # change. This replaces a row-major compatibility branch that outlived the
-        # v3 rollout it was written for.
+        # An older shape would decode to garbage; give the gate no baseline instead.
         log.warning("Live snapshot is %s v%s, not %s v%s — no baseline for the gate",
                     payload.get("format"), payload.get("version"), FORMAT, VERSION)
         return ts, {}
@@ -367,6 +285,8 @@ def decode_live(payload: dict | None) -> tuple[str | None, dict]:
     for j, short in enumerate(fields):
         col = data[j]
         key = SOURCE_OF.get(short, short)
+        if keys is not None and key not in keys:
+            continue
         if short in dicts:
             table = dicts[short]
             for i, z in enumerate(zips):
@@ -379,29 +299,10 @@ def decode_live(payload: dict | None) -> tuple[str | None, dict]:
     return ts, out
 
 
-# --- The change report ------------------------------------------------------
-# It answers "what moved", and it must not be able to answer that wrong in the
-# direction that looks like nothing happened. Three things the old
-# `count_changes` got wrong, each of which made the published number useless:
-#
-# **It compared source values against wire values.** This build's records against
-# a live snapshot decoded from rounded ints. It happened not to be firing —
-# `assemble()` runs `units.coerce`, which already rounds to the decimals the wire
-# scale carries — but it was one added statistics column away from doing so, and
-# it is not a property anything asserted. Both sides now go through the SAME
-# encoder, so quantisation cannot masquerade as movement by construction.
-#
-# **It iterated `SOURCE_KEYS`, which contains `period_end`** — a key with no wire
-# column, so the live side was `None` for every ZIP on every run. Every
-# Redfin-reporting ZIP therefore read as changed by exactly one point, forever.
-# That is the entire content of the 28,919 this site has been publishing: it
-# equals coverage `both` + `redfin_only`, it is the same number every month, and
-# `zip_codes_changed == data_points_changed` was the tell.
-#
-# **A missing baseline returned (0, 0).** `update_data.yml` gates both the commit
-# and the deploy on that number being positive, so an unreadable live snapshot
-# silently skipped publication. The three outcomes are distinct states now, and
-# the publish decision reads the release digest rather than a count.
+# --- The change report ---------------------------------------------------------------
+# Both sides go through `encode_columns`, so quantisation cannot read as movement. Status
+# distinguishes no baseline and a format change from a real count; the publish decision
+# reads the release digest, not this.
 DIFF_COMPARED = "compared"
 DIFF_NO_BASELINE = "no_baseline"
 DIFF_FORMAT_CHANGE = "format_change"
@@ -412,16 +313,11 @@ def _dict_at(code: int, table: list):
     return table[code] if 0 <= code < len(table) else None
 
 
-def diff(live: dict | None, records: dict) -> dict:
+def diff(live: dict | None, records: dict, encoded=None) -> dict:
     """What moved between the live snapshot and this build, on the wire columns.
 
-    RUN THIS ON A FINISHED BUILD. Seven wire columns (`rel`, `msp_rse`, `dom_rse`,
-    `f_h12`, `f_sigma`, `f_tier`, `lisa`) are written by S5, S5b and S5c, which is
-    after the diff gate. Diffing between assembly and the gate compares this
-    build's un-filled statistics against the live snapshot's real ones and reports
-    every ZIP as changed in seven columns — the same shape of false positive the
-    old `count_changes` had, in a new place. The assertion below is what makes
-    that a stop rather than a plausible-looking number.
+    Must run after S5c: before it, seven statistics columns are empty and every ZIP reads
+    as changed. The assertion below enforces that.
     """
     if records and all(r.get("rel") is None for r in records.values()):
         raise PipelineError(
@@ -430,7 +326,7 @@ def diff(live: dict | None, records: dict) -> dict:
             "every ZIP. Call diff() after S5c, next to the snapshot write."
         )
 
-    zips, dicts, columns = encode_columns(records)
+    zips, dicts, columns = encoded or encode_columns(records)
     empty = {"total": len(zips), "added": 0, "removed": 0, "changed": 0}
 
     if live is None:
@@ -487,9 +383,7 @@ def diff(live: dict | None, records: dict) -> dict:
         "zips": {"total": len(zips), "added": added, "removed": removed,
                  "changed": sum(moved) + added + removed},
         "data_points": points,
-        # Descending, because the shape of this map is the diagnosis. One column
-        # moving for every ZIP while nothing else moved is a renamed column or a
-        # lost scale, not a market.
+        # One column moving for every ZIP is a renamed column or lost scale, not a market.
         "by_column": dict(sorted(by_column.items(), key=lambda kv: (-kv[1], kv[0]))),
     }
 
@@ -518,12 +412,7 @@ def _build_dicts(records: dict) -> dict[str, list[str]]:
 
 
 def encode_columns(records: dict) -> tuple[list[str], dict[str, list[str]], list[list[int]]]:
-    """(zips, dicts, columns) — exactly the ints `write_snapshot` ships.
-
-    Factored out of the writer so the change report can encode this build the same
-    way the snapshot does. Two encoders would be two answers to "what is this
-    cell's wire value", and comparing wire values is the whole job of `diff`.
-    """
+    """(zips, dicts, columns): exactly the ints `write_snapshot` ships."""
     zips = sorted(records)
     dicts = _build_dicts(records)
     code_of = {short: {v: i for i, v in enumerate(vals)} for short, vals in dicts.items()}
@@ -536,10 +425,7 @@ def encode_columns(records: dict) -> tuple[list[str], dict[str, list[str]], list
         else:
             columns.append([_encode(records[z].get(key), scale) for z in zips])
 
-    # The scale has to be applied exactly once between `geom.offsets` and COLUMNS.
-    # It was applied twice for one release; see `geom.assert_bbox_scale`. Checking
-    # the DECODED span here is the point — it is the same arithmetic the frontend
-    # does, so the two cannot disagree about what the wire means.
+    # Decoded bbox span check: the 1e4 scale was once applied twice.
     from .geom import assert_bbox_scale
 
     by_name = dict(zip(SNAPSHOT_COLUMNS, columns))
@@ -548,16 +434,9 @@ def encode_columns(records: dict) -> tuple[list[str], dict[str, list[str]], list
     return zips, dicts, columns
 
 
-# --- Release identity -------------------------------------------------------
-# "Should this run publish?" used to be "did any data point change", which is a
-# semantic question with a fuzzy answer and, as shipped, a constant one. This is
-# the identity of the BYTES the site would serve, so re-running the pipeline over
-# unchanged input produces an identical digest and correctly publishes nothing —
-# whatever a developer has left lying in `public/data/`.
-#
-# Timestamps are excluded on purpose. `built_utc` and `generated_utc` move every
-# run; including them would make every run look like a change, which is the
-# failure this replaces.
+# --- Release identity -------------------------------------------------------------------
+# The publish decision: identity of the bytes served. Timestamps are excluded so a rebuild
+# over unchanged input reproduces it.
 DIGEST_KEYS = (
     "version", "null_sentinel", "f", "z", "d", "dicts", "scales",
     "classes", "breaks", "classing",
@@ -573,21 +452,16 @@ def payload_digest(payload: dict) -> str:
 
 
 def release_digest(snapshot_digest: str, paint_assets: dict) -> str:
-    """The identity of everything a release serves: the snapshot AND the paint tables.
-
-    The paint tables are half of what the map renders and they are hashed
-    independently, so a digest over the snapshot alone would call a release
-    unchanged when the colours moved.
-    """
+    """Snapshot digest plus every paint table hash; colours can move with the snapshot unchanged."""
     h = hashlib.sha256(snapshot_digest.encode("utf-8"))
     for metric in sorted(paint_assets):
         h.update(f"|{metric}={paint_assets[metric]['sha256']}".encode("utf-8"))
     return h.hexdigest()
 
 
-def write_snapshot(records: dict, out_path: Path, envelope: dict) -> dict:
-    """Write the column-major envelope. `envelope` supplies the period metadata."""
-    zips, dicts, columns = encode_columns(records)
+def write_snapshot(records: dict, out_path: Path, envelope: dict, encoded=None) -> dict:
+    """Write the column-major envelope. `encoded` reuses an `encode_columns` result."""
+    zips, dicts, columns = encoded or encode_columns(records)
 
     payload = {
         "format": FORMAT,
@@ -604,12 +478,11 @@ def write_snapshot(records: dict, out_path: Path, envelope: dict) -> dict:
     _assert_encoder_contracts(payload, records, zips)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
-
-    back = json.loads(out_path.read_text(encoding="utf-8"))
-    if back["f"] != payload["f"] or back["z"] != payload["z"] or back["d"] != payload["d"]:
-        raise PipelineError("snapshot did not round-trip through JSON")
-    _assert_value_round_trip(back, records)
+    # allow_nan=False refuses the only value JSON would not round-trip, so the file equals
+    # the payload and the 11 MB re-parse is unnecessary.
+    out_path.write_text(json.dumps(payload, separators=(",", ":"), allow_nan=False),
+                        encoding="utf-8")
+    _assert_value_round_trip(payload, records)
 
     return {"zips": len(zips), "columns": len(SNAPSHOT_COLUMNS),
             "bytes": out_path.stat().st_size,
@@ -630,8 +503,6 @@ def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> 
     if bad:
         raise PipelineError(f"snapshot: column(s) {bad} are not len(z) = {len(zips):,}")
 
-    # A missing scale is silent: the column decodes unscaled and a 4.6% relative
-    # standard error reaches the popup as the number 46.
     missing = [n for n in f if n not in payload["scales"]]
     if missing:
         raise PipelineError(f"snapshot: no scale declared for {missing}")
@@ -666,8 +537,7 @@ def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> 
             f"legend that does not exist"
         )
 
-    # Percent-scale bounds, per the feed's own measured ceilings. `s2l` is
-    # clamped upstream at [50, 200] and `abv` reaches 100.04 across 694 ZIPs.
+    # Upstream clamps s2l to [50, 200]; abv reaches 100.04.
     for short, lo, hi in (("s2l", 50.0, 200.0), ("abv", 0.0, 101.0)):
         j, scale = f.index(short), payload["scales"][short]
         off = [v for v in d[j] if v != NULL_SENTINEL and not lo <= v / scale <= hi]
@@ -679,21 +549,12 @@ def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> 
 
 
 def _assert_value_round_trip(payload: dict, records: dict, sample: int = 200) -> None:
-    """Decode the emitted JSON back and compare against the in-memory records.
+    """Compare the written JSON against the in-memory records, on encoded ints.
 
-    The comparison is on the ENCODED integer, not on the decoded float. Decoding
-    and re-comparing with a tolerance sounds stricter and is actually weaker: at
-    scale 1e4 a relative standard error of 0.13995 legitimately encodes to 1400
-    and decodes to 0.14, which is the quantisation working as designed, and any
-    tolerance loose enough to accept it is loose enough to hide a real error.
-
-    The sample is deliberately not random. It is padded with ZIPs carrying a real
-    `0` and ZIPs carrying `null` in the same column, because those are the two
-    values a one-pass conversion conflates; everything else round-trips whether or
-    not the sentinel works. The probe column is CHOSEN by scanning for a column
-    that actually has both, rather than named in advance — `homes_sold` looks like
-    the obvious candidate and turns out never to be 0 in this feed, so a hardcoded
-    probe would have quietly tested nothing.
+    Integer comparison, not a float tolerance: any tolerance loose enough for legitimate
+    quantisation hides real errors. The sample is padded with ZIPs holding a real 0 and a
+    null in the same column (found by scan, since `homes_sold` is never 0), because that
+    is the pair a broken sentinel conflates.
     """
     f, z, d = payload["f"], payload["z"], payload["d"]
     sentinel = payload["null_sentinel"]
@@ -707,17 +568,13 @@ def _assert_value_round_trip(payload: dict, records: dict, sample: int = 200) ->
         if short in dicts:
             continue
         key = SOURCE_OF[short]
-        z0 = [zc for zc in z if records[zc].get(key) == 0][:20]
-        zn = [zc for zc in z if records[zc].get(key) is None][:20]
+        z0 = list(itertools.islice((zc for zc in z if records[zc].get(key) == 0), 20))
+        zn = list(itertools.islice((zc for zc in z if records[zc].get(key) is None), 20))
         if z0 and zn:
             probe, zeros, nulls = short, z0, zn
             break
     if probe is None:
-        # Size-dependent on purpose. Over a real release this is a genuine alarm:
-        # `cov` alone carries both a 0 (no data from either source) and a null, so
-        # finding neither means the encoder is collapsing them and the probe below
-        # would silently test nothing. Over a handful of fixture ZIPs it just means
-        # the fixture is small, and failing there would be noise.
+        # `cov` alone has both over a real release; only tiny fixtures lack one.
         if len(z) >= 1000:
             raise PipelineError(
                 "snapshot round-trip: no column carries both a real 0 and a null "

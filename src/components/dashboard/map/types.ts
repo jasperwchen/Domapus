@@ -1,11 +1,5 @@
-// Field names must match `KEY_ORDER` in pipeline/serialize.py exactly. The wire
-// format is positional, so a name that disagrees silently reads a neighbouring
-// column rather than failing.
-//
-// No Redfin `*_mom` field exists. Redfin publishes none at ZIP level — measured
-// 0 non-null cells in 4,930,000 x 14 — because the ZIP window is a rolling three
-// months, NSA. `zhvi_mom` stays because ZHVI is smoothed and seasonally adjusted
-// on true calendar months. See spec section 1.5.6.
+// Field names are what `FIELD_OF` in src/lib/zip-table.ts maps the wire columns to.
+// Only ZHVI has a MoM field: Redfin publishes none at ZIP level (rolling 3-month, NSA).
 export interface ZipData {
   // Location, from public/data/zcta-meta.csv
   zipCode: string;

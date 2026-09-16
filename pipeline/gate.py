@@ -1,15 +1,7 @@
-"""The diff gate: refuse to publish a snapshot that moved more than a real month can.
+"""Diff gate: refuse a snapshot that moved more than a real month can.
 
-This is the check that would have caught the property-type bug. The fingerprint
-was already sitting in the site's own published metadata — `last_updated.json`
-reported 26,267 of 33,771 ZIPs changed in one month, 77.8%, from a rolling
-three-month window. No real month does that.
-
-Thresholds are calibrated from the panel's OWN month-over-month transitions by
-`scripts/calibrate_diff_gate.py`, which writes `tests/baselines/diff_gate.json`.
-They are explicitly NOT calibrated from `public/data/archive/*.json.gz`: those
-snapshots were produced by the buggy pipeline, so calibrating on them would bake
-the defect into the baseline permanently and blind the gate forever.
+Thresholds come from the panel's own month-over-month transitions
+(`scripts/calibrate_diff_gate.py`), never from archived snapshots produced by the old bug.
 """
 
 import json
@@ -21,12 +13,9 @@ from .contracts import PipelineError
 
 log = logging.getLogger(__name__)
 
-# Four price-like series. A units change, a grain change or a source swap moves
-# all of them; a genuine market month moves none of them much.
 GATED = ["median_sale_price", "median_list_price", "median_ppsf", "zhvi"]
 
-# National aggregates, checked separately because a distributional shift can hide
-# inside a per-ZIP threshold.
+# National aggregates catch distribution shifts a per-ZIP threshold can hide.
 NATIONAL_MEDIAN_LIMIT = 0.10
 HOMES_SOLD_TOTAL_LIMIT = 0.30
 COVERAGE_LIMIT = 0.02
@@ -70,13 +59,7 @@ def load_thresholds(path: Path) -> dict:
 def gate(new: dict, live: dict, thresholds: dict, coverage: dict | None = None,
          live_coverage: dict | None = None, override: bool = False,
          reason: str = "") -> dict:
-    """Compare a candidate snapshot against the live one. Returns a report.
-
-    Raises unless `override` is set AND `reason` is non-empty. The first run of a
-    fixed pipeline trips this on purpose — which means the very first thing anyone
-    does with the gate is override it, and that is exactly the habit that destroys
-    gates. Pre-write the reason in the PR, do not discover the need at 2am.
-    """
+    """Compare against the live snapshot. Raises unless overridden with a non-empty reason."""
     failures: list[str] = []
     observed: dict[str, dict] = {}
 

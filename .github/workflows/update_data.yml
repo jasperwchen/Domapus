@@ -73,15 +73,21 @@ jobs:
       #
       # The diff gate runs inside this step, BEFORE any artifact is written, so a
       # refused build leaves nothing a later step could mistake for a good one.
+      # Inputs go through env, never `${{ }}` inside the script: a reason
+      # containing `$(...)` would otherwise execute.
+      env:
+        OVERRIDE_GATE: ${{ inputs.override_diff_gate }}
+        OVERRIDE_REASON: ${{ inputs.override_reason }}
+        FORCE_REBUILD: ${{ inputs.force_rebuild }}
       run: |
-        ARGS=""
-        if [ "${{ inputs.override_diff_gate }}" = "true" ]; then
-          ARGS="--override-diff-gate --override-reason ${{ toJSON(inputs.override_reason) }}"
+        ARGS=()
+        if [ "$OVERRIDE_GATE" = "true" ]; then
+          ARGS+=(--override-diff-gate --override-reason "$OVERRIDE_REASON")
         fi
-        if [ "${{ inputs.force_rebuild }}" = "true" ]; then
-          ARGS="$ARGS --force"
+        if [ "$FORCE_REBUILD" = "true" ]; then
+          ARGS+=(--force)
         fi
-        python -u -m pipeline $ARGS
+        python -u -m pipeline "${ARGS[@]}"
 
     - name: Did upstream change?
       id: upstream

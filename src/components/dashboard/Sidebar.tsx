@@ -33,16 +33,8 @@ interface SidebarProps {
   onCompareZipChange: (zip: ZipData | null) => void;
 }
 
-// Desktop panel width, in px.
-//
-// MIN is set by the widest thing the panel has to hold, which is the comparison
-// table and not the detail list. Comparison is four columns — label, A, B, and
-// the percentage — so 184 px of it is fixed no matter how narrow the panel gets,
-// plus 56 px of padding and gaps. At 360 that leaves the metric name 96 px,
-// about eleven characters before the ellipsis, which is the point where the
-// truncated label plus its tooltip is still usable. Below that the name is three
-// words of nothing. MAX keeps the map the larger half of the window at any
-// viewport the md breakpoint admits.
+// MIN fits the 4-column comparison table (184 px fixed + 56 px padding) with ~11 label
+// characters left; MAX keeps the map the larger half.
 const MIN_W = 360;
 const MAX_W = 720;
 const DEFAULT_W = 384; // what `w-96` was
@@ -173,16 +165,11 @@ export function Sidebar({
   );
 }
 
-/** The drag target on the panel's right edge.
- *
- *  Pointer events rather than mouse events so a pen or a touchpad drag works the
- *  same way, and pointer capture so a fast drag that outruns the 12 px strip
- *  keeps tracking instead of dropping. The panel is absolutely positioned over
- *  the map, so nothing reflows while this runs — only the fill of the overlay
- *  changes, and MapLibre never sees a resize.
- *
- *  `separator` with arrow keys because a drag handle that only responds to a
- *  pointer is unreachable by keyboard, and the width it sets is real state. */
+/**
+ * The drag target on the panel's right edge.
+ *  Pointer events with capture so pen, touchpad and fast drags track. Also a keyboard
+ *  `separator`, since the width it sets is real state.
+ */
 function ResizeHandle({
   width, onWidth, onDragging, rootRef,
 }: {
@@ -244,12 +231,7 @@ function ResizeHandle({
   );
 }
 
-/** ZIP, place, and which period the numbers cover.
- *
- *  This was a five-row label/value table — City, County, Metro, State, Redfin
- *  period — in 10 px uppercase against 12 px values, which is two type sizes for
- *  what is really a subtitle. One line of place and one line of period says the
- *  same thing in a third of the height. */
+/** ZIP, place, and which period the numbers cover. */
 function Header({
   zipData, comparing, isMobile, headingRef, onClose,
 }: {
@@ -355,11 +337,7 @@ function Hero({ zipData, metricKey }: { zipData: ZipData; metricKey: string }) {
     : null;
   const sales = typeof zipData.homes_sold === "number" ? zipData.homes_sold : null;
 
-  // Which clock this number is on. The two sources genuinely differ — Zillow's
-  // index is a calendar month, Redfin's row is a rolling three-month window — and
-  // a panel that shows both without saying which is which invites the reader to
-  // compare a month against a quarter. The exact ZHVI month is in the top bar;
-  // repeating it per ZIP would need a field the snapshot does not carry per row.
+  // Say which clock the number is on: ZHVI is a calendar month, Redfin a rolling three months.
   const period = metricKey.startsWith("zhvi")
     ? "Zillow · monthly index"
     : `Redfin · ${formatRedfinWindow(zipData.period_end)}`;
@@ -408,12 +386,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 /**
- * One group of metrics as rows, not cards.
- *
- * A row is `label · value · delta` on one 32 px line with a hairline rule. The
- * card version spent a border, a shadow and 32 px of vertical padding per number,
- * so fifteen numbers took about 1,400 px of scroll; this is roughly a third of
- * that and the values line up in a column the eye can run down.
+ * One group of metrics as `label  value  delta` rows (cards took ~1,400 px of scroll).
  */
 function MetricGroup({
   label, keys, zipData, highlight,

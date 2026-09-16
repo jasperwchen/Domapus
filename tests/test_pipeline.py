@@ -78,6 +78,24 @@ def test_duplicate_key_is_rejected(tmp_path):
         redfin.ingest(dupe, tmp_path / "p.parquet")
 
 
+def test_rows_out_of_period_order_are_rejected(tmp_path):
+    lines = SAMPLE.read_text(encoding="utf-8").splitlines()
+    shuffled = tmp_path / "order.csv"
+    shuffled.write_text("\n".join(lines[:1] + [lines[-1]] + lines[1:-1]), encoding="utf-8")
+    with pytest.raises(PipelineError, match="not descending"):
+        redfin.ingest(shuffled, tmp_path / "p.parquet")
+
+
+def test_zip_without_leading_zero_is_rejected(tmp_path):
+    header, first, *rest = SAMPLE.read_text(encoding="utf-8").splitlines()
+    cols = first.split(",")
+    cols[header.split(",").index("REGION NAME")] = "501"
+    bad = tmp_path / "zip.csv"
+    bad.write_text("\n".join([header, ",".join(cols), *rest]), encoding="utf-8")
+    with pytest.raises(PipelineError, match="not 5 digits"):
+        redfin.ingest(bad, tmp_path / "p.parquet")
+
+
 def test_property_type_column_reappearing_is_rejected():
     with pytest.raises(PipelineError, match="REAPPEARED"):
         assert_columns_absent(["PERIOD END", "PROPERTY TYPE"], "test")

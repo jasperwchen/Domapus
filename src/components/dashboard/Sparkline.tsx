@@ -1,20 +1,8 @@
-// The per-ZIP history chart: a full series, the forecast ribbon, and a readout
-// that follows the pointer.
+// Per-ZIP history chart with a labelled forecast ribbon and a pointer readout. Each series
+// keeps its own units and clock (ZHVI monthly, Redfin rolling three months), and the range
+// readout excludes the forecast band.
 //
-// WHAT WAS CONFUSING ABOUT THE OLD VERSION, since the fixes only make sense
-// against it. It drew three series that come from two companies on two different
-// clocks — Zillow's ZHVI is a calendar-month index, Redfin's rows are a rolling
-// three-month window — through one silently rescaling y-axis, so switching tabs
-// changed the units, the axis and the start year with no cue that anything but
-// the line had moved. The forecast was drawn as a dashed line and a ribbon past
-// the last observation but never labelled ON the chart; the only explanation was
-// a 10 px paragraph under a slider that appears for ZHVI alone. `low / latest /
-// high` were the extremes of the series INCLUDING the forecast band, which reads
-// as the ZIP's own range. And the x-axis carried two labels fourteen years apart.
-//
-// Progressive enhancement is still the contract. `loadHistory` never throws and
-// returns null on any failure; this renders a short line in that case and the
-// panel around it must not depend on anything here.
+// Progressive enhancement: `loadHistory` returns null on failure and this shows a short line.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {

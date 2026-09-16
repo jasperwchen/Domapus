@@ -1,21 +1,5 @@
-// Single source of truth for metric metadata. Used by:
-//   - MetricSelector dropdown (the `painted` subset only)
-//   - Legend (display name + value formatting)
-//   - Sidebar (label, change key, format)
-//   - ZipComparison (label + format)
-//   - PrintStage (display name, buckets)
-//   - data-processor worker (via getMetricValue)
-//
-// Keys here must match `KEY_ORDER` in pipeline/serialize.py exactly. The wire
-// format is positional — the worker zips `f` against each row — so a name that
-// disagrees silently reads a neighbouring column.
-//
-// WHY THERE IS NO `momKey` EXCEPT ON ZHVI. Redfin publishes no month-over-month
-// at ZIP level: measured 0 non-null cells in 4,930,000 x 14. That is deliberate
-// on their side — the ZIP window is a rolling three months, NSA, so consecutive
-// windows overlap by two thirds and a raw MoM would be dominated by season.
-// ZHVI is `sm_sa`, smoothed and seasonally adjusted on true calendar months, so
-// its MoM is the thing MoM is supposed to mean. See spec section 1.5.6.
+// Metric metadata. Keys are `ZipData` field names. Only ZHVI has `momKey`: Redfin publishes
+// no ZIP-level MoM (rolling three-month windows, NSA).
 
 import type { ZipData } from "@/components/dashboard/map/types";
 
@@ -23,17 +7,12 @@ import type { ZipData } from "@/components/dashboard/map/types";
 export type FormatType = "price" | "number" | "days" | "percent" | "months";
 
 /**
- * How a change is rendered. NOT all changes are percents, and treating them as
- * one is a correctness bug, not a formatting nit:
- *   percent — a ratio change, "+4.2%"
- *   ppt     — a percentage-point difference on an already-percent level, "+2.3 pts"
- *   days    — a level difference in whole days, "+17 days"
- *   months  — a level difference in months, "-1.4 months"
- *
- * `days` and `months` exist because Redfin ships `MEDIAN DAYS ON MARKET YOY (%)`
- * and `MONTHS OF SUPPLY YOY (%)` as (now - year_ago) x 100 under a "(%)" suffix
- * that is a lie. The pipeline divides them by 100 and ships the honest unit;
- * these two must never be labelled a percent anywhere in the UI.
+ * How a change is rendered:
+ *   percent  ratio change, "+4.2%"
+ *   ppt      percentage-point change on a percent level, "+2.3 pts"
+ *   days     difference in days, "+17 days"
+ *   months   difference in months, "-1.4 months"
+ * DOM and months-of-supply YoY are never percents.
  */
 export type ChangeFormat = "percent" | "ppt" | "days" | "months";
 
@@ -121,16 +100,7 @@ export const METRICS: Record<string, MetricInfo> = {
 export type MetricKey = keyof typeof METRICS;
 
 /**
- * How the detail panel groups the fifteen metrics.
- *
- * The panel used to render all fifteen as a flat run of cards — one number per
- * card, each with its own border and 16 px of padding — which was about 1,400 px
- * of scroll and gave the reader no way to tell that "Median Sale Price" and
- * "Months of Supply" answer different questions. Three groups is the natural cut:
- * what homes cost, how fast they are moving, and how many there are.
- *
- * Order within a group is deliberate — the most-asked-for number first, so the
- * two collapsed groups still show their headline when opened.
+ * Detail panel groups: cost, pace, supply. Most-asked-for metric first in each.
  */
 export const METRIC_GROUPS: { id: string; label: string; keys: string[] }[] = [
   {
@@ -174,16 +144,6 @@ if (import.meta.env.DEV) {
 export const PAINTED_METRICS: Record<string, MetricInfo> = Object.fromEntries(
   Object.entries(METRICS).filter(([, m]) => m.painted),
 );
-
-/** Two of these — `median_list_price` and `sold_above_list` — were REDEFINED by
- *  Redfin in the 2026-05 rebuild and are not comparable to our pre-2026-06
- *  history. `sold_above_list` is now measured against the ORIGINAL list price;
- *  `median_list_price` narrowed to new listings only and runs ~$8k below the
- *  old series. Surface this wherever a time series is drawn (Phase 7). */
-export const SERIES_BREAK_2026_06: ReadonlySet<string> = new Set([
-  "median_list_price",
-  "sold_above_list",
-]);
 
 /** Human-readable label for a metric key, or a title-cased fallback. */
 export function getMetricLabel(metric: string): string {

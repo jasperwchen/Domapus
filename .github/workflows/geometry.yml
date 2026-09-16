@@ -81,6 +81,7 @@ jobs:
         if: inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           {
@@ -98,10 +99,10 @@ jobs:
             cat build/coverage-after.json
             echo '```'
           } > /tmp/notes.md
-          gh release create "${{ inputs.release_tag }}" \
+          gh release create "$RELEASE_TAG" \
             build/us_zip_codes.pmtiles \
             public/data/zcta-geom.csv \
             public/data/zcta-tiny-points.geojson \
             geometry.lock.json \
-            --title "Geometry ${{ inputs.release_tag }}" \
+            --title "Geometry $RELEASE_TAG" \
             --notes-file /tmp/notes.md

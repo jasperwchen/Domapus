@@ -22,12 +22,8 @@ const GithubIcon = ({ className }: { className?: string }) => (
 const BASE_PATH = import.meta.env.BASE_URL;
 
 /**
- * The header both routes share: identity on the left, site-wide links on the
- * right, and whatever the page itself needs in between.
- *
- * It was split out of `TopBar` because the methodology page had no header at all.
- * Giving it the map's header would have handed the reader a metric selector and a
- * ZIP search that control a map on another route.
+ * The header both routes share. Split out so the methodology page gets a header without the
+ * map's metric selector and search.
  */
 export function TopBarShell({
   subtitle, center, actions, nav = "methodology",
@@ -44,18 +40,10 @@ export function TopBarShell({
    *  will look for, and the methodology page previously offered none. */
   nav?: "methodology" | "map";
 }) {
-  // Both routes carry the query string across, because the map keeps its whole
-  // view there: metric, selected ZIP, centre and zoom. Without it the reader who
-  // opens the methodology page comes back to the national default instead of the
-  // county they were reading about. The methodology page ignores these params and
-  // sets its own canonical, so carrying them costs nothing but URL length.
+  // Carry the query string so returning from methodology restores the map view.
   const { search } = useLocation();
 
-  // Breakpoints, not the `isMobile` hook, because the hook is one boolean at
-  // 768 px and this row has to degrade in more than two steps. Adding the
-  // Methodology button pushed the total minimum width past a 900 px viewport and
-  // the wordmark overlapped the search field; between 768 and 1280 the labels are
-  // what has to give, not the layout.
+  // Tailwind breakpoints, not `isMobile`: this row degrades in more than two steps.
   return (
     <header
       data-top-bar
@@ -116,29 +104,12 @@ export function TopBarShell({
   );
 }
 
-/** Icon plus a label that appears only when there is room for it. The title
- *  attribute carries the name at every width, so the icon-only state is still
- *  identifiable.
+/** Icon plus a label shown when there is room; `title` names it at every width.
  *
- *  Three destinations, and the prop decides all of the behaviour so it cannot be
- *  set inconsistently at a call site.
- *
- *  `to` is a client-side route. Nothing stays in the tab by accident: a new tab
- *  per route leaves the reader collecting windows and disables Back, which is the
- *  control they will actually reach for.
- *
- *  `href` without `external` is a route this app deliberately reaches by a full
- *  page load. That is the map: `index.html` starts the manifest and paint fetches
- *  during head parse, and a client-side mount cannot, so it falls back to
- *  fetchManifest then fetchPaint, two round trips in series that the boot script
- *  runs in parallel with the bundle. Routing into the map would trade the 404
- *  bounce for a slower first paint. React Router also cannot express the map's URL:
- *  `useHref` returns the bare basename for a "/" path, so a Link renders
- *  `/Domapus` and drops the trailing slash the canonical URL carries.
- *
- *  `href` with `external` leaves the site, the one case where a new tab earns
- *  itself, because the alternative is discarding the map the reader was using. It
- *  says so out loud for anyone who cannot see a window open. */
+ *  `to`: client-side route, same tab.
+ *  `href`: full page load to the map, so index.html's boot fetches run in parallel with the
+ *  bundle (and `useHref` would drop the canonical trailing slash).
+ *  `href` + `external`: leaves the site in a new tab, announced for screen readers. */
 type IconLinkProps = {
   label: string;
   className?: string;

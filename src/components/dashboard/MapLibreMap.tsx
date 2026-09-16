@@ -11,7 +11,7 @@ import { trackError } from "@/lib/analytics";
 import { Fullscreen } from "lucide-react";
 import {
   ChoroplethPainter, classOpacityExpression, classPaintExpression, outlierColorExpression,
-  loadedZips,
+  countZipPaintRewrites, loadedZips,
 } from "@/lib/choropleth-painter";
 import type { ClassSource } from "@/lib/class-source";
 import type { ZipTable } from "@/lib/zip-table";
@@ -32,16 +32,8 @@ interface MapProps {
   /** The one live class authority. Swapping it bumps an epoch; the painter
    *  rewrites the full ZIP set and the paint expression never changes. */
   classSource: ClassSource | null;
-  /** `loaded` is a LAZY accessor for the ZIPs on loaded TILES, which is the
-   *  correct scope for painting; the viewport filter that auto-scale needs is
-   *  applied upstream against real polygon bounds.
-   *
-   *  It is a function and not an array on purpose. Producing it is a
-   *  `querySourceFeatures` over every loaded tile — 38,077 feature instances at
-   *  z3 — plus a Set build, and the only consumer is auto-scale, which is off by
-   *  default. Passing the array meant every pan and zoom ended by allocating and
-   *  discarding tens of thousands of feature objects for a caller that returned
-   *  immediately. Passing the thunk puts the cost at the call site that wants it. */
+  /** Lazy accessor for ZIPs on loaded tiles (a `querySourceFeatures` over every tile), so
+   *  only auto-scale, which is off by default, pays for it. */
   onMapMove: (
     loaded: () => readonly string[],
     bounds: maplibregl.LngLatBounds,
@@ -87,56 +79,11 @@ const COVERAGE_MIN_ZOOM = 3;
  *  coasts off both edges. */
 const FIT_WIDTH_FRACTION = 0.92;
 
-/*
- * WHY ZIP BORDERS FADE BELOW THE DEFAULT VIEW, AND ONLY BELOW IT.
- *
- * The `line-opacity` stops on the `zips-border` layer below come from here.
- *
- * The border layer draws every ZCTA's own ring, so both sides of each shared
- * edge get painted. `geometry.lock.json` measures 5,624,668 segments at 292.9 m
- * median spacing: about 1.6 million km of line over the lower 48's 8.08 million
- * km2, so 0.198 km of ink per km2 of country. At 39N a CSS pixel spans
- * 60.8 / 2^zoom km, so the share of the country covered by border ink is
- *
- *     ink = 0.198 km/km2 x line-width(zoom) px x km-per-pixel(zoom)
- *
- * The default view opens around z4, where ink is 0.30 and the map looks right.
- * Below that the ink roughly doubles per zoom step, to 0.45 at z3 and 0.90 at
- * z2, and the choropleth greys over: compositing the 0.15-alpha stroke that
- * many times darkens the map by 1 - 0.85^ink, which runs 4.8% at z4 to 7.1% at
- * z3 and 13.7% at z2 nationally, and 22% to 31% to 52% at the roughly five
- * times ink density of a dense metro.
- *
- * So z4 is the reference, and the fade only holds the PRODUCT at its level:
- *
- *     opacity(z) = ink(z4) / ink(z), capped at 1
- *
- * which is 1 at z4 and above, 0.67 at z3 and 0.33 at z2. Darkening then sits
- * flat near 4.6% nationally and 21% in a metro from z2 all the way to z4,
- * instead of climbing. **Nothing at or above z4 changes**; this removes only
- * the excess ink that low zoom adds, and a hovered or searched ZIP keeps a
- * full-strength outline at every zoom.
- *
- * Recompute if the layer's `line-width` changes, since ink is linear in it.
- *
- * The stops themselves are written out on the `zips-border` layer, in the same
- * literal form as `line-width` beside them: MapLibre's expression types only
- * narrow on a literal, and one copy of the numbers cannot drift from another.
- */
 
 /**
- * The zoom the map refuses to go below.
- *
- * COVERAGE_MIN_ZOOM is only affordable on a viewport wide enough to show the
- * country at it. At z3 the lower 48 is 658 CSS px across, so on a 375 px phone a
- * hard floor of 3 opened the map with both coasts off-screen: `fitBounds` wants
- * z2.19 there and gets clamped. Take the lower floor only where the alternative
- * is not showing the United States at all, and never below what the tileset has.
- *
- * The cost is bounded and small. Below z3 the tileset serves its z2 cut, which
- * is missing 75 of 33,780 ZCTAs (0.22%), and at z2 one pixel is about 39 km, so
- * those are sub-pixel however they are tiled. Viewports wider than ~715 px never
- * reach for it, so desktop and landscape tablets keep the full-coverage floor.
+ * Zoom floor. z3 guarantees every ZCTA has a polygon, but a 375 px phone cannot fit the lower
+ * 48 at z3, so narrow viewports may go to the tileset's z2 (missing 75 of 33,780 ZCTAs, all
+ * sub-pixel there). Viewports wider than ~715 px keep z3.
  */
 function zoomFloorFor(containerWidthPx: number): number {
   const spanDeg = DEFAULT_BOUNDS[1][0] - DEFAULT_BOUNDS[0][0];
@@ -185,10 +132,7 @@ export function MapLibreMap({
 
   const getDynamicPadding = useCallback((container: HTMLDivElement) => {
     const minDim = Math.min(container.clientWidth, container.clientHeight);
-    // On a phone the short side IS the width, so a flat 12% of it spent 24% of
-    // the screen on margin before the map drew anything. Cap the narrow case at
-    // 6% a side; wide viewports, where the short side is the height, are
-    // unchanged and so is the default desktop framing the benchmarks pin.
+    // Cap padding at 6% a side on phones, where the short side is the width.
     const cap = container.clientWidth < 700 ? container.clientWidth * 0.06 : 100;
     return Math.min(minDim * 0.12, cap);
   }, []);
@@ -258,15 +202,8 @@ export function MapLibreMap({
     const map = new maplibregl.Map({
       container,
       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-      // The tileset is built -Z2 -z10 (geometry.lock.json). MapLibre overzooms past a
-      // source's maxzoom natively, so z10 tiles serve z11 and z12 at 7.5 m quantisation
-      // against a 30 m pixel here — 0.25 px of error, and feature-state, hover and click
-      // keep working. Raise maxZoom past 14 and that error becomes visible as soft edges;
-      // re-tile at a deeper -z first.
-      //
-      // z3 is the floor the tileset guarantees full ZCTA coverage at, and it is
-      // what any viewport wide enough to show the country gets. See zoomFloorFor
-      // for why a phone is allowed below it.
+      // Tiles go to z10; MapLibre overzooms to 12 with ~0.25 px error. Re-tile before raising
+      // maxZoom past 14.
       minZoom: zoomFloorFor(container.clientWidth),
       maxZoom: 12,
       ...(hasInitialView
@@ -339,14 +276,8 @@ export function MapLibreMap({
     const handleResize = () => {
       if (didUnmount) return;
 
-      // Retry initialisation, not just resizing. `tryInit` gives up when the
-      // container measures 0x0, which happens whenever layout has not settled by
-      // the time this effect runs — and the ResizeObserver used to be no help,
-      // because it returned here on `!mapRef.current` and only ever resized a map
-      // that already existed. The result was a permanently blank map with no
-      // error anywhere: no canvas, no style request, no failed fetch to find.
-      // Whether it reproduced came down to layout timing, which is why it looked
-      // intermittent.
+      // Retry init, not just resize: `tryInit` gives up on a 0x0 container, which left a blank
+      // map with no error whenever layout had not settled yet.
       if (!mapRef.current) {
         tryInit();
         return;
@@ -474,12 +405,7 @@ export function MapLibreMap({
           const zipCode = (props.ZCTA5CE20 || props.zipCode || props.id) as string;
           const { store: currentStore, selectedMetric: currentMetric } = propsRef.current;
 
-          // THE POPUP CONTENT IS REBUILT ONLY WHEN THE ZIP UNDER THE CURSOR
-          // CHANGES. This used to call `createMetricPopupContent` and
-          // `setDOMContent` on every animation frame the mouse moved — a full DOM
-          // teardown and rebuild about sixty times a second while the pointer sits
-          // inside one large ZIP. Following the cursor within a ZIP is now a
-          // `setLngLat`, which moves a transform and touches no DOM.
+          // Rebuild popup DOM only when the hovered ZIP changes; within a ZIP just move it.
           if (zipCode && zipCode === hoveredZipRef.current && popupRef.current) {
             popupRef.current.setLngLat(ev.lngLat);
             return;
@@ -525,10 +451,7 @@ export function MapLibreMap({
 
     const clickHandler = (e: MapMouseEvent) => {
       notifyUserInteraction();
-      // Outlier markers are queried first, with a small box, so a 9 px dot is
-      // clickable without hitting its exact centre. Falling through to the fill
-      // makes clicking a marker and clicking its polygon do the same thing, which
-      // is what a reader expects of a mark drawn on top of a shape.
+      // Markers first, with a small hit box, then fall through to the fill.
       const hit = map.getLayer(OUTLIER_LAYER)
         ? map.queryRenderedFeatures(
             [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]],
@@ -620,19 +543,13 @@ export function MapLibreMap({
         }
       }, beforeId);
 
-      // Two client-built point sources, both empty until the snapshot lands.
-      //
-      // They exist because a POLYGON source cannot carry either of these. A
-      // polygon crossing a vector-tile boundary is clipped into one piece per
-      // tile and MapLibre places a symbol on each piece, so labelling the fill
-      // layer drew a ZIP's number two to four times; and 47 outlier polygons
-      // scattered across the country are invisible at the zoom you would look
-      // for them at. One point per ZIP fixes the first structurally; a
-      // fixed-radius circle fixes the second.
+      // Point sources for labels and outlier markers. A polygon clipped across tiles gets one
+      // symbol per piece (duplicate labels), and 47 outlier polygons are invisible at national zoom.
       map.addSource(LABEL_SOURCE, { type: "geojson", data: EMPTY_FC });
       map.addSource(OUTLIER_SOURCE, { type: "geojson", data: EMPTY_FC });
 
       painterRef.current = new ChoroplethPainter(map);
+      countZipPaintRewrites(map);
       // Debug handle. bench/verify-choropleth.mjs and any console session need
       // a way to reach the map; without one the acceptance check cannot be run
       // against a production build, which is the only build worth checking.
@@ -645,11 +562,7 @@ export function MapLibreMap({
         source: "zips",
         "source-layer": "us_zip_codes",
         paint: {
-          // Three states on one line layer, in priority order: the searched ZIP,
-          // the ZIP under the cursor, and everything else. Hover is drawn here
-          // rather than as a fourth layer because it is the same geometry, and it
-          // is feature-state rather than a paint rewrite for the reason the whole
-          // file exists — rewriting a data-driven paint value reloads every tile.
+          // Priority: searched ZIP, hovered ZIP, everything else. Feature-state, never a paint rewrite.
           "line-color": [
             "case",
             ["boolean", ["feature-state", "highlighted"], false], "#ff6b35",
@@ -671,20 +584,10 @@ export function MapLibreMap({
                 ["boolean", ["feature-state", "highlighted"], false], 5,
                 ["boolean", ["feature-state", "hovered"], false], 3, 2]
           ],
-          // Below the default view the same border network is packed into a
-          // quarter of the pixels, and the choropleth greys over. These two
-          // stops hold the ink at its z4 level and stop there: z4 and every
-          // zoom above it is full strength, exactly as before. The block
-          // comment at the top of this file has the arithmetic.
-          //
-          // A ZIP the reader is pointing at or has searched for keeps a
-          // full-strength outline at every zoom. Those two are the map
-          // answering a direct question, and one outline costs nothing.
-          //
-          // The zoom interpolation has to be the OUTER expression with a `case`
-          // at each stop, which is why this repeats itself the way `line-width`
-          // above does: MapLibre rejects ["zoom"] anywhere but the input of a
-          // top-level interpolate or step.
+          // Below z4 the border network packs into fewer pixels and greys the choropleth (stroke ink
+          // ~0.198 km per km2 x width x km/px: darkening 4.8% at z4, 13.7% at z2). Opacity holds ink at
+          // its z4 level: 0.33 at z2, 0.67 at z3, 1 from z4. Hovered and searched ZIPs stay full.
+          // Recompute if line-width changes. ["zoom"] must be the outer interpolate, hence the repeats.
           "line-opacity": [
             "interpolate", ["linear"], ["zoom"],
             2, ["case", ["any",
@@ -718,14 +621,7 @@ export function MapLibreMap({
         },
       });
 
-      // ZIP number, one per ZIP, at the polygon's inner point.
-      //
-      // `text-allow-overlap` stays false so numbers do not stack on top of each
-      // other in dense metros — but it was never what caused the duplicates. The
-      // copies sat at genuinely different screen positions, one per clipped
-      // polygon piece, so they never collided and collision detection never had
-      // anything to suppress. Sourcing from points is the fix; this is only
-      // decluttering.
+      // One label per ZIP at its inner point. Overlap stays off to declutter dense metros.
       map.addLayer({
         id: "zips-labels",
         type: "symbol",
@@ -762,17 +658,7 @@ export function MapLibreMap({
     }
   }, [isMapReady, setupMapInteractions]);
 
-  // 5. Paint the choropleth.
-  //
-  // This effect used to call `map.setPaintProperty("zips-fill", "fill-color",
-  // <step expression>)` on every metric change and, in auto-scale mode, on every
-  // moveend. In maplibre-gl that marks the source 'reload': every loaded tile is
-  // re-sent to the worker, re-parsed from its cached PBF, its fill bucket
-  // rebuilt and its GPU buffers re-uploaded. Measured cost of one metric switch:
-  // 3375 ms at 4x CPU on slow 4G.
-  //
-  // Now the paint expression is a CONSTANT set once at addLayer, and only
-  // feature-state changes. setFeatureState does not trigger a relayout.
+  // 5. Paint the choropleth: feature-state only; the paint expression is constant.
   useEffect(() => {
     if (!isMapReady || !pmtilesLoaded || !classSource) return;
     const painter = painterRef.current;
@@ -799,28 +685,21 @@ export function MapLibreMap({
     return () => cancelAnimationFrame(id);
   }, [selectedMetric]);
 
-  // 5b. Price outliers.
-  //
-  // Built once from the snapshot, not per view: LISA classes 3 and 4 are 47 ZIPs
-  // nationally, so the whole set is smaller than one tile's worth of features and
-  // a viewport filter would cost more than it saves. Toggling only flips layer
-  // visibility — the source is already loaded.
+  // 5b. Price outliers: 47 ZIPs, built once from the snapshot; the toggle flips visibility.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapReady || !store) return;
     const src = map.getSource(OUTLIER_SOURCE) as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
 
+    const { lng, lat } = store.anchors();
     const features: PointFC["features"] = [];
     for (let row = 0; row < store.n; row++) {
       const cls = store.valueAt("lisa", row);
-      if (cls !== 3 && cls !== 4) continue;
-      const lng = store.valueAt("lng", row);
-      const lat = store.valueAt("lat", row);
-      if (lng === null || lat === null) continue;
+      if ((cls !== 3 && cls !== 4) || Number.isNaN(lng[row]) || Number.isNaN(lat[row])) continue;
       features.push({
         type: "Feature",
-        geometry: { type: "Point", coordinates: [lng, lat] },
+        geometry: { type: "Point", coordinates: [lng[row], lat[row]] },
         properties: { zip: store.zips[row], cls },
       });
     }
@@ -833,14 +712,9 @@ export function MapLibreMap({
     map.setLayoutProperty(OUTLIER_LAYER, "visibility", showLisa ? "visible" : "none");
   }, [isMapReady, showLisa]);
 
-  // 5c. ZIP number labels, refreshed on view change above LABEL_MIN_ZOOM.
-  //
-  // The filter is on the ANCHOR POINT, not on the polygon bbox, and that is
-  // deliberate. A label is drawn at the anchor, so "is the anchor in view" is the
-  // question that matters, and it keeps this independent of the bbox columns —
-  // which have had a scale bug and which `ZipTable` will refuse to serve if they
-  // fail their check. A flat scan of two comparisons over 33k rows is ~0.1 ms and
-  // only runs above z9.5, where the set is tens to low hundreds of ZIPs.
+  // 5c. ZIP number labels, refreshed on view change above LABEL_MIN_ZOOM. Filters
+  // on the anchor point (where the label is drawn), not the bbox, so it does not
+  // depend on the bbox columns passing their scale check.
   const labelBuild = useCallback(() => {
     const map = mapRef.current;
     const s = propsRef.current.store;
@@ -862,12 +736,14 @@ export function MapLibreMap({
     const south = b.getSouth() - LABEL_MARGIN_DEG;
     const north = b.getNorth() + LABEL_MARGIN_DEG;
 
+    const anchors = s.anchors();
     const features: PointFC["features"] = [];
     for (let row = 0; row < s.n; row++) {
-      const lng = s.valueAt("lng", row);
-      if (lng === null || lng < west || lng > east) continue;
-      const lat = s.valueAt("lat", row);
-      if (lat === null || lat < south || lat > north) continue;
+      // NaN (no anchor) fails both comparisons.
+      const lng = anchors.lng[row];
+      if (!(lng >= west && lng <= east)) continue;
+      const lat = anchors.lat[row];
+      if (!(lat >= south && lat <= north)) continue;
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: [lng, lat] },

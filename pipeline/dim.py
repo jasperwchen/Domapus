@@ -1,12 +1,6 @@
-"""ZCTA dimension table: city / county / state / metro / lat / lng per ZIP.
+"""ZCTA metadata: city / county / state / metro / lat / lng per ZIP, from zcta-meta.csv.
 
-`public/data/zcta-meta.csv` stays the source. Redfin's own `zip_lookup.csv` is
-referenced by its index.json but returns 403 [M].
-
-Note the count: this file has 33,771 rows, but the Census 2020 ZCTA count is
-33,791 — confirmed three ways from cb_2020_us_zcta520_500k. zcta-meta.csv is a
-*derived* file and is 20 short. Use 33,791 as the denominator for any coverage
-percentage; do not take it from here.
+The file has 33,771 rows vs 33,791 Census 2020 ZCTAs; use 33,791 as a coverage denominator.
 """
 
 import logging
@@ -20,8 +14,7 @@ log = logging.getLogger(__name__)
 
 COLUMNS = ["city", "county", "state", "metro", "lat", "lng"]
 
-# String fields flow from a file we do not control into the DOM. Cap them, strip
-# control characters, and let the frontend render them as text nodes only.
+# Untrusted strings reach the DOM: strip control characters and cap length.
 MAX_STRING = 128
 
 

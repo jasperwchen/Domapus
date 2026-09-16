@@ -1,24 +1,11 @@
-"""Real polygon bounds per ZCTA, from `public/data/zcta-geom.csv`.
+"""Polygon anchor and bbox per ZCTA, from `public/data/zcta-geom.csv`.
 
-This is what kills Bug 3. The frontend's auto-scale mode has to answer "which
-ZIPs are in the viewport", and until now it answered with a 0.01-degree box
-around each centroid — about 1.1 km, against a measured median ZCTA span of
-7.45 km. Every large rural ZCTA fell out of its own viewport, which is why
-auto-scaling over a view containing one big rural ZIP returns an empty set today.
+  lon, lat      an inner point (mapshaper `-points inner`), inside the polygon unlike a centroid
+  bw bs be bn   bounds captured before simplification
 
-Two things per ZCTA, both from the Census cartographic boundary file:
-
-  lon, lat        an INNER point (mapshaper `-points inner`), guaranteed to lie
-                  inside the polygon. Not a centroid: a centroid of a C-shaped or
-                  multi-part ZCTA can land outside it, and this point is what the
-                  popup and the tiny-ZIP dot layer position against.
-  bw bs be bn     the polygon's real bounding box, in degrees, captured BEFORE
-                  simplification so the box always contains the drawn shape.
-
-The snapshot ships the bbox as four INT32 offsets from the anchor at x1e4. int32
-and not int16 because the widest ZCTA is 99503 (Anchorage) at 8.3966 degrees of
-longitude = 83,966, which is 2.6x int16's ceiling. An Int16Array here wraps
-Alaska's bboxes silently and nothing downstream would notice.
+Auto-scale needs real bounds: a 0.01 degree box around centroids dropped every large rural
+ZCTA out of its own viewport. The wire carries int32 offsets at x1e4; the widest ZCTA (99503,
+8.3966 degrees) is 83,966, beyond int16.
 """
 
 import csv
@@ -31,9 +18,7 @@ log = logging.getLogger(__name__)
 
 COLUMNS = ("ZCTA5CE20", "lon", "lat", "bw", "bs", "be", "bn")
 
-# Continental US plus Alaska, Hawaii, Puerto Rico and the USVI — the same window
-# the sidecar build script filters on. A row outside it means the territory
-# filter changed upstream and the int32 offset argument needs re-checking.
+# US, AK, HI, PR and USVI, matching the sidecar build filter.
 LON_RANGE = (-180.0, -64.0)
 LAT_RANGE = (17.0, 72.0)
 
@@ -76,13 +61,8 @@ def load(path: Path) -> dict:
 
 
 def _assert_boxes(rows: dict, name: str) -> None:
-    """A5: every box is finite, non-degenerate, in range, and contains its anchor.
-
-    The anchor check is the one that matters. `-points inner` and the bounds are
-    computed by two separate mapshaper passes over two different files, so an
-    anchor outside its own box means the passes disagreed about which feature is
-    which — a join error that no amount of coordinate validation would catch.
-    """
+    """Every box is in range, non-degenerate and contains its anchor. The anchor and bounds
+    come from separate mapshaper passes, so an anchor outside its box is a join error."""
     bad_range, degenerate, outside = [], [], []
     for z, r in rows.items():
         if not (LON_RANGE[0] <= r["lon"] <= LON_RANGE[1]
@@ -110,29 +90,14 @@ def _assert_boxes(rows: dict, name: str) -> None:
         raise PipelineError(f"{name}: geometry contract violated.\n" + "\n".join(problems))
 
 
-# Widest plausible ZCTA bounding box, in degrees. The widest real one is 99503
-# (Anchorage) at 8.3966 degrees of longitude, so this is that with headroom and
-# two orders of magnitude below any plausible mis-scaling.
+# Widest real ZCTA is 8.3966 degrees; 10 has headroom and is far below any mis-scaling.
 MAX_SPAN_DEG = 10.0
 
 
 def assert_bbox_scale(columns: dict[str, list[int]], scale: float, null: int) -> float:
-    """Decode the encoded bbox columns and refuse a build whose boxes are absurd.
-
-    This exists because the scale was applied twice for one release — `offsets`
-    pre-multiplied by 1e4 and `serialize.COLUMNS` applied its declared 1e4 on top,
-    so the wire carried degrees x1e8 under a header saying x1e4. The frontend
-    honoured the header, and every ZIP claimed a box ~1,500 degrees wide. A box
-    that size intersects every viewport, so the auto-scale viewport filter accepted
-    everything and scaled to loaded tiles instead of to the view.
-
-    Nothing caught it because the symptom — auto-scale producing a slightly odd
-    scale — is what auto-scale looks like when it works. Checking the DECODED span
-    is what makes the failure loud: it is the same arithmetic the frontend does,
-    so the two cannot disagree about what the wire means.
-
-    Returns the widest decoded span, for the manifest.
-    """
+    """Refuse a build whose decoded boxes exceed `MAX_SPAN_DEG`. The scale was once applied
+    twice, every box spanned ~1,500 degrees, and auto-scale silently sampled everything.
+    Returns the widest span."""
     bw, bs, be, bn = (columns[k] for k in ("bw", "bs", "be", "bn"))
     widest = 0.0
     for i in range(len(bw)):
@@ -153,27 +118,8 @@ def assert_bbox_scale(columns: dict[str, list[int]], scale: float, null: int) ->
 
 
 def offsets(rec: dict | None, lon: float | None, lat: float | None) -> tuple:
-    """Bbox as four DEGREE offsets from (lon, lat), or four Nones.
-
-    The offsets are relative to the ANCHOR the snapshot ships, not to the
-    sidecar's own anchor, so the frontend can reconstruct absolute bounds with
-    one add and never needs both numbers.
-
-    DEGREES, NOT x1e4. This used to pre-multiply by 1e4 and `serialize.COLUMNS`
-    then applied its declared scale of 1e4 on top, so the wire carried degrees
-    x1e8 under a header that said x1e4. The frontend honoured the header and
-    divided once, giving every ZIP a bounding box 10,000x too wide — a box
-    spanning ~1,500 degrees intersects every viewport, so auto-scale's viewport
-    filter accepted every loaded ZIP and silently scaled to loaded tiles instead
-    of to the view. The double scaling was invisible because both failure modes
-    look like "auto-scale did something".
-
-    The scale belongs to `COLUMNS` and to nowhere else. With this returning
-    degrees, the widest ZCTA — 99503, Anchorage, 8.3966 degrees of longitude —
-    encodes to 83,966, which is the number the int32 argument in this module's
-    docstring was computed from. That agreement is the check that the two halves
-    now apply the scale exactly once between them.
-    """
+    """Bbox as four offsets in DEGREES from the shipped anchor, or four Nones. The x1e4 scale
+    belongs to `serialize.COLUMNS` only."""
     if rec is None or lon is None or lat is None:
         return None, None, None, None
     return (

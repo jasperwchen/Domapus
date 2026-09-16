@@ -1,10 +1,5 @@
-// Per-ZIP time series, fetched on click (spec §4.4). Progressive enhancement: nothing on
-// the critical path reads this, and every failure path returns null rather than throwing, so
-// a dead network costs the chart and nothing else in the sidebar.
-//
-// Two fetches on the first click — the shared index (axes, quantile table, series notes) and
-// the ZIP's bucket — then one small fetch per click after that. Both are cached for the
-// lifetime of the page.
+// Per-ZIP history, fetched on click and cached: index.json once, then one bucket per ZIP4.
+// Every failure returns null, so a dead network costs only the chart.
 
 import { dataUrl } from "./data-url";
 
@@ -89,11 +84,8 @@ export async function loadHistory(zip: string): Promise<HistoryResult | null> {
 }
 
 /**
- * The forecast band at one horizon, in level units.
- *
- * `q` is published in sigma units so the client can reconstruct any confidence level with two
- * multiplies and an exp, rather than the pipeline shipping a band per level. The arithmetic is
- * in log space because the model is an AR(1) on log growth.
+ * Forecast band at one horizon in level units: point * exp(q * sigma), since the model is on
+ * log growth and `q` is published in sigma units.
  */
 export function forecastBand(
   index: HistoryIndex,

@@ -138,6 +138,13 @@ published data at 7 is a grey map — and `deploy.yml` runs on push. `classing.t
 loudly on that mismatch, which is the gate. The order is: push the branch, dispatch
 `update_data.yml` against it, merge once the data commit lands.
 
+**`map:sourceReload` is a real tripwire.** `countZipPaintRewrites` wraps `setPaintProperty` on
+the map and counts any call on a `zips-*` layer; `bench/run.mjs` and `bench/verify-choropleth.mjs`
+assert it stays 0. It replaced a wrapper nothing called, which made that assertion vacuous.
+
+**Workflow inputs never go inside `run:` as `${{ }}`.** Pass them through `env:` and quote the
+variable. `--override-reason ${{ toJSON(...) }}` let a reason containing `$(...)` execute.
+
 **The goldens have a producer now.** `python scripts/make_golden.py --write` recomputes
 `tests/golden/*.json` from `build/zip-data.json` using the real `classify` and `paint`, changing
 only the class-dependent parts and leaving the hand-chosen ZIP selection alone. `paint_50.json`
@@ -175,11 +182,10 @@ one wire format.** Change them together.
 
 **`fitBreaks` in `src/lib/classing.ts` is the only thing allowed to re-cut class boundaries.**
 It reads the scheme and the break gate out of the manifest, so a re-cut sample reproduces the
-pipeline's own cuts. A plain-quantile cutter used to live beside it in `quantiles.ts`; classing
-the same national extent the pipeline classed, it put 28.6% of ZIPs in the two darkest classes
-against the fixed scale's 6.0%. It was deleted 2026-09-12 and `d3-scale` went with it. Do not
-reintroduce one — `quantiles.ts` is for reading a distribution (legend ticks, axis bounds), never
-for deciding which class a ZIP is in.
+pipeline's own cuts. A plain-quantile cutter used to live beside it; classing the same national
+extent the pipeline classed, it put 28.6% of ZIPs in the two darkest classes against the fixed
+scale's 6.0%. It was deleted 2026-09-12. Do not reintroduce one. `quantiles.ts` itself was
+deleted 2026-09-16: its last consumer computed legend percentiles that were never rendered.
 
 **A class can be legitimately empty, and the legend says so by geometry.** `homes_sold` and
 `active_listings` break at 1.0 first and nothing reports under one sale, so class 0 draws nobody.
@@ -237,7 +243,7 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 | Path | What it is |
 |---|---|
 | `pipeline/` | Python 3.14 data pipeline. One module per stage, driven by `__main__.py`. |
-| `src/lib/` | Frontend logic with no React in it: wire formats, colour, paint table, quantiles, perf marks. |
+| `src/lib/` | Frontend logic with no React in it: wire formats, colour, paint table, classing, perf marks. |
 | `src/components/dashboard/` | The map UI. `HousingDashboard.tsx` is the container everything hangs off. |
 | `src/components/ui/` | shadcn/Radix primitives. Generated, rarely edited by hand. |
 | `src/workers/` | The snapshot worker. Runs off the critical path. |
@@ -304,8 +310,7 @@ transposes it into typed arrays, and transfers them to `src/lib/zip-table.ts`.
   object on hover or click, so nothing downstream had to change when the format did.
   `FIELD_OF` here and `SNAPSHOT_COLUMNS` in `serialize.py` are one wire format in two halves.
 - `metrics.ts` — metric metadata (label, format, YoY/MoM companions, whether it is painted).
-  Keys must match `KEY_ORDER` in `serialize.py`; the format is positional, so a wrong name
-  silently reads the neighbouring column.
+  Keys are `ZipData` field names, which `FIELD_OF` maps from the wire names in `serialize.COLUMNS`.
 - `choropleth.generated.ts` / `choropleth.ts` — the one colour ramp. Re-derive with
   `node scripts/palette/derive_ramp.mjs --write`.
 - `class-source.ts` — which authority decides a ZIP's class. Exactly one is live at a time.

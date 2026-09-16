@@ -1,13 +1,4 @@
-// Performance instrumentation. Lands FIRST, alone, changing no behavior.
-//
-// Until this existed there was zero instrumentation in src/ — `performance.mark`
-// appeared nowhere — so every performance claim about the live site was
-// unfalsifiable, and bench/run.mjs warned "no performance.measure marks — build
-// is uninstrumented" on every run.
-//
-// Everything here is a no-op when the API is missing, and every call is wrapped:
-// the User Timing buffer can fill, and a thrown mark must never take the page
-// down with it.
+// User Timing wrappers. No-ops without the API, and never throw (the buffer can fill).
 
 export const PERF =
   typeof performance !== "undefined" && typeof performance.mark === "function";
@@ -43,16 +34,7 @@ export function span<T>(name: string, fn: () => T, detail?: unknown): T {
   }
 }
 
-/**
- * A monotonically increasing counter surfaced as zero-duration measures, so the
- * benchmark harness can read it out of the User Timing buffer like anything else.
- *
- * `map:sourceReload` is the regression tripwire for the whole choropleth fix: it
- * must be 0 after setup. Any non-zero value means something called
- * setPaintProperty on a data-driven value, which makes MapLibre re-send every
- * loaded tile to its worker, re-parse the cached PBF, rebuild the fill bucket
- * and re-upload the GPU buffers.
- */
+/** Counters surfaced as zero-duration measures for the bench. `map:sourceReload` must stay 0. */
 const counters = new Map<string, number>();
 
 export function count(name: string, by = 1): number {
@@ -72,8 +54,6 @@ export function counterValue(name: string): number {
   return counters.get(name) ?? 0;
 }
 
-// Exposed for the benchmark harness and for hand-checking in a console. Reading
-// a counter must never require a rebuild.
 declare global {
   interface Window {
     __domapusPerf?: { counterValue: (name: string) => number };

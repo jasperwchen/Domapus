@@ -3,17 +3,9 @@ import { PAINTED_METRICS, type MetricKey } from "@/lib/metrics";
 
 export type MetricType = MetricKey;
 
-// The dropdown offers the PAINTED subset only — 8 of 15. The other 7 are carried
-// on the wire and shown in the ZIP detail panel, but never colour the map.
-//
-// The cut is measured, not taste: pairwise Spearman on the latest period
-// collapses the 14 Redfin metrics to ~5 independent axes. The five count metrics
-// are effectively one variable (rho 0.91-0.99; new_listings vs active_listings
-// is 0.986) and the four price metrics another (0.81-0.89). Offering all 15
-// would be offering the same map several times over.
-//
-// Tests and a couple of legacy callers import `METRICS` from this file as a flat
-// key -> label record. Keep that shape.
+// The painted 8 of 15 metrics. Spearman on the latest period collapses the 14 Redfin metrics
+// to ~5 axes (counts rho 0.91-0.99), so the rest would repeat the same map.
+// Tests import `METRICS` here as a flat key -> label record.
 export const METRICS: Record<string, string> = Object.fromEntries(
   Object.entries(PAINTED_METRICS).map(([key, info]) => [key, info.label])
 );
@@ -35,11 +27,7 @@ export function MetricSelector({ selectedMetric, onMetricChange }: MetricSelecto
       </label>
       <Select value={selectedMetric} onValueChange={handleMetricChange}>
         <SelectTrigger
-          // Full width below `md`, where the only caller is the mobile control
-          // bar and there is a whole 343 px row to fill — a fixed 144 px there
-          // truncated every metric to "Zillow Hom...". In the desktop header the
-          // width has to stay fixed, because the row it sits in also has to hold
-          // the search field and five buttons.
+          // Full width on the mobile row; fixed in the desktop header, which is crowded.
           className="w-full md:w-36 lg:w-48 h-9 text-sm px-3 justify-between shrink-0"
           aria-label="Select visualization metric"
         >

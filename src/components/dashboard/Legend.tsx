@@ -5,13 +5,11 @@ import { HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getMetricLabel } from "@/lib/metrics";
 import { formatLegendValue, tickAt } from "@/lib/legend-format";
-import { computeQuantiles } from "@/lib/quantiles";
 import { CHOROPLETH_COLORS, CHOROPLETH_GRADIENT_STOPS, NO_DATA_COLOR } from "@/lib/choropleth";
 import { OUTLIER_COLORS } from "@/lib/choropleth-painter";
 
 interface LegendProps {
   selectedMetric: string;
-  metricValues: number[];
   /** The SAME break values the map is painting, straight from the live
    *  ClassSource. The legend used to compute its own quantiles from its own
    *  sample, so it could describe a scale the map was not using. */
@@ -26,77 +24,33 @@ interface LegendProps {
   /** How many ZIPs break their neighbourhood's price pattern. Null until the
    *  manifest lands, and absent entirely if the spatial stage did not run. */
   outliers?: { total: number } | null;
-  /** How many ZIPs the pipeline put in each class, straight from
-   *  `manifest.classing[metric].class_counts`. A class holding zero is drawn as
-   *  a notch rather than a block, because the map never paints that colour.
-   *
-   *  NULL WHENEVER THE COUNTS DO NOT DESCRIBE THE BREAKS ON SCREEN — chiefly in
-   *  auto-scale, where the live source re-cuts to the viewport and the published
-   *  counts belong to a different set of boundaries. Marking nothing is the
-   *  honest answer there; marking the national empties would be a lie. */
+  /** Published ZIP count per class; an empty class draws as a notch. Null whenever the counts
+   *  do not describe the breaks on screen (auto-scale). */
   classCounts?: readonly number[] | null;
 }
 
 export function Legend({
-  selectedMetric, metricValues, breaks, autoScale, onAutoScaleChange,
+  selectedMetric, breaks, autoScale, onAutoScaleChange,
   showLisa, onShowLisaChange, reliability, outliers, classCounts,
 }: LegendProps) {
   const isMobile = useIsMobile();
   const { search } = useLocation();
 
-  const legendDisplay = useMemo(() => {
-    if (!metricValues || metricValues.length === 0) {
-      return { min: "N/A", mid: "N/A", max: "N/A" };
-    }
-
-    // 5th, 50th, 95th percentiles for robust min/mid/max
-    const [min, mid, max] = computeQuantiles(metricValues, [0.05, 0.5, 0.95]);
-
-    return {
-      min: formatLegendValue(min, selectedMetric),
-      mid: formatLegendValue(mid, selectedMetric),
-      max: formatLegendValue(max, selectedMetric),
-    };
-  }, [metricValues, selectedMetric]);
-
   const gradient = `linear-gradient(to right, ${CHOROPLETH_GRADIENT_STOPS})`;
   const verticalGradient = `linear-gradient(to top, ${CHOROPLETH_GRADIENT_STOPS})`;
 
-  // One band per painted class, labelled with the map's own break values. The
-  // bands are SEAMLESS but hard-edged: at 14 classes the strip reads as a ramp,
-  // and every pixel of it is a colour some ZIP is actually painted. Interpolating
-  // between them would be the easier way to get that look and would put colours
-  // in the key that the map can never produce.
+  // One hard-edged band per class, so the key shows only colours the map can paint.
   const hasBreaks = !!breaks && breaks.length === CHOROPLETH_COLORS.length - 1;
 
-  // Labels are a sample of the boundaries, not all of them. 13 values of 5-7
-  // characters across a 256 px panel is ~20 px each at 10 px type; they would
-  // overlap into noise. A choropleth key exists to give a sense of scale, not to
-  // be a lookup table — the exact range of any band is on its own tooltip, and
-  // the value of any ZIP is one hover away on the map.
-  //
-  // Five on desktop, three on the 80 px mobile strip. Both are spread evenly
-  // across the boundary list, so with 13 boundaries the desktop ticks land on
-  // 0, 3, 6, 9 and 12 — every 21.4% of the strip, with the middle one at exactly
-  // half. Derived from the count rather than written down, so changing CLASSES
-  // does not silently label the wrong boundaries.
+  // Label a sample of boundaries (5 desktop, 3 mobile); 13 labels would overlap. Each band's
+  // exact range is in its tooltip.
   const ticks = useMemo(
     () => (hasBreaks ? tickAt(breaks!, 5, selectedMetric) : null),
     [hasBreaks, breaks, selectedMetric],
   );
 
-  // A class the map cannot paint. It happens for real: `homes_sold` and
-  // `active_listings` are cut on all reporting ZIPs, and over a quarter of those
-  // sold exactly one home, so the first of thirteen quantile edges lands on 1.0.
-  // A ZIP is class 0 only strictly below the first edge and nothing reports under
-  // one sale, so class 0 draws nobody and every one-sale ZIP paints class 1.
-  //
-  // The break is right — ties collapsing classes is a real property of the
-  // distribution, and `pipeline/classify.py` says so. What was wrong is the key
-  // showing a swatch for a colour with no owner.
-  //
-  // Only guarded against a count array of the expected length; a manifest from an
-  // older pipeline has none, and then nothing is marked.
+  // Ties can leave a class empty (e.g. homes_sold's first edge is 1.0 and no ZIP reports
+  // under one sale). The break is right; the key marks the unused swatch.
   const isEmptyClass = useMemo(() => {
     const n = CHOROPLETH_COLORS.length;
     if (!classCounts || classCounts.length !== n) return () => false;
@@ -126,7 +80,7 @@ export function Legend({
               PERCENTILES of the value list evenly down the bar, which described a
               scale the map was not painting — the same second-authority problem
               the desktop key was fixed for. */}
-          {mobileTicks ? (
+          {mobileTicks && (
             <div className="relative flex-1 text-[11px] font-medium tabular-nums text-muted-foreground">
               {mobileTicks.map(({ i, label }) => (
                 <span
@@ -137,12 +91,6 @@ export function Legend({
                   {label}
                 </span>
               ))}
-            </div>
-          ) : (
-            <div className="flex flex-col justify-between text-[11px] font-medium text-muted-foreground py-0.5">
-              <span className="text-foreground">{legendDisplay.max}</span>
-              <span>{legendDisplay.mid}</span>
-              <span>{legendDisplay.min}</span>
             </div>
           )}
         </div>
@@ -222,18 +170,11 @@ export function Legend({
             </div>
           </>
         ) : (
-          <>
-            <div
-              className="h-4 rounded-sm border border-border"
-              style={{ background: gradient }}
-              aria-hidden="true"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground font-medium">
-              <span>{legendDisplay.min}</span>
-              <span>{legendDisplay.mid}</span>
-              <span>{legendDisplay.max}</span>
-            </div>
-          </>
+          <div
+            className="h-4 rounded-sm border border-border"
+            style={{ background: gradient }}
+            aria-hidden="true"
+          />
         )}
 
         {/* Three absence states, three channels, and they must not be conflated.

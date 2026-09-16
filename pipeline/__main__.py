@@ -4,11 +4,8 @@
     python -m pipeline --redfin-csv path.csv    # reuse a local copy, skip the 1.33 GB GET
     python -m pipeline --zhvi-csv path.csv
 
-NOTHING HERE WRITES `public/data/`. That is the rule the property-type bug shipped
-under: the old script opened `public/data/zip-data.json` for writing at the end of
-main(), so any run that passed the (weak) validators overwrote the last known-good
-published data. Every stage writes `build/` plus `build/<stage>_report.json`;
-publication is a separate step that copies a verified build.
+Nothing here writes `public/data/`. Each stage writes `build/` plus a
+`build/<stage>_report.json` receipt; publishing copies a verified build.
 """
 
 import argparse
@@ -81,9 +78,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     BUILD.mkdir(parents=True, exist_ok=True)
 
     # --- S0 PROBE ----------------------------------------------------------
-    # A HEAD plus a 1 MB shape probe, ~0.2 s, so schema drift or an unchanged
-    # file is caught before committing to a 1.33 GB download. Nothing derived
-    # from the probe is ever published, so it needs no integrity story.
+    # HEAD + 1 MB shape probe (~0.2 s). Unchanged fingerprint exits 0 without downloading.
     probes: dict[str, dict] = {}
     fingerprints: dict[str, str] = {}
     if not skip_probe:
@@ -93,8 +88,6 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
 
         previous = _live_fingerprints()
         if previous and previous == fingerprints and not force:
-            # Nothing new exists upstream. This is not a failure and must not be
-            # reported as one: exit 0, download nothing, publish nothing.
             log.info("Upstream unchanged (fingerprint %s) — nothing to do", fingerprints)
             _report("s0_probe", "ok", probes=probes, fingerprints=fingerprints,
                     unchanged=True)
@@ -104,9 +97,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     tmpdir = None
     try:
         # --- S1 ACQUIRE ----------------------------------------------------
-        # The 1.33 GB download lands outside the git working tree with a finally
-        # that removes it. It used to go into public/data/, so a run killed
-        # between download and cleanup left a file `git add -A` would stage.
+        # Downloads to a temp dir outside the working tree, removed in `finally`.
         if redfin_csv is None:
             tmpdir = Path(tempfile.mkdtemp(dir=os.environ.get("RUNNER_TEMP") or None))
             redfin_csv = tmpdir / "all_zips.csv"
@@ -115,8 +106,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
             sources.download(
                 sources.REDFIN_URL, redfin_csv, "Redfin",
                 expect_bytes=p.get("content_length") or None,
-                # Single-part ETag is a plain MD5 of the body, so this is a real
-                # integrity contract. A multipart ETag is not and is not checked.
+                # A single-part ETag is the body MD5; a multipart one is not.
                 verify_md5=None if sources.is_multipart_etag(etag) else (etag or None),
             )
         else:
@@ -132,18 +122,12 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
                 redfin_bytes=redfin_csv.stat().st_size, zhvi_bytes=len(zhvi_bytes))
 
         # --- S2 INGEST + PANELS --------------------------------------------
-        # Both panels are written here, and both for the same reason: a module
-        # that parses a whole file and returns three columns of it has thrown
-        # away everything the statistics need. `panel.parquet` fixed that for
-        # Redfin; `zhvi-panel.parquet` fixes it for Zillow, and the forecast
-        # cannot be fitted without it.
+        # Full panels, not just the latest period: the statistics stages need history.
         _require("s1_acquire")
         panel_path = BUILD / "panel.parquet"
         zhvi_panel_path = BUILD / "zhvi-panel.parquet"
         redfin_report, latest_rows = redfin.ingest(redfin_csv, panel_path)
         panel_report = panel.verify(panel_path, redfin_report["rows"])
-        # Parsed once here and carried into S3, which needs three months out of
-        # the same frame. The raw bytes go as soon as the frame exists.
         zhvi_frame, zhvi_months = zhvi.read(zhvi_bytes)
         del zhvi_bytes
         zhvi_panel_report = zhvi.write_panel(zhvi_frame, zhvi_months, zhvi_panel_path)
@@ -163,8 +147,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     records, redfin_period, coverage = serialize.assemble(
         zcta, zhvi_records, redfin_records, geometry
     )
-    # Every change metric is ours, computed from published levels at lag 12. It
-    # runs before validation so the range contract sees the values we ship.
+    # YoY recomputed from levels, before validation so the range contract sees shipped values.
     changes_report = changes.recompute(panel_path, records, redfin_period)
     validation = serialize.validate(records, redfin_period, zhvi_period)
 
@@ -173,12 +156,19 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         (r.get("period_begin") for r in redfin_records.values() if r.get("period_begin")), None
     )
 
+    _report("s3_assemble", "ok", coverage={k: coverage[k] for k in serialize.COVERAGE},
+            validation=validation, changes=changes_report)
+
     live_payload = serialize.read_live(LIVE_SNAPSHOT)
-    prev_ts, live = serialize.decode_live(live_payload)
+    # Only what the gate and LISA hysteresis read, not all fifty columns.
+    prev_ts, live = serialize.decode_live(
+        live_payload, keys={*gate.GATED, "homes_sold", "lisa"},
+    )
 
     # --- S4 GATE ------------------------------------------------------------
     # Runs BEFORE anything is written, so a refused build leaves no artifact a
     # later step could mistake for a good one.
+    _require("s3_assemble")
     live_manifest = _live_manifest()
     live_coverage = live_manifest.get("coverage")
     gate_report = gate.gate(
@@ -190,30 +180,23 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     _report("s4_gate", "ok", **gate_report)
 
     # --- S5 NOISE -----------------------------------------------------------
-    # Fits K on the panel and writes `msp_rse` and `rel` into every record. It
-    # runs before classing because `rel` is what gates the break population, and
-    # before painting because the reliability nibble is half the paint byte.
+    # `rel` gates the break population (S6) and is half of the paint byte (S7).
     _require("s4_gate")
     noise_report = noise.measure(panel_path, records)
     _report("s5_noise", "ok", **noise_report)
 
     # --- S5b FORECAST -------------------------------------------------------
-    # AR(1) on log ZHVI growth plus the 82-origin backtest. Fills `f_h12`,
-    # `f_sigma` and `f_tier`.
     forecast_report = forecast.run(zhvi_panel_path, records)
     _report("s5b_forecast", "ok", **forecast_report)
 
     # --- S5c SPATIAL --------------------------------------------------------
-    # LISA over the rankable set only. Ungated it is a low-sample detector, not a
-    # spatial statistic — see the module docstring. Fills `lisa`.
+    # LISA over the rankable set only; needs `rel` from S5. Fills `lisa`.
+    _require("s5_noise")
     previous_lisa = {z: r["lisa"] for z, r in live.items() if r.get("lisa") is not None}
     spatial_report = spatial.run(records, previous_lisa)
     _report("s5c_spatial", "ok", **spatial_report)
 
     # --- S6 CLASSIFY --------------------------------------------------------
-    # The bound for the one painted diverging series is DERIVED from the pooled
-    # ZHVI panel each release, not carried forward as a constant, so a claim that
-    # it targets ~5% saturation stays checkable.
     _require("s5_noise")
     bound = classify.derive_diverging_bound(zhvi.pooled_yoy(zhvi_panel_path))
     class_report = classify.compute(records, bound["bound"])
@@ -221,9 +204,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     _report("s6_classify", "ok", diverging=bound, **class_report)
 
     # --- S7 PAINT -----------------------------------------------------------
-    # 100,000 bytes per painted metric, against the 8.2 MB that gates first
-    # colour today. The cross-artifact assertion is what stops the map and the
-    # detail panel from ever disagreeing about the same ZIP.
+    # The cross-artifact assertion keeps the map and the detail panel in agreement.
     _require("s6_classify")
     paint_dir = BUILD / "paint"
     if paint_dir.exists():
@@ -233,9 +214,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     _report("s7_paint", "ok", assets=paint_assets)
 
     # --- S8 HISTORY ---------------------------------------------------------
-    # Per-ZIP series bucketed by ZIP3, fetched on click. Progressive enhancement:
-    # nothing on the critical path reads these, so a failed fetch costs the chart
-    # and nothing else.
+    # Per-ZIP series bucketed by ZIP4, fetched on click; off the critical path.
     _require("s5b_forecast")
     history_report = history.write(
         panel_path, zhvi_panel_path, records, BUILD / "history",
@@ -243,11 +222,9 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     )
     _report("s8_history", "ok", **history_report)
 
-    # The change report runs HERE, on a finished build, and not back at S3 where
-    # the gate reads the same live snapshot. Seven wire columns are written by
-    # S5/S5b/S5c; diffing before them compares this build's empty statistics
-    # against the live snapshot's real ones and calls every ZIP changed.
-    change_report = serialize.diff(live_payload, records)
+    # After S5c: earlier, the statistics columns are empty and every ZIP reads as changed.
+    encoded = serialize.encode_columns(records)
+    change_report = serialize.diff(live_payload, records, encoded)
 
     out = BUILD / "zip-data.json"
     written = serialize.write_snapshot(records, out, {
@@ -261,21 +238,16 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "breaks": {serialize.PAINTED_SHORT[m]: b for m, b in class_report["breaks"].items()},
         "classing": {serialize.PAINTED_SHORT[m]: c["scheme"]
                      for m, c in class_report["classing"].items()},
-    })
+    }, encoded)
 
-    # THE PUBLISH DECISION. Not a count of moved cells — the identity of the bytes
-    # this release would serve, snapshot and paint tables together. Re-running the
-    # pipeline over unchanged input reproduces the digest exactly, so the run
-    # publishes nothing whatever a developer has left lying in `public/data/`.
-    # A missing or unreadable live digest means PUBLISH: the direction that costs
-    # a redundant deploy is safe, and the direction that silently skips one is the
-    # bug this replaces.
+    # The publish decision: a content digest, not a count. A missing live digest means
+    # publish; a redundant deploy is cheap, a skipped one is the original bug.
     digest = serialize.release_digest(written["payload_digest"], paint_assets)
     live_digest = live_manifest.get("content_digest")
     content_changed = live_digest is None or digest != live_digest
 
     manifest = {
-        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_utc": now,
         "content_digest": digest,
         "previous_content_digest": live_digest,
         "content_changed": content_changed,
@@ -287,13 +259,10 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         },
         "zhvi": {"period_end": zhvi_period, "zips": len(zhvi_records),
                  "panel": zhvi_panel_report},
-        # Identity of the upstream bytes. An unchanged fingerprint on the next run
-        # means nothing new exists and the run exits 0 without downloading.
         "fingerprints": fingerprints,
         "upstream": {k: {"last_modified": v.get("last_modified"),
                          "content_length": v.get("content_length")}
                      for k, v in probes.items()},
-        # Measured every run. Never a constant — see panel.py.
         "panel": {"periods": panel_report["periods"], "zips": panel_report["zips"],
                   "rows": panel_report["rows"]},
         "coverage": {k: coverage[k] for k in serialize.COVERAGE},
@@ -303,11 +272,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "changes": changes_report,
         "gate": gate_report,
         "snapshot": written,
-        # The lineage of every published statistic. `noise` carries the K fit the
-        # reliability tiers come out of, `classing` the breaks the legend renders,
-        # and `assets.paint` the hashed filenames the frontend preloads — which is
-        # also what `vite.config.ts` inlines at build time, so a stale inline
-        # fails the deploy rather than shipping a 404 on the critical path.
+        # `assets.paint` is what vite.config.ts inlines into index.html at build time.
         "noise": noise_report,
         "forecast": forecast_report,
         "spatial": spatial_report,
@@ -323,13 +288,10 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         json.dumps({"count": coverage["orphans"], "zips": coverage["orphan_zips"]}, indent=2),
         encoding="utf-8",
     )
-    # The frontend reads only the three date fields here. The rest is the publish
-    # decision in the smallest file the workflow can `jq` — `content_changed` is
-    # what gates the commit and the deploy, and `change_status` is what tells a
-    # reader whether `data_points_changed` is a movement count or a structural one.
+    # Frontend reads the dates; the workflow gates commit and deploy on `content_changed`.
     (BUILD / "last_updated.json").write_text(
         json.dumps({
-            "last_updated_utc": datetime.now(timezone.utc).isoformat(),
+            "last_updated_utc": now,
             "period_end": redfin_period,
             "zhvi_period_end": zhvi_period,
             "total_zip_codes": len(records),
@@ -341,8 +303,6 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         }, indent=2),
         encoding="utf-8",
     )
-    _report("s3_assemble", "ok", **manifest)
-
     log.info(
         "Build complete: %s ZIPs, %s; content %s (%s); %s",
         f"{len(records):,}", _change_summary(change_report),

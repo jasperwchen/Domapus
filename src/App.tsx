@@ -1,8 +1,6 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -12,13 +10,7 @@ import { trackError } from './lib/analytics';
 // critical path, and it should not sit in the bundle every visitor downloads.
 const Methodology = lazy(() => import("./pages/Methodology"));
 
-const queryClient = new QueryClient();
-
 // "/Domapus" in production, "/Domapus/pr-preview/pr-N" in a preview, "/" in dev.
-// The router strips this prefix off window.location before matching, so every
-// <Route path> below is written without it. The path a deep link asks for is
-// restored by the script at the top of index.html, which runs before this file
-// is even fetched.
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
 const App = () => {
@@ -53,21 +45,18 @@ const App = () => {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter basename={basename}>
-          <Suspense fallback={<div className="h-screen w-screen flex items-center justify-center bg-background"><div className="animate-pulse text-muted-foreground">Loading...</div></div>}>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/methodology" element={<Methodology />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <TooltipProvider>
+      <Toaster />
+      <BrowserRouter basename={basename}>
+        <Suspense fallback={<div className="h-screen w-screen flex items-center justify-center bg-background"><div className="animate-pulse text-muted-foreground">Loading...</div></div>}>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/methodology" element={<Methodology />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </TooltipProvider>
   );
 };
 

@@ -12,13 +12,6 @@ export interface LoadSnapshotRequest {
   prefetchedBuffer?: ArrayBuffer;
 }
 
-export interface WorkerResponse {
-  id?: string;
-  type: "PROGRESS" | "ERROR" | "SNAPSHOT_READY" | "ABORTED";
-  data?: SnapshotReadyResponse | ProgressData;
-  error?: string;
-}
-
 export interface SnapshotReadyResponse {
   /** Dicts, scales, breaks and the ZIP list. Small, structured-cloned. */
   header: SnapshotHeader;

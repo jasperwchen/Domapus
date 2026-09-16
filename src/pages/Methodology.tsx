@@ -1,23 +1,9 @@
 // What the numbers on this map mean, and what they do not.
 //
-// Everything here is read from `manifest.json` at runtime rather than typed in.
-// That is the point: a methodology page whose figures are hand-copied drifts from
-// the pipeline the first month somebody forgets, and a stale methodology page is
-// worse than none. If the pipeline stops publishing a figure, the section that
-// quotes it disappears rather than lying.
-//
-// ON THE REGISTER, because it was rewritten once for it. Each numbered section
-// opens with a short statement a reader with no statistics can follow, and the
-// derivations, constants and diagnostics sit under a "Statistical detail"
-// disclosure beneath it. Nothing was deleted in that move. The earlier version
-// built every section to a rhetorical turn ("and that map is mostly an
-// artifact", "that has a cost, and it is not neutral"), bolded its own verdicts
-// mid-paragraph, and ordered the material the way the pipeline runs rather than
-// the way a reader needs it. Methodology sections in the BLS Handbook of Methods,
-// Eurostat quality reports and journal Methods sections do none of that: headings
-// name their subject, tables carry captions and units, notation is defined once,
-// and limitations get a numbered section instead of being scattered as asides.
-// Match that when editing.
+// Every figure is read from `manifest.json` at runtime; a section whose figure is no longer
+// published disappears rather than going stale. Style: each section opens with a plain
+// statement, with derivations under "Statistical detail"; headings name their subject,
+// tables carry units, limitations get their own section.
 
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";

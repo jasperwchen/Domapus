@@ -1,14 +1,5 @@
-// The snapshot as typed arrays, not as 33,771 objects.
-//
-// The old load path built one plain object per ZIP and structured-cloned the lot
-// across the worker boundary. Measured: JSON.parse 67 ms, object rebuild 173 ms,
-// structuredClone 238 ms — about 85% of the cost was the object graph, not the
-// parse. This keeps each column as one Int32Array, transferred rather than copied,
-// and materialises an object only when something actually needs one.
-//
-// `materialize(row)` is what keeps Sidebar, ZipComparison, the popup builder and
-// PrintStage completely unchanged: they keep taking `ZipData`. A hover costs one
-// object instead of 33,771 at load.
+// The snapshot as one Int32Array per column. `materialize(row)` builds a single `ZipData`
+// on demand, so consumers keep their types without 33k objects at load.
 
 import type { ZipData } from "@/components/dashboard/map/types";
 import { NULL_SENTINEL, ZIP_SPACE, type SnapshotHeader } from "./snapshot";
@@ -17,11 +8,7 @@ import { mark, measure } from "./perf";
 /** Widest plausible ZCTA bounding box, in degrees. See `ZipTable.checkBounds`. */
 export const MAX_BBOX_SPAN_DEG = 10;
 
-/** Wire short name -> the `ZipData` field it populates.
- *
- *  Only names that differ are listed; anything absent keeps its wire name. The
- *  pipeline's `SNAPSHOT_COLUMNS` is the other half of this mapping and the two
- *  must change together. */
+/** Wire name -> `ZipData` field, where they differ. Other half of `serialize.COLUMNS`. */
 const FIELD_OF: Record<string, keyof ZipData> = {
   st: "state",
   ci: "city",
@@ -76,8 +63,13 @@ export class ZipTable {
   /** Perfect hash: the ZIP number IS the index. -1 where no such ZIP. */
   private readonly rowByZip: Int32Array;
   private recordCache: Record<string, ZipData> | null = null;
-  /** False when the bbox columns fail `checkBounds`; `boundsOf` then answers null. */
-  private readonly boundsUsable: boolean;
+  /** bw, bs, be, bn and their scales, or null when absent or failing `checkBounds`.
+   *  Held directly so hot loops skip the per-cell Map lookups. */
+  private readonly bbox: {
+    cols: [Int32Array, Int32Array, Int32Array, Int32Array];
+    scales: [number, number, number, number];
+  } | null;
+  private anchorCache: { lng: Float64Array; lat: Float64Array } | null = null;
 
   private constructor(header: SnapshotHeader, cols: Map<string, Int32Array>) {
     this.header = header;
@@ -91,7 +83,7 @@ export class ZipTable {
     this.rowByZip = new Int32Array(ZIP_SPACE).fill(-1);
     for (let i = 0; i < this.n; i++) this.rowByZip[+header.z[i]] = i;
 
-    this.boundsUsable = this.checkBounds();
+    this.bbox = this.checkBounds();
   }
 
   static from(header: SnapshotHeader, buffers: Record<string, ArrayBuffer>): ZipTable {
@@ -113,12 +105,7 @@ export class ZipTable {
     return t;
   }
 
-  /**
-   * O(1), one array read. Measured over 200,000 probes against the alternatives:
-   * `Map<string, number>` was 9.77 ms and a binary search on a sorted Int32Array
-   * was 16.29 ms — the binary search is SLOWER because ~15 probes across 135 KB
-   * miss cache, while this is a single indexed read.
-   */
+  /** O(1): the ZIP number is the index (faster than a Map or binary search, measured). */
   rowOf(zip: string | number): number {
     const k = typeof zip === "number" ? zip : +zip;
     return Number.isInteger(k) && k >= 0 && k < ZIP_SPACE ? this.rowByZip[k] : -1;
@@ -126,11 +113,6 @@ export class ZipTable {
 
   has(zip: string): boolean {
     return this.rowOf(zip) >= 0;
-  }
-
-  /** Raw column, on its wire scale. For hot loops that do their own scaling. */
-  col(name: string): Int32Array | undefined {
-    return this.cols.get(name);
   }
 
   /** Descaled value, or null. `name` is the WIRE name. */
@@ -156,75 +138,70 @@ export class ZipTable {
     return this.valueAt(name, this.rowOf(zip));
   }
 
-  /**
-   * Real polygon bounds in degrees, or null. The snapshot ships the bbox as four
-   * offsets from the anchor so the numbers stay small enough for int32; this is
-   * where they become absolute again.
-   *
-   * Returns null for every ZIP when the bbox column failed its scale check, so
-   * auto-scale falls back to the national scale rather than sampling a viewport
-   * it has measured wrongly. See `checkBounds`.
-   */
+  /** Absolute polygon bounds in degrees (the wire carries offsets from the anchor),
+   *  or null. Null for every ZIP when `checkBounds` failed. */
   boundsOf(row: number): { west: number; south: number; east: number; north: number } | null {
-    if (!this.boundsUsable) return null;
-    const lng = this.valueAt("lng", row);
-    const lat = this.valueAt("lat", row);
-    if (lng === null || lat === null) return null;
-    const bw = this.valueAt("bw", row);
-    const bs = this.valueAt("bs", row);
-    const be = this.valueAt("be", row);
-    const bn = this.valueAt("bn", row);
-    if (bw === null || bs === null || be === null || bn === null) return null;
-    return { west: lng + bw, south: lat + bs, east: lng + be, north: lat + bn };
+    if (!this.bbox || row < 0) return null;
+    const [bw, bs, be, bn] = this.bbox.cols;
+    const [sBw, sBs, sBe, sBn] = this.bbox.scales;
+    const S = this.sentinel;
+    const { lng, lat } = this.anchors();
+    const x = lng[row];
+    const y = lat[row];
+    if (Number.isNaN(x) || Number.isNaN(y) || bw[row] === S || bs[row] === S || be[row] === S || bn[row] === S) {
+      return null;
+    }
+    return { west: x + bw[row] / sBw, south: y + bs[row] / sBs, east: x + be[row] / sBe, north: y + bn[row] / sBn };
+  }
+
+  /** Anchor point per row in degrees, NaN where absent. Descaled once for per-row loops. */
+  anchors(): { lng: Float64Array; lat: Float64Array } {
+    if (!this.anchorCache) {
+      const lng = new Float64Array(this.n);
+      const lat = new Float64Array(this.n);
+      for (let row = 0; row < this.n; row++) {
+        lng[row] = this.valueAt("lng", row) ?? NaN;
+        lat[row] = this.valueAt("lat", row) ?? NaN;
+      }
+      this.anchorCache = { lng, lat };
+    }
+    return this.anchorCache;
   }
 
   /**
-   * One pass over the bbox columns at construction, because a mis-scaled bbox is
-   * silent everywhere it matters.
-   *
-   * The pipeline shipped degrees x1e8 under a header declaring x1e4 for one
-   * release. Decoded, every ZIP claimed a box roughly 1,500 degrees wide. A box
-   * that size intersects every viewport, so `visibleZipRows` accepted every
-   * loaded ZIP and auto-scale silently scaled to loaded tiles rather than to the
-   * view — indistinguishable, from the outside, from auto-scale working.
-   *
-   * The ceiling is a real measurement, not a guess: the widest ZCTA in the
-   * dataset is 99503 (Anchorage) at 8.3966 degrees of longitude, documented in
-   * `pipeline/geom.py`. Ten degrees is that with headroom, and it is two orders
-   * of magnitude below any plausible mis-scaling, so this cannot false-trip on
-   * real data but catches a factor-of-10,000 error on the first row that has one.
+   * A mis-scaled bbox is silent: one release shipped x1e8 under a x1e4 header, every
+   * box spanned ~1,500 degrees, and auto-scale quietly sampled all loaded tiles.
+   * The widest real ZCTA (99503) is 8.4 degrees, so a 10 degree ceiling cannot
+   * false-trip and catches any scale error.
    */
-  private checkBounds(): boolean {
-    const lng = this.cols.get("lng");
-    const bwc = this.cols.get("bw");
-    const bec = this.cols.get("be");
-    const bsc = this.cols.get("bs");
-    const bnc = this.cols.get("bn");
-    if (!lng || !bwc || !bec || !bsc || !bnc) return false;
+  private checkBounds(): ZipTable["bbox"] {
+    const names = ["bw", "bs", "be", "bn"] as const;
+    const cols = names.map((n) => this.cols.get(n));
+    if (cols.some((c) => !c)) return null;
+    const bbox = {
+      cols: cols as NonNullable<ZipTable["bbox"]>["cols"],
+      scales: names.map((n) => this.scales.get(n) ?? 1) as NonNullable<ZipTable["bbox"]>["scales"],
+    };
+    const [bw, bs, be, bn] = bbox.cols;
+    const [sBw, sBs, sBe, sBn] = bbox.scales;
+    const S = this.sentinel;
 
     let maxSpan = 0;
     let worstRow = -1;
     for (let row = 0; row < this.n; row++) {
-      const bw = this.valueAt("bw", row);
-      const be = this.valueAt("be", row);
-      const bs = this.valueAt("bs", row);
-      const bn = this.valueAt("bn", row);
-      if (bw === null || be === null || bs === null || bn === null) continue;
-      const span = Math.max(be - bw, bn - bs);
+      if (bw[row] === S || bs[row] === S || be[row] === S || bn[row] === S) continue;
+      const span = Math.max(be[row] / sBe - bw[row] / sBw, bn[row] / sBn - bs[row] / sBs);
       if (span > maxSpan) { maxSpan = span; worstRow = row; }
     }
 
     if (maxSpan > MAX_BBOX_SPAN_DEG) {
       console.error(
-        `[ZipTable] bounding boxes failed the scale check: widest is ${maxSpan.toFixed(1)}` +
-          ` degrees at ZIP ${this.zips[worstRow]}, ceiling is ${MAX_BBOX_SPAN_DEG}. The` +
-          ` widest real ZCTA is 8.4 degrees, so the bw/bs/be/bn columns are on the wrong` +
-          ` scale — likely encoded twice. Auto-scale will use the national scale instead of` +
-          ` the viewport.`,
+        `[ZipTable] bbox scale check failed: widest box is ${maxSpan.toFixed(1)} degrees at ZIP ` +
+          `${this.zips[worstRow]} (ceiling ${MAX_BBOX_SPAN_DEG}). Auto-scale falls back to the national scale.`,
       );
-      return false;
+      return null;
     }
-    return true;
+    return bbox;
   }
 
   /** Escape hatch: ONE object, on demand. Everything downstream keeps its types. */
@@ -237,8 +214,6 @@ export class ZipTable {
         ? this.stringAt(name, row)
         : this.valueAt(name, row);
     }
-    // `period_end` is envelope-level now: every ZIP in the snapshot is from the
-    // same period by construction, because the pipeline keeps only the newest.
     out.period_end = this.header.period_end;
     return out as unknown as ZipData;
   }
@@ -247,10 +222,7 @@ export class ZipTable {
     return this.materialize(this.rowOf(zip));
   }
 
-  /**
-   * Export only, and memoized. Pays the ~173 ms object build on an explicit user
-   * action instead of on every page load, which is the entire point of the store.
-   */
+  /** Every row as an object. Export only; memoized (~173 ms). */
   toRecord(): Record<string, ZipData> {
     if (this.recordCache) return this.recordCache;
     mark("store:materializeAll:start");

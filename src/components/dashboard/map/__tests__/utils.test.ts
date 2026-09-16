@@ -1,49 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  getMetricValue,
   formatMetricValue,
   formatChange,
-  getComparison,
   getStateName,
   createMetricPopupContent,
 } from '../utils';
 import { ZipData } from '../types';
-
-describe('getMetricValue', () => {
-  it('should return the metric value when data and metric are valid', () => {
-    const data: Partial<ZipData> = {
-      zhvi: 500000,
-      median_sale_price: 450000,
-    };
-    expect(getMetricValue(data as ZipData, 'zhvi')).toBe(500000);
-    expect(getMetricValue(data as ZipData, 'median_sale_price')).toBe(450000);
-  });
-
-  it('should return 0 when data is undefined', () => {
-    expect(getMetricValue(undefined, 'zhvi')).toBe(0);
-  });
-
-  it('should return 0 when metric value is null', () => {
-    const data: Partial<ZipData> = {
-      zhvi: null,
-    };
-    expect(getMetricValue(data as ZipData, 'zhvi')).toBe(0);
-  });
-
-  it('should return 0 when metric value is not a number', () => {
-    const data: Partial<ZipData> = {
-      zhvi: NaN,
-    };
-    expect(getMetricValue(data as ZipData, 'zhvi')).toBe(0);
-  });
-
-  it('should return 0 when metric value is not finite', () => {
-    const data: Partial<ZipData> = {
-      zhvi: Infinity,
-    };
-    expect(getMetricValue(data as ZipData, 'zhvi')).toBe(0);
-  });
-});
 
 describe('formatMetricValue', () => {
   it('should format currency values correctly', () => {
@@ -125,34 +87,6 @@ describe('formatChange units', () => {
 
   it('defaults to percent', () => {
     expect(formatChange(4.23).formatted).toBe('+4.2%');
-  });
-});
-
-describe('getComparison', () => {
-  it('should return higher when current is greater than compare', () => {
-    expect(getComparison(100, 50)).toBe('higher');
-  });
-
-  it('should return lower when current is less than compare', () => {
-    expect(getComparison(50, 100)).toBe('lower');
-  });
-
-  it('should return same when values are equal', () => {
-    expect(getComparison(100, 100)).toBe('same');
-  });
-
-  it('should return same when difference is very small', () => {
-    expect(getComparison(100, 100.005)).toBe('same');
-  });
-
-  it('should return same when values are null or NaN', () => {
-    // When null is converted to number, it becomes 0
-    // The actual behavior returns 'lower' because 0 < 100
-    // and 'higher' because 100 > 0
-    // Adjust expectations to match actual behavior
-    expect(getComparison(null, 100)).toBe('lower'); // 0 < 100
-    expect(getComparison(100, null)).toBe('higher'); // 100 > 0
-    expect(getComparison(NaN, 100)).toBe('same'); // NaN comparisons are 'same'
   });
 });
 

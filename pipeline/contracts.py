@@ -1,14 +1,4 @@
-"""Declared invariants, and the assertions that prove them every run.
-
-Two tiers, and the difference matters (spec section 2.2):
-
-  CONTRACT — a value the pipeline *asserts*. Violation raises and the run stops.
-             These are things that, if they changed, mean the upstream file no
-             longer means what our code thinks it means.
-  DRIFT    — a value the pipeline *observes*. Violation is reported, not fatal.
-
-Everything in this module is CONTRACT tier.
-"""
+"""Declared invariants, asserted every run. Everything here raises (CONTRACT tier)."""
 
 import re
 
@@ -20,13 +10,9 @@ class PipelineError(RuntimeError):
     """Raised on any condition that should fail the workflow loudly."""
 
 
-# --- Declared grains -------------------------------------------------------
-# The key of each table, asserted with assert_unique_key BEFORE any reduction.
-#
-# `redfin_raw` is (PERIOD END, REGION NAME) and NOT (…, PROPERTY_TYPE_ID). The
-# old feed carried five property-type rows per (ZIP, period); this file is the
-# all-residential aggregate and carries one. See CONSTANTS_ABSENT below — the
-# reappearance of a breakout dimension is exactly what this key guards against.
+# --- Declared grains ---------------------------------------------------------------------
+# Asserted before any reduction. The Redfin file is the all-residential aggregate: one row
+# per (period, ZIP); a property-type breakout would break this key.
 GRAINS = {
     "redfin_raw": ["PERIOD END", "REGION NAME"],
     "zhvi": ["RegionName"],
@@ -36,39 +22,20 @@ GRAINS = {
 }
 
 # --- Column constants ------------------------------------------------------
-# Uniform across all 4,930,000 rows of the 2026-08-03 vintage [M].
-# `PERIOD_DURATION == 90` has no successor: the real window is 89-92 days
-# (spec section 1.5.10 Defect 4), so FREQUENCY is the contract instead.
+# Uniform across all 4.93M rows [M]. The window is 89-92 days, so FREQUENCY is the contract.
 CONSTANTS = {
     "FREQUENCY": {"Rolling 3 Months"},
     "REGION TYPE": {"Zip"},
 }
 
-# Columns that must STAY ABSENT. Their return means Redfin re-introduced a
-# breakout dimension, which would make (PERIOD END, REGION NAME) non-unique and
-# resurrect the arbitrary-row-selection bug this pipeline exists to kill.
+# Their return means a breakout dimension is back and the key above is no longer unique.
 CONSTANTS_ABSENT = ["PROPERTY TYPE", "IS SEASONALLY ADJUSTED"]
 
 ZIP_RE = re.compile(r"^\d{5}$")
 
 # --- Ranges ----------------------------------------------------------------
-# (lo, hi) inclusive, checked against non-null values only. A units change
-# upstream trips these.
-#
-# PERCENT SCALE, not fraction scale. The new feed ships 101.34, not 1.0134, so
-# the old fraction-scale bounds rejected every row (spec section 1.5.10 Defect 3).
-# The 101 ceiling on sold_above_list is deliberate: a share above 100 is upstream
-# nonsense, but it is BOUNDED nonsense (measured max 100.04 across 694 ZIPs), and
-# a contract that fires every month is a contract that gets switched off.
-# Bounds are MEASURED on the real file, not carried over from the old feed, and
-# they apply to the LATEST-PERIOD SNAPSHOT. Full-file extremes are noted where
-# they differ, because a historical rebuild sees them.
-#
-# The spec's inherited bounds rejected real rows: `median_dom (0, 3650)` is a
-# 10-year cap and the feed reaches 18,504 days; `avg_sale_to_list (0.5, 2.0)` and
-# `sold_above_list (0.0, 1.0)` are fraction-scale and this feed ships percent.
-#
-# Measured 2026-09-04 on all 4,930,000 rows and on the 29,738-ZIP latest period.
+# (lo, hi) inclusive, on non-null latest-period values, in PERCENT scale (the feed ships
+# 101.34, not 1.0134). Measured on the real file 2026-09-04; a units change trips these.
 RANGES = {
     # latest 3,499..13,247,058 · full file min 1.00 (a real $1 sale, history only)
     "median_sale_price": (1e3, 1e8),
@@ -97,12 +64,7 @@ RANGES = {
 }
 
 def assert_unique_key(tbl: pa.Table, keys, name: str, sample: int = 5) -> None:
-    """Run BEFORE any reduction. Measured 0 duplicates in 4,930,000 rows.
-
-    This is the assertion whose absence caused the headline bug: `drop_duplicates`
-    was used as a filter on a key nobody had proved was a key, so the surviving
-    row was whichever one an unstable sort happened to leave last.
-    """
+    """Run before any reduction: an unproven key made `drop_duplicates` pick arbitrary rows."""
     g = tbl.select(list(keys)).group_by(list(keys)).aggregate([([], "count_all")])
     dup = g.filter(pc.greater(g["count_all"], 1))
     if dup.num_rows:
@@ -143,12 +105,7 @@ def assert_columns_absent(header, name: str) -> None:
 
 
 def assert_zip_format(zips, name: str, sample: int = 5) -> None:
-    """`REGION NAME` is a bare 5-digit ZIP in this feed.
-
-    The old `extract_zip_code()` parsed a "Zip Code: NNNNN" pattern out of a `REGION`
-    string. That regex matches nothing here and would produce an all-null ZIP
-    column — which the all-null column guard catches only after a full run.
-    """
+    """Every value is a bare 5-digit string (leading zeros intact)."""
     bad = [z for z in zips if z is None or not ZIP_RE.match(str(z))]
     if bad:
         raise PipelineError(
@@ -175,18 +132,3 @@ def assert_ranges(records: dict, name: str, sample: int = 3) -> None:
             f"{name}: range contract violated. A units change upstream looks exactly "
             f"like this.\n" + "\n".join(failures)
         )
-
-
-def assert_descending(values, name: str) -> None:
-    """`PERIOD END` is strictly non-increasing over the whole file.
-
-    Verified over all 4,930,000 rows [M]. Nothing downstream depends on it today,
-    but the moment something reads a prefix of this file instead of all of it, the
-    prefix is only the newest periods if this holds.
-    """
-    for i in range(1, len(values)):
-        if values[i] > values[i - 1]:
-            raise PipelineError(
-                f"{name}: PERIOD END is not descending at row {i:,} "
-                f"({values[i - 1]!r} then {values[i]!r}). Row order has changed upstream."
-            )

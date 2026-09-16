@@ -47,8 +47,10 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
 
       - name: Report what is being deployed
+        env:
+          REF_INPUT: ${{ inputs.ref }}
         run: |
-          echo "ref input : '${{ inputs.ref }}'"
+          echo "ref input : '$REF_INPUT'"
           echo "deploying : $(git rev-parse HEAD)"
           if [ -f public/data/last_updated.json ]; then
             echo "period_end: $(jq -r '.period_end // "none"' public/data/last_updated.json)"

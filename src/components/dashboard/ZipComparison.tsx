@@ -109,21 +109,11 @@ export function ZipComparison({
 }
 
 /**
- * One group as a four-column table: metric, A, B, difference.
+ * One group as a table: metric, A, B, difference.
  *
- * COLOUR MARKS DIRECTION, NOT QUALITY, and the distinction is the whole reason
- * this is safe to do. An earlier version painted the *better* value green and
- * flipped the rule for days-on-market, which is wrong for months-of-supply —
- * more inventory is good for a buyer and bad for a seller — and meaningless for
- * homes sold. The panel does not know which side of the transaction the reader
- * is on and must not guess.
- *
- * What it does now is uniform: green means B is above A, red means B is below A,
- * on every metric, with no exceptions to remember. That is the same sign rule
- * the detail panel already uses for every year-over-year delta, so the two
- * panels no longer disagree about what a green number means. The arrow marks
- * which column is larger so the direction survives for a reader who cannot
- * separate the two hues.
+ * Colour marks direction, not quality: green = B above A, red = below, on every metric. Which
+ * is "better" depends on whether the reader buys or sells. The arrow repeats it for readers
+ * who cannot separate the hues.
  */
 function Group({
   label, keys, a, b,
@@ -211,12 +201,8 @@ function Value({
   );
 }
 
-/** B against A as a percentage, plus which way it points.
- *
- *  Percent of A, not a difference in the metric's own unit: one column width has
- *  to serve fifteen metrics on five different scales. `dir` is the sign of that
- *  percentage and is 0 wherever the ratio is undefined or the two round to the
- *  same number, which is what keeps a 0.2% gap from being painted as a move. */
+/** B vs A as a percent of A (one column serves every unit). `dir` is 0 when undefined or
+ *  when both round to the same value. */
 function relative(a: number | null, b: number | null): { text: string; dir: -1 | 0 | 1 } {
   if (!Number.isFinite(a as number) || !Number.isFinite(b as number) || a === 0) {
     return { text: 'n/a', dir: 0 };
