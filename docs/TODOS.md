@@ -5,6 +5,13 @@ in `CLAUDE.md`. Delete an item here when it is done and record it there.
 
 `[ ]` todo · `[~]` in progress · `[!]` blocked
 
+## Current objective (2026-09-19)
+
+- [x] **Assess code scanning alert #33** in `jasperwchen/Domapus` and apply a fix only if needed.
+- [x] **Active subagent task:** Reviewed the CodeQL finding from `CodeQL` and validated the flagged usage in context.
+- [x] **Completed files:** `docs/TODOS.md` (tracking update only; no source-code remediation needed).
+- [ ] **Next step:** share false-positive rationale and keep source files unchanged.
+
 ## Pipeline and data
 
 - [ ] **Acceptance-test `update_data.yml` on a real dispatch.** These are step-ordering or
