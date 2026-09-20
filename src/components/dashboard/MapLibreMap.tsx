@@ -900,8 +900,10 @@ export function MapLibreMap({
                         }}
                       />
                     </div>
+                    {/* The worker counts the snapshot's COLUMNS as it transposes them, not
+                        ZIPs — every column covers every ZIP. This said "of 50 ZIP codes". */}
                     <span className="text-[10px] tabular-nums text-muted-foreground/80">
-                      {(loadingProgress.processed ?? 0).toLocaleString()} of {loadingProgress.total.toLocaleString()} ZIP codes
+                      {(loadingProgress.processed ?? 0).toLocaleString()} of {loadingProgress.total.toLocaleString()} columns
                     </span>
                   </>
                 ) : null}

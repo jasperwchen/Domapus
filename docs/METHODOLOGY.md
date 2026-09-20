@@ -186,6 +186,7 @@ is the property that made opacity unusable. Deferred, not cancelled.
 | `map:sourceReload` == 0 | `setPaintPropertyCounted`, and the bench asserts it | Rewriting a data-driven paint value reloads every tile: 3375 ms per metric switch. |
 | Bbox decodes to a sane span | `geom.assert_bbox_scale` (pipeline), `ZipTable.checkBounds` (client) | See below. |
 | Metric keys match `KEY_ORDER` | positional wire format; golden fixtures on both sides | A wrong name silently reads the neighbouring column. |
+| A LISA hold lasts one release | `spatial._apply_hysteresis` reads `manifest.spatial.held`; three-release tests | The published `lisa` column cannot tell a held class from a real one, so the hold comes back as `previous` next month and holds itself again. A ZIP that stopped being an outlier is drawn as one forever. |
 
 ### The bbox scale bug, recorded because both failure modes look identical
 

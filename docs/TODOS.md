@@ -23,49 +23,6 @@ in `CLAUDE.md`. Delete an item here when it is done and record it there.
       exit 0 in ~0.2 s.
 - [ ] **Forecast metro growth path.** Tier 1 was never implemented and was collapsed into
       tier 0 on 2026-09-12. Writing the branch is open; restoring the label without it is not.
-- [ ] **LISA hysteresis holds a class forever, not for one release.** `spatial.run()` reads
-      `previous` from the LIVE snapshot and republishes the held class, so next month that
-      held value comes back as `previous`, the recomputed class is still `ns`, and it is held
-      again. A ZIP that stops being an outlier never stops being drawn as one. The docstring
-      says one release; make the code mean it. The hold has to be remembered somewhere the
-      next run can tell apart from a real class — a `manifest.spatial` list of held ZIPs is
-      cheaper than a wire column, which would drag `SNAPSHOT_COLUMNS`, `FIELD_OF` and the
-      golden fixtures with it. Add a two-release test.
-      **Now dated.** The 2026-08 release published on 2026-09-20 reports
-      `spatial.hysteresis_held: 172` — the previous release held 0, so these are the first
-      real holds. Next month's run reads those 172 back as `previous`, recomputes `ns`, and
-      holds them again; from then on they never stop being drawn as outliers. Fix before the
-      scheduled run on 18 October, or those 172 ZIPs are permanent.
-
-      **The fix.** The published `lisa` column cannot tell a real class from a held one —
-      they are the same integer — so the run needs a second input saying which ZIPs were
-      held, and a ZIP already held is not eligible to be held again. Three changes:
-
-      1. `spatial.run(records, previous, previously_held)`. Publish the held set as a list
-         of ZIP strings at `manifest.spatial.held`, beside the existing `hysteresis_held`
-         count. ~172 entries is ~1 KB against a 20 KB manifest.
-      2. In `__main__`, read it back with
-         `set(_live_manifest().get("spatial", {}).get("held") or [])` — `_live_manifest()`
-         is already called for the gate, so this costs nothing — and pass it in.
-      3. The hold fires only when `zip_code not in previously_held`. Everything else in the
-         condition stays as it is.
-
-      Pull the rule out of `run()` into a pure
-      `_apply_hysteresis(cls, zips, previous, previously_held) -> (cls, held)` and test THAT
-      across three releases, rather than fabricating spatial data to make Moran's I produce
-      a chosen class. The bug is in the hold rule, not in the statistic:
-      real HH -> computes ns, not yet held, so HOLD and publish HH -> computes ns again,
-      now in `previously_held`, so RELEASE and publish ns.
-
-      Bootstrap: `manifest.spatial.held` does not exist on the currently published release,
-      only the count. Treat a missing key as "hold nothing this run" rather than as an empty
-      set, otherwise the 172 get held once more and only release in November. Distinguish
-      absent (unknown, hold nothing) from `[]` (known, nothing was held). The cost of the
-      conservative branch is that some ZIPs skip one release of damping, once.
-
-      Worth deciding at the same time whether the hysteresis earns its keep at all: 172 of
-      ~9,456 rankable ZIPs is ~1.8% flickering, and deleting the hold is a smaller change
-      than maintaining a correct one.
 - [ ] **`msp_yoy_se` has no producer.** It is column 47 of 50 and every ZIP ships null: no
       stage writes it, and the only other mentions are `map/types.ts` and an export test
       fixture. Either compute it in S5 (the standard error of a log ratio of two medians, so
@@ -102,20 +59,6 @@ in `CLAUDE.md`. Delete an item here when it is done and record it there.
       the missing 207 reach the reader as nothing at all. Add the circle layer under
       `zips-fill`, coloured by the same constant match on the same feature id, or drop
       `--cover` and let the gate tell the truth about what z2/z3 lose.
-- [ ] **The loading overlay counts columns and calls them ZIP codes.** The worker posts
-      `processed: j, total: header.f.length` while transposing, and `MapLibreMap.tsx` renders
-      "N of 50 ZIP codes". Either relabel it as columns or report ZIP progress.
-- [ ] **Legend and map disagree for one fetch on a metric change.** `classSource` is rebuilt
-      from `manifest.classing[newMetric].breaks` as soon as `selectedMetric` changes, while
-      `paint` still holds the previous metric's table until its ~27 KB fetch lands, and the
-      `useMemo` never checks `paint.metric`. The legend labels the new metric over the old
-      metric's colours. Gate the source on `paint.metric === selectedMetric`, or keep the old
-      breaks until the new table arrives.
-- [ ] **Export readiness can double-count a map.** In `PrintStage.createMap`, the 250 ms
-      interval increments `loadedCount` and the 10 s fallback `setTimeout` is never cleared,
-      so a map that already reported ready is counted a second time if the other maps are
-      still loading, and `markReady()` can fire an inset short. `captureMapCanvas` waits for
-      `idle` per map, which is why the output still looks right; clear the timer anyway.
 
 ## Performance
 
@@ -132,15 +75,3 @@ in `CLAUDE.md`. Delete an item here when it is done and record it there.
 - [ ] **Final full benchmark** after the last of the above lands, same pinned conditions as
       the 2026-08-29 baseline. Every phase: `node bench/run.mjs` before and after, into
       `bench/results/`.
-
-## Build and CI
-
-- [ ] **`statsmodels==0.15.0` is installed and never imported.** `forecast.py` says it is
-      test-only, but no test imports it. It is a dependency in both CI jobs and the monthly
-      data run. Either write the test that checks the closed-form AR(1) against it, which is
-      what would justify the pin, or drop it from `requirements.txt`.
-- [ ] **Git LFS hooks survive the LFS removal.** `.gitattributes` is empty and no path is
-      tracked by LFS any more, but `.githooks/post-checkout`, `post-commit`, `post-merge` and
-      `pre-push` still `exit 2` on a machine without `git-lfs`. Delete them, or keep only the
-      pre-commit hook that regenerates `tree.txt` and lints the workflows.
-

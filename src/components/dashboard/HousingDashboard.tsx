@@ -278,7 +278,11 @@ export function HousingDashboard() {
   // its epoch; the painter sees a new epoch and rewrites the full ZIP set, so the
   // two modes can never overlap or leave stale colours behind.
   const classSource: ClassSource | null = useMemo(() => {
-    if (!paint) return null;
+    // `selectedMetric` changes a tick before the new table lands, so `paint` still holds the
+    // previous metric's bytes for one ~27 KB fetch. Building a source here would label the
+    // new metric's breaks over the old metric's colours. Null instead: the painter keeps the
+    // colours already on the map and the legend drops its numbers until the two agree.
+    if (!paint || paint.metric !== selectedMetric) return null;
     const spec = manifest?.classing?.[selectedMetric];
     const breaks = spec?.breaks;
 

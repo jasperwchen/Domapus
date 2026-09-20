@@ -77,9 +77,35 @@ def local_moran(v: np.ndarray, nb: np.ndarray, nperm: int = NPERM, q: float = FD
     return {"I": Ii, "p": p, "cls": cls, "global_I": float((z * lag).mean())}
 
 
-def run(records: dict, previous: dict | None = None) -> dict:
-    """Write `lisa` into `records`. `previous` ({zip: class}) holds a ZIP's significant class
-    for one release when it drops to ns, so borderline ZIPs do not flicker monthly."""
+def _apply_hysteresis(cls: np.ndarray, zips: list[str], previous: dict | None,
+                      previously_held: set[str] | None) -> tuple[np.ndarray, list[str]]:
+    """Hold a ZIP's significant class for ONE release when it drops to ns, then let it go.
+
+    The published `lisa` column cannot tell a real class from a held one — both are the same
+    integer — so the rule needs `previously_held`, last release's held set, read back from
+    `manifest.spatial.held`. A ZIP already held is not eligible to be held again; without
+    that second input the hold republishes itself as `previous` every month and a ZIP that
+    stopped being an outlier is drawn as one forever.
+
+    `previously_held is None` means the published manifest predates the key, so which ZIPs
+    were held is unknown. Hold nothing that run rather than assume nothing was held: the
+    cost is one release of undamped flicker, once, against holding the unknown set forever.
+    """
+    if not previous or previously_held is None:
+        return cls, []
+    held = []
+    for i, zip_code in enumerate(zips):
+        was = previous.get(zip_code)
+        if was and cls[i] == 0 and zip_code not in previously_held:
+            cls[i] = was
+            held.append(zip_code)
+    return cls, held
+
+
+def run(records: dict, previous: dict | None = None,
+        previously_held: set[str] | None = None) -> dict:
+    """Write `lisa` into `records`. `previous` ({zip: class}) is last release's published
+    class and `previously_held` the ZIPs it was holding; see `_apply_hysteresis`."""
     eligible = [
         (z, r) for z, r in records.items()
         if noise.rankable(r) and r.get("median_sale_price") and r.get("lat") is not None
@@ -102,16 +128,7 @@ def run(records: dict, previous: dict | None = None) -> dict:
     dist, idx = cKDTree(pts).query(pts, k=max(K_REPORTED) + 1)
 
     result = local_moran(v, idx[:, 1:K_SHIPPED + 1])
-    cls = result["cls"]
-
-    flips_held = 0
-    if previous:
-        for i, zip_code in enumerate(zips):
-            was = previous.get(zip_code)
-            if was is not None and was != cls[i] and was != 0 and cls[i] == 0:
-                # It was significant and is now not. Hold one release.
-                cls[i] = was
-                flips_held += 1
+    cls, held = _apply_hysteresis(result["cls"], zips, previous, previously_held)
 
     for rec in records.values():
         rec["lisa"] = None
@@ -147,7 +164,9 @@ def run(records: dict, previous: dict | None = None) -> dict:
         "lisa_median_n_by_class": median_n,
         "bh_significant": int((cls != 0).sum()),
         "raw_p_below_05": int((result["p"] < 0.05).sum()),
-        "hysteresis_held": flips_held,
+        "hysteresis_held": len(held),
+        # Next release reads this back: a ZIP held once is not eligible to be held again.
+        "held": sorted(held),
         "median_8th_neighbour_km": round(float(np.median(d8)), 2),
         "bonferroni_threshold": bonferroni,
         "bonferroni_attainable": bonferroni >= 1.0 / (NPERM + 1),

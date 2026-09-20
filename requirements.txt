@@ -71,10 +71,12 @@ numpy==2.5.2
 # for which contiguity-based Moran's I is undefined.
 scipy==1.18.1
 
-# TEST-ONLY. `forecast.py` never imports it. It exists so a test can assert that
-# the hand-written closed-form AR(1) agrees with ETS(A,Ad,N) to 4 dp — which is
-# the whole justification for not shipping statsmodels in the hot path, where it
-# measured 1,245x slower per series.
+# TEST-ONLY. `forecast.py` never imports it. It is here for
+# `test_closed_form_ar1_matches_statsmodels`, which checks the hand-written
+# geometric sum against SARIMAX's own AR(1) recursion at the same (mu, rho) —
+# the justification for not shipping statsmodels in the hot path, where it
+# measured 1,245x slower per series. The pin was dead weight until that test
+# was written (2026-09-19): nothing imported it in either CI job.
 statsmodels==0.15.0
 
 # PyYAML is not imported by the pipeline. It is what `scripts/check_workflows.py`

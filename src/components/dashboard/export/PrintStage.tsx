@@ -653,6 +653,17 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     ) => {
       if (!container || isCleanedUp) return;
 
+      // One map contributes one count. The interval path and the timeout fallback both used
+      // to increment: a map that reported ready while the insets were still loading was
+      // counted again ten seconds later, so `markReady()` could fire an inset short.
+      let counted = false;
+      const countOnce = () => {
+        if (counted) return;
+        counted = true;
+        loadedCount++;
+        markReady();
+      };
+
       const map = new maplibregl.Map({
         container,
         style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
@@ -796,20 +807,19 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
             }
             if (map.loaded() && map.isStyleLoaded() && featureStatesApplied) {
               clearInterval(checkInterval);
-              loadedCount++;
-              markReady();
+              clearTimeout(fallbackTimer);
+              countOnce();
             }
           }, 250);
 
-          setTimeout(() => {
-            if (!isReadyTriggered && !isCleanedUp) {
+          const fallbackTimer = setTimeout(() => {
+            if (!counted && !isCleanedUp) {
               clearInterval(checkInterval);
               if (!featureStatesApplied) {
                 map.off("sourcedata", onSourceData);
                 applyFeatureStates();
               }
-              loadedCount++;
-              markReady();
+              countOnce();
             }
           }, MAP_READY_TIMEOUT_MS);
 

@@ -3540,3 +3540,74 @@ from `fix/redfin-yoy-schema-drift`. `main` is still at `d148d62` with the 2026-0
 and `deploy.yml` fires on push to main with `paths-ignore` covering only `**.md` and
 `docs/**`. Until the branch is merged, **any code push to main republishes July's data over
 the live August site.** Merging closes the window.
+
+---
+
+## 2026-09-19 — the LISA hold now expires, and five smaller todos closed
+
+### LISA hysteresis: the hold lasts one release again
+
+The hold exists so a ZIP whose Moran's I dips below significance for a single month is not
+redrawn as ordinary and then as an outlier again — a 1.8% monthly flicker on the outlier
+overlay. It did not work. `spatial.run()` read `previous` out of the LIVE snapshot, and the
+published `lisa` column cannot tell a real class from a held one: both are the same integer.
+So next month the held value came back as `previous`, the recomputed class was still `ns`,
+and it was held again. Forever.
+
+Nobody noticed because it had never fired: `hysteresis_held` was 0 until the 2026-08 release
+published on 2026-09-20, which held 172 ZIPs. Those 172 were three weeks from becoming
+permanent outliers.
+
+The fix gives the rule a second input it can trust. `spatial` now publishes the held ZIPs as
+`manifest.spatial.held` beside the existing count (~172 strings, ~1 KB against a 20 KB
+manifest), `__main__` reads them back off the live manifest — already fetched for the gate,
+so no extra cost — and a ZIP in that set is not eligible to be held again. The rule itself
+moved out of `run()` into a pure `_apply_hysteresis(cls, zips, previous, previously_held)`,
+which is what the three-release tests drive. Testing the rule rather than the statistic was
+deliberate: fabricating spatial data until Moran's I produces a chosen class tests the
+fabrication.
+
+A manifest key was chosen over a wire column because a column would drag `SNAPSHOT_COLUMNS`,
+`FIELD_OF` and both golden fixtures with it, for a fact no reader needs.
+
+**Bootstrap.** The published release has the count but not the list, so `held` is absent, not
+empty. Absent is treated as *unknown* and holds nothing that run — the alternative, reading it
+as "nothing was held", would hold the same 172 once more and only release them in November.
+The cost is that some ZIPs skip one release of damping, once.
+
+**Does the hold earn its keep?** Kept. 172 of ~9,456 rankable ZIPs is real flicker on the one
+overlay a reader is most likely to read as a finding, and the correct version is about fifteen
+lines with a test. The version that ran for one release did not earn its keep; this one does.
+
+### Also closed
+
+- **`manifest.spatial.held`** is now an invariant row in `docs/METHODOLOGY.md` §6.
+- **Legend and map disagreed for one fetch on a metric change.** `classSource` was rebuilt
+  from the new metric's breaks the moment `selectedMetric` changed, while `paint` still held
+  the previous metric's table until its ~27 KB fetch landed. The memo now returns null until
+  `paint.metric === selectedMetric`: the painter keeps the colours already on the map and the
+  legend drops its numeric labels, so nothing on screen claims a value it cannot back.
+- **Export readiness could double-count a map.** In `PrintStage.createMap` the 250 ms interval
+  and the 10 s fallback both incremented `loadedCount`, and the fallback was never cleared —
+  so a map that reported ready while the insets were still loading was counted again ten
+  seconds later and `markReady()` could fire an inset short. Each map now counts once
+  (`countOnce`) and the interval clears the fallback.
+- **The loading overlay called columns ZIP codes.** The worker posts column progress while
+  transposing; the overlay read "N of 50 ZIP codes". Relabelled as columns.
+- **`statsmodels==0.15.0` now has the test that justifies it.**
+  `test_closed_form_ar1_matches_statsmodels` filters SARIMAX(1,0,0) with `trend="c"` at the
+  same (mu, rho) `forecast.fit` produced and checks our closed-form geometric sum against its
+  recursion at every shipped horizon. It tests the recursion, not the estimator — `fit`
+  shrinks and clips rho, so only the arithmetic on top is comparable. The requirements comment
+  claimed agreement with ETS(A,Ad,N), which is a different model (damped-trend ETS is
+  ARIMA(1,1,2), ours is ARIMA(1,1,0) with drift); corrected to what the test does.
+- **The Git LFS hooks are gone.** `.gitattributes` is empty and `git lfs ls-files` is empty,
+  but `post-checkout`, `post-commit`, `post-merge` and `pre-push` still `exit 2` on any machine
+  without `git-lfs`. Deleted; only the `pre-commit` hook that regenerates `tree.txt` and lints
+  the workflows remains.
+
+### Left open deliberately
+
+**Conditional permutation still samples neighbours with replacement.** Fixing it changes every
+published LISA class, and nothing available here can verify the new numbers without the 1.33 GB
+feed. It stays a todo rather than an unverified change to a published statistic.

@@ -203,7 +203,13 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     # LISA over the rankable set only; needs `rel` from S5. Fills `lisa`.
     _require("s5_noise")
     previous_lisa = {z: r["lisa"] for z, r in live.items() if r.get("lisa") is not None}
-    spatial_report = spatial.run(records, previous_lisa)
+    # Which of those classes the last run was HOLDING, so the hold expires after one
+    # release instead of republishing itself as `previous` forever. Absent key (a manifest
+    # older than this rule) is unknown, not empty — `spatial.run` then holds nothing.
+    live_held = live_manifest.get("spatial", {}).get("held")
+    spatial_report = spatial.run(
+        records, previous_lisa, set(live_held) if live_held is not None else None,
+    )
     _report("s5c_spatial", "ok", **spatial_report)
 
     # --- S6 CLASSIFY --------------------------------------------------------

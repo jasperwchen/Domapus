@@ -798,3 +798,104 @@ def test_diverging_bound_is_reached_at_both_ends():
     assert classify.class_of(-25.0, edges) == 0
     assert classify.class_of(25.0, edges) == classify.CLASSES - 1
     assert classify.class_of(19.9, edges) == classify.CLASSES - 2
+
+
+def _release(computed: dict, previous: dict, previously_held: set | None):
+    """One run of the hold rule. `computed` is {zip: class} as Moran's I came out;
+    returns what would be published and what the manifest would record as held."""
+    import numpy as np
+
+    from pipeline import spatial
+
+    zips = sorted(computed)
+    cls = np.array([computed[z] for z in zips], dtype=np.int8)
+    cls, held = spatial._apply_hysteresis(cls, zips, previous, previously_held)
+    return {z: int(c) for z, c in zip(zips, cls)}, set(held)
+
+
+def test_lisa_hysteresis_releases_after_one_hold():
+    """HH that computes ns is held one release, then let go — the bug was that the held
+    class came back as `previous` next month and was held again, forever."""
+    computed_ns = {"10001": 0}
+
+    # Release 1: really HH. Nothing to hold.
+    pub1, held1 = _release({"10001": 1}, previous={}, previously_held=set())
+    assert pub1 == {"10001": 1} and held1 == set()
+
+    # Release 2: computes ns, was HH, not yet held. HOLD.
+    pub2, held2 = _release(computed_ns, previous=pub1, previously_held=held1)
+    assert pub2 == {"10001": 1}, "a one-month drop to ns should not flicker"
+    assert held2 == {"10001"}
+
+    # Release 3: computes ns again. It is in `previously_held`, so the hold expires.
+    pub3, held3 = _release(computed_ns, previous=pub2, previously_held=held2)
+    assert pub3 == {"10001": 0}, "the hold must expire after one release, not persist"
+    assert held3 == set()
+
+
+def test_lisa_hysteresis_holds_again_only_after_a_real_class():
+    """Re-arming: a ZIP that goes back to significant on its own is eligible to be held
+    again, so the rule damps repeated borderline runs rather than firing once per ZIP."""
+    pub1, held1 = _release({"10001": 2}, previous={}, previously_held=set())
+    pub2, held2 = _release({"10001": 0}, previous=pub1, previously_held=held1)
+    assert pub2["10001"] == 2 and held2 == {"10001"}
+
+    # Significant again, computed not held, so the held set empties.
+    pub3, held3 = _release({"10001": 2}, previous=pub2, previously_held=held2)
+    assert pub3["10001"] == 2 and held3 == set()
+
+    pub4, held4 = _release({"10001": 0}, previous=pub3, previously_held=held3)
+    assert pub4["10001"] == 2 and held4 == {"10001"}
+
+
+def test_lisa_hysteresis_holds_nothing_when_the_held_set_is_unknown():
+    """`manifest.spatial.held` is absent on releases older than the rule. Unknown is not
+    empty: holding then would hold the previous run's held ZIPs for a second release."""
+    pub, held = _release({"10001": 0}, previous={"10001": 1}, previously_held=None)
+    assert pub == {"10001": 0} and held == set()
+
+    # Known-empty is the ordinary case and still holds.
+    pub, held = _release({"10001": 0}, previous={"10001": 1}, previously_held=set())
+    assert pub == {"10001": 1} and held == {"10001"}
+
+
+def test_closed_form_ar1_matches_statsmodels():
+    """The forecast is a hand-written geometric sum instead of a library call because
+    statsmodels measured 1,245x slower per series. This is the check that buys that:
+    given the SAME (mu, rho), our closed form must reproduce statsmodels' own AR(1)
+    recursion. It tests the recursion, not the estimator — `fit` shrinks and clips rho,
+    so the parameters are ours and only the arithmetic on top of them is compared.
+    """
+    import numpy as np
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+    from pipeline import forecast
+
+    # Three ZIPs with different growth persistence, on the log level scale `fit` expects.
+    rng = np.random.default_rng(7)
+    T = 120
+    LZ = np.empty((T, 3))
+    for j, (rho, mu) in enumerate(((0.3, 0.002), (0.7, 0.004), (0.9, 0.001))):
+        g = np.empty(T - 1)
+        g[0] = mu
+        for t in range(1, T - 1):
+            g[t] = mu + rho * (g[t - 1] - mu) + rng.normal(0, 0.002)
+        LZ[:, j] = np.log(200_000.0) + np.concatenate(([0.0], np.cumsum(g)))
+
+    out = forecast.fit(LZ)
+    growth = np.diff(LZ, axis=0)
+
+    for j in range(3):
+        mu, rho, sigma = out["mu"][j], out["rho"][j], out["sigma"][j]
+        # SARIMAX trend="c" parameterises as g_t = intercept + rho*g_{t-1} + e,
+        # so the intercept is mu*(1 - rho). sigma2 does not move a point forecast.
+        res = SARIMAX(growth[-forecast.W:, j], order=(1, 0, 0), trend="c").filter(
+            np.array([mu * (1.0 - rho), rho, sigma**2])
+        )
+        # Growth forecasts accumulate onto the last observed log level.
+        expected = LZ[-1, j] + np.cumsum(res.forecast(max(forecast.HORIZONS)))
+        for i, h in enumerate(forecast.HORIZONS):
+            assert out["f"][i, j] == pytest.approx(expected[h - 1], abs=1e-9), (
+                f"horizon {h}, column {j}: closed form {out['f'][i, j]} vs "
+                f"statsmodels {expected[h - 1]}"
+            )

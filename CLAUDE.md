@@ -156,6 +156,16 @@ tier, a property of the transaction sample rather than of whatever is being pain
 side metrics are exempt from the fade; fading a listings map by a sales statistic would be
 wrong exactly where there were no sales.
 
+**A LISA hold expires after one release, and only `manifest.spatial.held` can prove it.**
+The hold keeps a ZIP's significant class for one month when Moran's I drops it to `ns`, so
+the outlier overlay does not flicker. The published `lisa` column cannot tell a held class
+from a real one — same integer — so `spatial.run` takes last release's held set as a second
+input and refuses to hold a ZIP that is already in it. Without that, the hold republishes
+itself as `previous` every month and a ZIP that stopped being an outlier is drawn as one
+forever; the 2026-08 release held its first 172 that way. An ABSENT `held` key means unknown,
+not empty: hold nothing that run. `_apply_hysteresis` is pure so the three-release tests
+drive the rule rather than fabricating spatial data to force a class.
+
 **The publish decision is a digest, never a count.** `manifest.content_digest` is a sha256
 over the snapshot's content columns plus every paint table's own hash, with timestamps
 excluded, so a rebuild over unchanged input reproduces it exactly. `update_data.yml` gates
