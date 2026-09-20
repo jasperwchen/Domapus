@@ -187,10 +187,13 @@ function Value({
   higher: boolean;
 }) {
   return (
-    <span className="flex w-[66px] shrink-0 items-baseline justify-end gap-0.5">
+    <span className="flex w-[66px] shrink-0 items-baseline justify-end">
       {higher && (
+        // Lucide's glyph sits inside about 2.5 px of its own box on each side, so
+        // a nominal gap here reads as a gap twice that wide and the arrow floats
+        // between the two value columns instead of marking one of them.
         <ArrowUp
-          className="h-3 w-3 shrink-0 self-center text-foreground/70"
+          className="-mr-px h-3 w-3 shrink-0 self-center text-foreground/70"
           aria-label="higher"
         />
       )}

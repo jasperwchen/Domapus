@@ -358,13 +358,17 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: E
 
   return (
     <div
-      className="fixed inset-0 bg-background z-50 flex flex-col md:flex-row"
+      className="fixed inset-0 bg-muted z-50 flex flex-col overflow-y-auto md:flex-row md:overflow-hidden md:bg-background"
       role="dialog"
       aria-modal="true"
       aria-label="Export map"
     >
-      {/* Preview Area (top on mobile) */}
-      <div className="order-1 md:order-2 flex-1 md:p-6 overflow-hidden flex flex-col bg-muted/30 min-h-[52vh] md:min-h-0">
+      {/* Preview Area (top on mobile).
+          On a phone the whole dialog scrolls as one column from the top, and the
+          preview takes exactly the stage's 4:3 so nothing is letterboxed. Pinning
+          the panel to the bottom instead put Export and Cancel under the browser's
+          own navigation bar, which covers the bottom of a `fixed inset-0`. */}
+      <div className="order-1 md:order-2 w-full flex-none aspect-[4/3] md:aspect-auto md:flex-1 md:p-6 overflow-hidden flex flex-col bg-muted/30 md:min-h-0">
         <div className="flex-1 flex items-center justify-center min-h-0 w-full">
           {hasValidSelection ? (
             <PrintStage
@@ -387,9 +391,12 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: E
         </div>
       </div>
 
-      {/* Settings (bottom on mobile) */}
-      <div className="order-2 md:order-1 w-full md:w-80 bg-background border-t md:border-t-0 md:border-r h-auto md:h-full shadow-xl flex flex-col max-h-[48vh] md:max-h-full">
-        <div className="p-3 md:p-4 space-y-3 md:space-y-4 flex-1 overflow-y-auto">
+      {/* Settings (immediately under the preview on mobile) */}
+      {/* No drop shadow under the panel on mobile: it ends mid-page, right below
+          Cancel, and a shadow there reads as a floating card. The page below is
+          darker instead, with the panel's own border closing it off. */}
+      <div className="order-2 md:order-1 w-full md:w-80 bg-background border-y md:border-y-0 md:border-r h-auto md:h-full md:shadow-xl flex flex-col md:max-h-full">
+        <div className="p-3 md:p-4 space-y-3 md:space-y-4 md:flex-1 md:overflow-y-auto">
           <div className="flex items-center gap-2">
             <Download className="h-4 w-4 text-primary" />
             <h2 className="text-base font-semibold">Export Settings</h2>
@@ -546,7 +553,10 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, onClose }: E
           </div>
         </div>
 
-        <div className="p-3 md:p-4 space-y-2 border-t bg-background">
+        <div
+          className="p-3 md:p-4 space-y-2 border-t bg-background"
+          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        >
           <Button id="btn-map-export" onClick={handleExport} disabled={isExportDisabled()} className="w-full" size="default">
             {(isExporting || (!isMapReady && hasValidSelection && scaleAvailable && filteredData.length > 0)) && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />

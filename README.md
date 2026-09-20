@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="License">
-  <img src="https://img.shields.io/github/stars/jasperwchen/Domapus?style=flat&labelColor=%232F3742&color=%23E3B341&link=https%3A%2F%2Fgithub.com%2Fjasperwchen%2FDomapus%2Fstargazers" alt="Stars">
+  <img src="https://img.shields.io/github/stars/jasperwchen/Domapus?style=flat&labelColor=%23232F37&color=%23eac54f" alt="Stars">
 </p>
 
 **Domapus** is a website that visualizes U.S. housing market data at the ZIP-code level.  

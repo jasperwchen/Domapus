@@ -52,7 +52,7 @@ export function TopBarShell({
       <div className="flex items-center gap-3 lg:gap-5 min-w-0">
         <a
           href={`${BASE_PATH}${search}`}
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-shrink-0"
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0"
           title="Back to the map"
         >
           <img
@@ -60,10 +60,13 @@ export function TopBarShell({
             alt="Domapus Logo"
             width="40"
             height="40"
-            className="w-8 h-8 sm:w-9 sm:h-9"
+            className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0"
           />
-          <div className="flex-col font-logo hidden sm:flex">
-            <h1 className="text-base font-bold text-dashboard-text-primary leading-tight">
+          {/* The wordmark stays at phone widths — the mobile row carries only the
+              logo and the icon links, so it fits. It truncates rather than
+              pushing those links off the edge if a narrower device disagrees. */}
+          <div className="flex flex-col font-logo min-w-0">
+            <h1 className="text-base font-bold text-dashboard-text-primary leading-tight truncate">
               Domapus
             </h1>
             <p className="text-xs text-dashboard-text-secondary leading-tight hidden xl:block">
