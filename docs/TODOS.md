@@ -36,6 +36,36 @@ in `CLAUDE.md`. Delete an item here when it is done and record it there.
       real holds. Next month's run reads those 172 back as `previous`, recomputes `ns`, and
       holds them again; from then on they never stop being drawn as outliers. Fix before the
       scheduled run on 18 October, or those 172 ZIPs are permanent.
+
+      **The fix.** The published `lisa` column cannot tell a real class from a held one —
+      they are the same integer — so the run needs a second input saying which ZIPs were
+      held, and a ZIP already held is not eligible to be held again. Three changes:
+
+      1. `spatial.run(records, previous, previously_held)`. Publish the held set as a list
+         of ZIP strings at `manifest.spatial.held`, beside the existing `hysteresis_held`
+         count. ~172 entries is ~1 KB against a 20 KB manifest.
+      2. In `__main__`, read it back with
+         `set(_live_manifest().get("spatial", {}).get("held") or [])` — `_live_manifest()`
+         is already called for the gate, so this costs nothing — and pass it in.
+      3. The hold fires only when `zip_code not in previously_held`. Everything else in the
+         condition stays as it is.
+
+      Pull the rule out of `run()` into a pure
+      `_apply_hysteresis(cls, zips, previous, previously_held) -> (cls, held)` and test THAT
+      across three releases, rather than fabricating spatial data to make Moran's I produce
+      a chosen class. The bug is in the hold rule, not in the statistic:
+      real HH -> computes ns, not yet held, so HOLD and publish HH -> computes ns again,
+      now in `previously_held`, so RELEASE and publish ns.
+
+      Bootstrap: `manifest.spatial.held` does not exist on the currently published release,
+      only the count. Treat a missing key as "hold nothing this run" rather than as an empty
+      set, otherwise the 172 get held once more and only release in November. Distinguish
+      absent (unknown, hold nothing) from `[]` (known, nothing was held). The cost of the
+      conservative branch is that some ZIPs skip one release of damping, once.
+
+      Worth deciding at the same time whether the hysteresis earns its keep at all: 172 of
+      ~9,456 rankable ZIPs is ~1.8% flickering, and deleting the hold is a smaller change
+      than maintaining a correct one.
 - [ ] **`msp_yoy_se` has no producer.** It is column 47 of 50 and every ZIP ships null: no
       stage writes it, and the only other mentions are `map/types.ts` and an export test
       fixture. Either compute it in S5 (the standard error of a log ratio of two medians, so
