@@ -1,58 +1,110 @@
 {
-  "generated_utc": "2026-09-12T02:24:19.641187+00:00",
-  "content_digest": "e9bdd7ac6a563208f0cedfe05f17abadfacec7dff8bb5ccbd1cc78ed24cb8230",
-  "previous_content_digest": "5b7643b224140dd9cee15c9a849380a961cfb9dfaa71c00e75076b2bad225b74",
+  "generated_utc": "2026-09-20T02:35:22.160691+00:00",
+  "content_digest": "7b93f23dc2244d1d7988b426d7d657c98d51a05511d34f6e6e8d33d1f76cfc2c",
+  "previous_content_digest": "e9bdd7ac6a563208f0cedfe05f17abadfacec7dff8bb5ccbd1cc78ed24cb8230",
   "content_changed": true,
   "redfin": {
-    "period_end": "2026-07-31",
-    "period_begin": "2026-05-01",
-    "vintage": "2026-08-03",
-    "rows": 4930000
+    "period_end": "2026-08-31",
+    "period_begin": "2026-06-01",
+    "vintage": "2026-09-03",
+    "rows": 4960669
   },
   "zhvi": {
-    "period_end": "2026-07-31",
-    "zips": 26269,
+    "period_end": "2026-08-31",
+    "zips": 26268,
     "panel": {
-      "rows": 6456323,
-      "months": 319,
-      "zips": 26269,
+      "rows": 6482537,
+      "months": 320,
+      "zips": 26268,
       "month_min": "2000-01-31",
-      "month_max": "2026-07-31",
-      "vintage": "2026-07-31",
-      "bytes": 51396700,
-      "fill_rate": 0.7705
+      "month_max": "2026-08-31",
+      "vintage": "2026-08-31",
+      "bytes": 52437789,
+      "fill_rate": 0.7712
     }
   },
-  "fingerprints": {},
-  "upstream": {},
+  "fingerprints": {
+    "redfin": "8fa7ae85b761abda",
+    "zhvi": "fc6de50786ebf868"
+  },
+  "upstream": {
+    "redfin": {
+      "last_modified": "Sat, 12 Sep 2026 11:50:45 GMT",
+      "content_length": 1332087509
+    },
+    "zhvi": {
+      "last_modified": "Wed, 16 Sep 2026 02:11:04 GMT",
+      "content_length": 123559595
+    }
+  },
   "panel": {
-    "periods": 173,
-    "zips": 33952,
-    "rows": 4930000
+    "periods": 174,
+    "zips": 33966,
+    "rows": 4960669
   },
   "coverage": {
-    "both": 25604,
-    "redfin_only": 3315,
-    "zhvi_only": 658,
-    "no_data": 4194
+    "both": 25615,
+    "redfin_only": 3322,
+    "zhvi_only": 646,
+    "no_data": 4188
   },
-  "orphans": 819,
+  "orphans": 821,
   "changed": {
     "status": "compared",
     "zips": {
       "total": 33771,
       "added": 0,
       "removed": 0,
-      "changed": 0
+      "changed": 29509
     },
-    "data_points": 0,
-    "by_column": {},
-    "compared_against_built_utc": "2026-09-07T14:30:30.178091+00:00"
+    "data_points": 839333,
+    "by_column": {
+      "mlp": 27597,
+      "lppsf": 27554,
+      "msp": 26431,
+      "dom_rse": 26405,
+      "ppsf": 26306,
+      "zhvi": 26259,
+      "f_h12": 26258,
+      "msp_rse": 26156,
+      "zhvi_yoy": 26088,
+      "mlp_yoy": 25975,
+      "lppsf_yoy": 25948,
+      "zhvi_mom": 25846,
+      "al_yoy": 25491,
+      "nl_yoy": 24814,
+      "msp_yoy": 24506,
+      "inv_yoy": 24468,
+      "ppsf_yoy": 24458,
+      "s2l": 24310,
+      "om2_yoy": 23941,
+      "ps_yoy": 23788,
+      "om2": 23598,
+      "s2l_yoy": 23263,
+      "hs_yoy": 23211,
+      "nl": 23118,
+      "mos": 22931,
+      "al": 22909,
+      "dom_yoy_d": 22909,
+      "inv": 22643,
+      "mos_yoy_m": 22580,
+      "ps": 22080,
+      "hs": 21624,
+      "dom": 21596,
+      "abv_yoy": 21509,
+      "abv": 20463,
+      "f_sigma": 9623,
+      "rel": 1257,
+      "lisa": 843,
+      "cov": 575,
+      "f_tier": 2
+    },
+    "compared_against_built_utc": "2026-09-12T02:23:26.596873+00:00"
   },
   "validation": {
     "period_age_days": {
-      "redfin": 43,
-      "zhvi": 43
+      "redfin": 20,
+      "zhvi": 20
     },
     "period_gap_months": 0,
     "columns": 50,
@@ -60,64 +112,101 @@
   },
   "changes": {
     "lag": 12,
-    "base_period": "2025-07-31",
-    "latest_period": "2026-07-31",
+    "base_period": "2025-08-31",
+    "latest_period": "2026-08-31",
     "filled": {
-      "homes_sold": 23589,
-      "median_sale_price": 23587,
-      "median_dom": 23558,
-      "avg_sale_to_list_ratio": 22618,
-      "sold_above_list": 23589,
-      "new_listings": 25232,
-      "active_listings": 27148,
-      "inventory": 25209,
-      "pending_sales": 24273,
-      "median_list_price": 25217,
-      "median_list_ppsf": 25173,
-      "median_ppsf": 23539,
-      "months_of_supply": 22531,
-      "off_market_in_two_weeks": 24273
+      "homes_sold": 23677,
+      "median_sale_price": 23674,
+      "median_dom": 23653,
+      "avg_sale_to_list_ratio": 22724,
+      "sold_above_list": 23677,
+      "new_listings": 25087,
+      "active_listings": 27225,
+      "inventory": 25326,
+      "pending_sales": 24250,
+      "median_list_price": 25070,
+      "median_list_ppsf": 25027,
+      "median_ppsf": 23631,
+      "months_of_supply": 22622,
+      "off_market_in_two_weeks": 24250
     },
-    "suppressed_degenerate_base": {
-      "median_sale_price": 1,
-      "median_list_price": 1,
-      "median_ppsf": 1,
-      "median_list_ppsf": 1
-    },
+    "suppressed_degenerate_base": {},
     "reconciliation": {
       "checked": true,
-      "period": "2026-06-30",
-      "base_period": "2025-06-30",
+      "period": "2026-07-31",
+      "base_period": "2025-07-31",
       "flat_tolerance": 0.02,
       "max_share": 0.01,
+      "feed_scale": {
+        "median_dom": 1.0,
+        "months_of_supply": 100.0
+      },
+      "scale_evidence": {
+        "median_dom": {
+          "votes": 12745,
+          "agreement": {
+            "1.0": 1.0,
+            "100.0": 0.0
+          },
+          "tolerance": 1.5,
+          "discriminating_floor": 12.0,
+          "scale": 1.0
+        },
+        "months_of_supply": {
+          "votes": 6570,
+          "agreement": {
+            "1.0": 0.0,
+            "100.0": 1.0
+          },
+          "tolerance": 0.3,
+          "discriminating_floor": 2.4,
+          "scale": 100.0
+        }
+      },
       "metrics": {
         "median_sale_price": {
-          "compared": 23737,
-          "exceeded": 0,
-          "share": 0.0,
-          "max_abs_gap": 0.01,
-          "worst_zip": "91758"
-        },
-        "median_ppsf": {
-          "compared": 23672,
-          "exceeded": 71,
-          "share": 0.003,
-          "max_abs_gap": 2.71,
-          "worst_zip": "58458"
-        },
-        "median_list_price": {
-          "compared": 25625,
+          "compared": 24013,
           "exceeded": 1,
           "share": 4e-05,
-          "max_abs_gap": 0.26,
-          "worst_zip": "31905"
+          "max_abs_gap": 10.0,
+          "worst_zip": "19477"
+        },
+        "median_ppsf": {
+          "compared": 23960,
+          "exceeded": 68,
+          "share": 0.00284,
+          "max_abs_gap": 15.64,
+          "worst_zip": "19477"
+        },
+        "median_list_price": {
+          "compared": 25672,
+          "exceeded": 4,
+          "share": 0.00016,
+          "max_abs_gap": 49.92,
+          "worst_zip": "03441"
         },
         "median_list_ppsf": {
-          "compared": 25569,
-          "exceeded": 59,
-          "share": 0.00231,
-          "max_abs_gap": 41.31,
-          "worst_zip": "68643"
+          "compared": 25625,
+          "exceeded": 58,
+          "share": 0.00226,
+          "max_abs_gap": 67.06,
+          "worst_zip": "03441"
+        },
+        "median_dom": {
+          "compared": 23945,
+          "exceeded": 0,
+          "share": 0.0,
+          "max_abs_gap": 1.0,
+          "worst_zip": "07010",
+          "feed_scale": 1.0
+        },
+        "months_of_supply": {
+          "compared": 22889,
+          "exceeded": 1,
+          "share": 4e-05,
+          "max_abs_gap": 1.4637,
+          "worst_zip": "19477",
+          "feed_scale": 100.0
         }
       }
     }
@@ -126,33 +215,33 @@
     "failures": [],
     "observed": {
       "median_sale_price": {
-        "moved_gt_25pct": 0.0,
-        "comparable": 25602,
-        "national_median_shift": 0.0
+        "moved_gt_25pct": 0.1218,
+        "comparable": 24770,
+        "national_median_shift": 0.00133
       },
       "median_list_price": {
-        "moved_gt_25pct": 0.0,
-        "comparable": 26858,
-        "national_median_shift": 0.0
+        "moved_gt_25pct": 0.12513,
+        "comparable": 26044,
+        "national_median_shift": -0.02612
       },
       "median_ppsf": {
-        "moved_gt_25pct": 0.0,
-        "comparable": 25549,
-        "national_median_shift": 0.0
+        "moved_gt_25pct": 0.08584,
+        "comparable": 24719,
+        "national_median_shift": 0.00137
       },
       "zhvi": {
-        "moved_gt_25pct": 0.0,
-        "comparable": 26262,
-        "national_median_shift": 0.0
+        "moved_gt_25pct": 0.0005,
+        "comparable": 26261,
+        "national_median_shift": -0.00411
       },
       "homes_sold": {
-        "national_total_shift": 0.0
+        "national_total_shift": -0.0071
       },
       "coverage": {
-        "both": 0.0,
-        "redfin_only": 0.0,
-        "zhvi_only": 0.0,
-        "no_data": 0.0
+        "both": 0.00043,
+        "redfin_only": 0.00211,
+        "zhvi_only": -0.01824,
+        "no_data": -0.00143
       }
     },
     "overridden": false,
@@ -161,76 +250,76 @@
   "snapshot": {
     "zips": 33771,
     "columns": 50,
-    "bytes": 10914662,
-    "payload_digest": "aeaadf2dd2e0fc52eadd7ba4951956dbc77dbc52d0ed66e444e2c5dba02b327c"
+    "bytes": 10904990,
+    "payload_digest": "cc95c3d96030c7eccfe1eb81be1bcead610cacf459047c7d675ac20377b10764"
   },
   "noise": {
-    "K": 0.5598,
+    "K": 0.5594,
     "K_lag_used": 3,
     "K_lag": [
-      0.2369,
-      0.4063,
-      0.5598,
-      0.5805,
-      0.5989,
-      0.6077,
-      0.605
+      0.2368,
+      0.406,
+      0.5594,
+      0.5799,
+      0.5984,
+      0.6074,
+      0.6047
     ],
-    "plateau_ratio": 1.0369,
+    "plateau_ratio": 1.0367,
     "K_by_sample_size": {
-      "1-2": 0.5984,
-      "3-4": 0.624,
-      "5-9": 0.6095,
-      "10-19": 0.5709,
-      "20-39": 0.535,
-      "40-79": 0.5176,
-      "80-159": 0.5197,
+      "1-2": 0.5981,
+      "3-4": 0.6234,
+      "5-9": 0.6093,
+      "10-19": 0.5706,
+      "20-39": 0.5342,
+      "40-79": 0.5168,
+      "80-159": 0.5191,
       "160+": 0.5268
     },
     "per_metric": {
       "median_dom": {
-        "K": 1.4576,
+        "K": 1.4588,
         "K_lag": [
           0.5657,
-          1.0228,
-          1.4576,
-          1.5972,
-          1.7235,
-          1.7813,
-          1.7429
+          1.0242,
+          1.4588,
+          1.5981,
+          1.7255,
+          1.7837,
+          1.7449
         ],
-        "plateau_ratio": 1.0957,
+        "plateau_ratio": 1.0955,
         "column": "dom_rse",
-        "filled": 25576
+        "filled": 25582
       },
       "avg_sale_to_list_ratio": {
-        "K": 0.0749,
+        "K": 0.0748,
         "K_lag": [
-          0.0294,
+          0.0293,
           0.0522,
-          0.0749,
-          0.0802,
-          0.0844,
+          0.0748,
+          0.0801,
+          0.0843,
           0.0862,
           0.085
         ],
-        "plateau_ratio": 1.071
+        "plateau_ratio": 1.0701
       }
     },
     "tiers": {
-      "0": 24315,
-      "1": 5109,
-      "2": 3515,
-      "3": 832
+      "0": 24201,
+      "1": 5201,
+      "2": 3588,
+      "3": 781
     },
-    "reporting_zips": 25603,
-    "rankable_zips": 9456,
-    "rankable_share": 0.3693,
+    "reporting_zips": 25602,
+    "rankable_zips": 9570,
+    "rankable_share": 0.3738,
     "rankable_rse": 0.1,
     "rankable_n_implied": 32,
     "tier_n_implied": [
       32,
-      88,
+      87,
       196
     ]
   },
@@ -244,16 +333,15 @@
     ],
     "window_months": 36,
     "rho_shrink": 0.5,
-    "median_rho": 0.7892,
-    "vintage": "2026-07-31",
+    "median_rho": 0.7881,
+    "vintage": "2026-08-31",
     "zips_forecast": 26261,
     "tier_counts": {
       "0": 0,
-      "1": 0,
-      "2": 1250,
+      "2": 1249,
       "3": 25019
     },
-    "median_sd_h12": 0.039167,
+    "median_sd_h12": 0.038814,
     "backtest": {
       "origins": {
         "total": 83,
@@ -283,7 +371,7 @@
           ],
           "0.98": [
             -3.239,
-            3.0582
+            3.0583
           ],
           "0.99": [
             -3.8602,
@@ -292,12 +380,12 @@
         },
         "3": {
           "0.5": [
-            -3.1283,
-            2.6737
+            -3.1284,
+            2.6736
           ],
           "0.8": [
             -6.2419,
-            5.5925
+            5.5924
           ],
           "0.9": [
             -8.4051,
@@ -305,10 +393,10 @@
           ],
           "0.95": [
             -10.5481,
-            9.6946
+            9.6945
           ],
           "0.98": [
-            -13.45,
+            -13.4501,
             12.6135
           ],
           "0.99": [
@@ -318,23 +406,23 @@
         },
         "6": {
           "0.5": [
-            -6.9404,
-            5.9678
+            -6.9405,
+            5.9677
           ],
           "0.8": [
-            -14.5492,
-            12.3433
+            -14.549,
+            12.3431
           ],
           "0.9": [
-            -20.0179,
-            16.8404
+            -20.018,
+            16.8403
           ],
           "0.95": [
-            -25.3221,
-            21.386
+            -25.3219,
+            21.3862
           ],
           "0.98": [
-            -31.9951,
+            -31.9949,
             27.6824
           ],
           "0.99": [
@@ -348,24 +436,24 @@
             12.9254
           ],
           "0.8": [
-            -34.5957,
-            26.1328
+            -34.5954,
+            26.1327
           ],
           "0.9": [
-            -49.7903,
-            35.6813
+            -49.79,
+            35.6816
           ],
           "0.95": [
-            -63.4529,
+            -63.4523,
             45.3344
           ],
           "0.98": [
-            -80.7335,
-            58.6014
+            -80.7333,
+            58.6004
           ],
           "0.99": [
-            -93.3107,
-            69.8743
+            -93.3106,
+            69.8741
           ]
         }
       },
@@ -378,10 +466,10 @@
           "12": 0.2465
         },
         "ar1_closed_form": {
-          "1": 0.8935,
-          "3": 0.7823,
-          "6": 0.7581,
-          "12": 0.7859
+          "1": 0.893,
+          "3": 0.7814,
+          "6": 0.757,
+          "12": 0.7845
         },
         "empirical_quantiles": {
           "1": 0.8281,
@@ -415,174 +503,174 @@
   "spatial": {
     "gated": true,
     "gate": "rel >= 1 (rse < 10%)",
-    "n": 9456,
+    "n": 9570,
     "k_shipped": 8,
     "permutations": 999,
     "fdr_q": 0.05,
     "moran_I_by_k": {
-      "4": 0.7699,
-      "8": 0.7343,
-      "16": 0.6862,
-      "32": 0.6363
+      "4": 0.7672,
+      "8": 0.731,
+      "16": 0.6831,
+      "32": 0.6332
     },
     "class_counts": {
-      "ns": 6857,
-      "HH": 1349,
-      "LL": 1203,
-      "LH": 20,
-      "HL": 27
+      "ns": 6708,
+      "HH": 1448,
+      "LL": 1361,
+      "LH": 21,
+      "HL": 32
     },
     "lisa_median_n_by_class": {
       "ns": 87,
-      "HH": 74,
-      "LL": 68,
-      "LH": 77,
-      "HL": 86
+      "HH": 73,
+      "LL": 69,
+      "LH": 83,
+      "HL": 80
     },
-    "bh_significant": 2599,
-    "raw_p_below_05": 3748,
-    "hysteresis_held": 0,
-    "median_8th_neighbour_km": 15.55,
-    "bonferroni_threshold": 5.287648054145516e-06,
+    "bh_significant": 2862,
+    "raw_p_below_05": 3811,
+    "hysteresis_held": 172,
+    "median_8th_neighbour_km": 15.52,
+    "bonferroni_threshold": 5.22466039707419e-06,
     "bonferroni_attainable": false,
-    "permutations_for_bonferroni": 189119
+    "permutations_for_bonferroni": 191399
   },
   "classes": 14,
   "diverging": {
     "bound": 20.0,
-    "p95": 18.85,
-    "cells": 6137683,
-    "share_clamped": 0.0407
+    "p95": 18.83,
+    "cells": 6163907,
+    "share_clamped": 0.0405
   },
   "classing": {
     "zhvi": {
       "scheme": "log_equal_p1_p99",
       "classes": 14,
       "breaks": [
-        127911.2096,
-        157294.2195,
-        193426.9214,
-        237859.8149,
-        292499.5709,
-        359690.85,
-        442316.9141,
-        543923.351,
-        668870.2204,
-        822519.1489,
-        1011463.4044,
-        1243810.8218,
-        1529531.7198
+        130111.5778,
+        159361.0757,
+        195185.9539,
+        239064.3792,
+        292806.8144,
+        358630.7205,
+        439252.0507,
+        537997.3132,
+        658940.8258,
+        807072.8259,
+        988505.3723,
+        1210724.5339,
+        1482899.2722
       ],
       "class_counts": [
-        1923,
-        1636,
-        2576,
-        3459,
-        3696,
-        3659,
-        2984,
-        2200,
-        1514,
-        1049,
-        603,
+        1938,
+        1695,
+        2619,
+        3424,
+        3729,
+        3615,
+        2937,
+        2146,
+        1494,
+        1042,
+        628,
         380,
-        251,
-        332
+        266,
+        348
       ],
-      "non_null": 26262,
-      "break_population": 9452,
+      "non_null": 26261,
+      "break_population": 9564,
       "break_gate": "rankable",
-      "bottom_class_share": 0.0732,
-      "clamped_low": 1923,
-      "clamped_high": 332
+      "bottom_class_share": 0.0738,
+      "clamped_low": 1938,
+      "clamped_high": 348
     },
     "median_sale_price": {
       "scheme": "log_equal_p1_p99",
       "classes": 14,
       "breaks": [
-        153391.3288,
-        186985.1292,
-        227936.2125,
-        277855.8766,
-        338708.3049,
-        412887.8512,
-        503313.2497,
-        613542.4585,
-        747912.654,
-        911710.8853,
-        1111382.1033,
-        1354782.7489,
-        1651489.8803
+        152307.119,
+        185659.873,
+        226316.3317,
+        275875.886,
+        336288.1677,
+        409929.7455,
+        499697.6175,
+        609123.1772,
+        742511.1346,
+        905108.8609,
+        1103312.815,
+        1344920.1752,
+        1639435.5734
       ],
       "class_counts": [
-        2723,
-        1791,
-        2417,
-        3257,
-        3459,
-        3437,
-        2661,
-        1933,
-        1451,
-        978,
-        482,
-        390,
-        258,
-        365
+        2684,
+        1768,
+        2342,
+        3177,
+        3564,
+        3472,
+        2638,
+        1999,
+        1463,
+        976,
+        512,
+        384,
+        255,
+        366
       ],
-      "non_null": 25602,
-      "break_population": 9456,
+      "non_null": 25600,
+      "break_population": 9570,
       "break_gate": "rankable",
-      "bottom_class_share": 0.1064,
-      "clamped_low": 2723,
-      "clamped_high": 365,
+      "bottom_class_share": 0.1048,
+      "clamped_low": 2684,
+      "clamped_high": 366,
       "selection_effect": {
-        "median_price_rankable": 394884.5,
-        "median_price_excluded": 275953.0,
-        "bottom_class_share_rankable": 0.0237,
-        "bottom_class_share_excluded": 0.1548
+        "median_price_rankable": 395186.5,
+        "median_price_excluded": 278380.0,
+        "bottom_class_share_rankable": 0.0223,
+        "bottom_class_share_excluded": 0.1541
       }
     },
     "median_ppsf": {
       "scheme": "log_equal_p1_p99",
       "classes": 14,
       "breaks": [
-        107.5874,
-        128.9095,
-        154.4574,
-        185.0685,
-        221.7462,
-        265.6929,
-        318.3491,
-        381.441,
-        457.0367,
-        547.6143,
-        656.143,
-        786.1805,
-        941.9893
+        106.4604,
+        127.5161,
+        152.7361,
+        182.9442,
+        219.1268,
+        262.4655,
+        314.3758,
+        376.5528,
+        451.0272,
+        540.2311,
+        647.0776,
+        775.0562,
+        928.3464
       ],
       "class_counts": [
-        3246,
-        2117,
-        3118,
-        4100,
-        3882,
-        2956,
-        2083,
-        1343,
-        886,
-        618,
-        468,
-        271,
-        171,
-        290
+        3091,
+        2036,
+        3070,
+        4072,
+        3950,
+        3033,
+        2100,
+        1408,
+        923,
+        625,
+        477,
+        286,
+        183,
+        296
       ],
-      "non_null": 25549,
-      "break_population": 9456,
+      "non_null": 25550,
+      "break_population": 9570,
       "break_gate": "rankable",
-      "bottom_class_share": 0.127,
-      "clamped_low": 3246,
-      "clamped_high": 290
+      "bottom_class_share": 0.121,
+      "clamped_low": 3091,
+      "clamped_high": 296
     },
     "homes_sold": {
       "scheme": "quantile",
@@ -593,37 +681,37 @@
         3.0,
         4.0,
         6.0,
-        9.0,
-        14.0,
+        10.0,
+        15.0,
         23.0,
-        34.0,
-        50.0,
+        35.0,
+        51.0,
         72.0,
-        100.0,
-        145.0
+        98.0,
+        141.0
       ],
       "class_counts": [
         0,
-        3086,
-        1953,
-        1455,
-        2101,
-        2007,
-        1937,
-        2044,
-        1838,
-        1840,
-        1777,
-        1901,
-        1816,
-        1848
+        2957,
+        1971,
+        1441,
+        2022,
+        2533,
+        1839,
+        1726,
+        1963,
+        1827,
+        1762,
+        1860,
+        1847,
+        1854
       ],
-      "non_null": 25603,
-      "break_population": 25603,
+      "non_null": 25602,
+      "break_population": 25602,
       "break_gate": "all_reporting",
       "bottom_class_share": 0.0,
       "clamped_low": 0,
-      "clamped_high": 1848
+      "clamped_high": 1854
     },
     "active_listings": {
       "scheme": "quantile",
@@ -632,80 +720,80 @@
         1.0,
         3.0,
         5.0,
-        7.0,
-        11.0,
+        8.0,
+        12.0,
         17.0,
         27.0,
-        41.0,
-        64.0,
+        42.0,
+        65.0,
         97.0,
         142.0,
         202.0,
-        304.0
+        302.0
       ],
       "class_counts": [
         0,
-        3661,
-        2245,
-        1642,
-        2229,
-        2199,
-        2247,
-        2003,
-        2027,
-        2054,
-        2047,
-        2038,
-        2059,
-        2042
+        3679,
+        2253,
+        2184,
+        2044,
+        1789,
+        2253,
+        2042,
+        2063,
+        2049,
+        2030,
+        2057,
+        2045,
+        2039
       ],
-      "non_null": 28493,
-      "break_population": 28493,
+      "non_null": 28527,
+      "break_population": 28527,
       "break_gate": "all_reporting",
       "bottom_class_share": 0.0,
       "clamped_low": 0,
-      "clamped_high": 2042
+      "clamped_high": 2039
     },
     "median_dom": {
       "scheme": "quantile",
       "classes": 14,
       "breaks": [
-        13.0,
-        18.0,
-        22.0,
-        26.0,
-        31.0,
-        35.0,
-        40.0,
-        43.0,
-        48.0,
-        53.0,
-        59.0,
-        67.0,
-        78.0
+        14.0,
+        20.0,
+        23.5,
+        28.0,
+        33.0,
+        37.0,
+        42.0,
+        46.0,
+        50.0,
+        55.0,
+        61.0,
+        69.0,
+        81.0
       ],
       "class_counts": [
-        2321,
-        1488,
-        1442,
-        1226,
-        1578,
-        1289,
-        1819,
-        1111,
-        1723,
-        1526,
-        1553,
-        1698,
-        1760,
-        5042
+        2261,
+        1664,
+        1458,
+        1258,
+        1546,
+        1354,
+        1727,
+        1504,
+        1430,
+        1481,
+        1538,
+        1779,
+        1902,
+        4680
       ],
-      "non_null": 25576,
-      "break_population": 9456,
+      "non_null": 25582,
+      "break_population": 9570,
       "break_gate": "rankable",
-      "bottom_class_share": 0.0907,
-      "clamped_low": 2321,
-      "clamped_high": 5042
+      "bottom_class_share": 0.0884,
+      "clamped_low": 2261,
+      "clamped_high": 4680
     },
     "sold_above_list": {
       "scheme": "equal_interval_0_100",
@@ -726,68 +814,68 @@
         92.8571
       ],
       "class_counts": [
-        8650,
-        2777,
-        3114,
-        2407,
-        2256,
-        1503,
-        1059,
-        1631,
-        673,
-        470,
-        250,
-        121,
-        57,
-        635
+        8786,
+        3255,
+        2958,
+        2495,
+        2189,
+        1542,
+        1787,
+        711,
+        522,
+        447,
+        211,
+        132,
+        32,
+        535
       ],
-      "non_null": 25603,
-      "break_population": 9456,
+      "non_null": 25602,
+      "break_population": 9570,
       "break_gate": null,
-      "bottom_class_share": 0.3379,
-      "clamped_low": 8650,
-      "clamped_high": 635
+      "bottom_class_share": 0.3432,
+      "clamped_low": 8786,
+      "clamped_high": 535
     },
     "months_of_supply": {
       "scheme": "quantile",
       "classes": 14,
       "breaks": [
-        1.5,
+        1.4,
         1.8,
         2.1,
-        2.3,
+        2.4,
         2.6,
         2.9,
-        3.1,
+        3.2,
         3.5,
         3.8,
-        4.1,
-        4.6,
-        5.2,
-        6.3
+        4.2,
+        4.7,
+        5.3,
+        6.4
       ],
       "class_counts": [
-        1726,
-        1341,
-        1160,
-        986,
-        1348,
-        1341,
-        704,
-        2883,
-        1087,
-        1055,
-        1596,
-        1637,
-        1730,
-        5626
+        1470,
+        1685,
+        1170,
+        1378,
+        903,
+        1312,
+        1015,
+        2615,
+        1045,
+        1347,
+        1532,
+        1630,
+        1653,
+        5506
       ],
-      "non_null": 24220,
-      "break_population": 9456,
+      "non_null": 24261,
+      "break_population": 9570,
       "break_gate": "rankable",
-      "bottom_class_share": 0.0713,
-      "clamped_low": 1726,
-      "clamped_high": 5626
+      "bottom_class_share": 0.0606,
+      "clamped_low": 1470,
+      "clamped_high": 5506
     },
     "zhvi_yoy": {
       "scheme": "diverging",
@@ -808,123 +896,123 @@
         20.0
       ],
       "class_counts": [
-        58,
-        52,
-        89,
-        152,
-        398,
-        1321,
-        4534,
-        8296,
-        6948,
-        3021,
-        977,
-        288,
-        95,
-        31
+        50,
+        33,
+        80,
+        142,
+        332,
+        1139,
+        4294,
+        8386,
+        7213,
+        3169,
+        992,
+        287,
+        110,
+        32
       ],
-      "non_null": 26260,
+      "non_null": 26259,
       "break_population": null,
       "break_gate": null,
-      "bottom_class_share": 0.0022,
-      "clamped_low": 58,
-      "clamped_high": 31
+      "bottom_class_share": 0.0019,
+      "clamped_low": 50,
+      "clamped_high": 32
     }
   },
   "history": {
-    "buckets": 6085,
-    "zips": 33458,
-    "periods": 173,
-    "zhvi_months": 319,
+    "buckets": 6086,
+    "zips": 33471,
+    "periods": 174,
+    "zhvi_months": 320,
     "series": [
       "hs",
       "msp",
       "zhvi"
     ],
     "forecast_zips": 26261,
-    "bytes_total": 112212277,
-    "bytes_median": 19087,
-    "bytes_index": 50303,
+    "bytes_total": 112739952,
+    "bytes_median": 19168,
+    "bytes_index": 50335,
     "bucket_depth": 4,
     "period_first": "2012-03-31",
-    "period_last": "2026-07-31"
+    "period_last": "2026-08-31"
   },
   "assets": {
     "paint": {
       "zhvi": {
-        "file": "paint/zhvi-3a55f87a.u8",
+        "file": "paint/zhvi-e8c36534.u8",
         "bytes": 100000,
-        "sha256": "3a55f87a966a22109255d7981bf94cb8ab345d25d0295733729c1894e2f5420c",
-        "zips_set": 26262,
+        "sha256": "e8c36534e6688d28b8dfc5f73c5ddf8563f5e43ddc167f0140b6f9cff2444213",
+        "zips_set": 26261,
         "max_byte": 62,
         "fade_exempt": false
       },
       "median_sale_price": {
-        "file": "paint/median_sale_price-4f8cc2c5.u8",
+        "file": "paint/median_sale_price-51d098c6.u8",
         "bytes": 100000,
-        "sha256": "4f8cc2c5b91a5eddbee2b82ec43f8535be44f1ecc61564c25b3ffec788691b09",
-        "zips_set": 25602,
+        "sha256": "51d098c614b9c7a75d240c28f990f2de5812dc240d0e990935d0796b70358aca",
+        "zips_set": 25600,
         "max_byte": 62,
         "fade_exempt": false
       },
       "median_ppsf": {
-        "file": "paint/median_ppsf-174e3c9d.u8",
+        "file": "paint/median_ppsf-a1c693d0.u8",
         "bytes": 100000,
-        "sha256": "174e3c9d5ece68972faf56e469bc78bee55e0e1bf8f7c7becbaa656c8d00c438",
-        "zips_set": 25549,
+        "sha256": "a1c693d089b969b42617993a689c1e8ada39ccfd58aedb320982c08623ad9be9",
+        "zips_set": 25550,
         "max_byte": 62,
         "fade_exempt": false
       },
       "homes_sold": {
-        "file": "paint/homes_sold-7f1d9fee.u8",
+        "file": "paint/homes_sold-b420ad28.u8",
         "bytes": 100000,
-        "sha256": "7f1d9feed0b5f1077845a2a85664446845ab72a28d304c23980350d371d57595",
-        "zips_set": 25603,
+        "sha256": "b420ad28b362584f31121c73b9865b0990c248fde999ca2004bea5dda49cea2a",
+        "zips_set": 25602,
         "max_byte": 62,
         "fade_exempt": false
       },
       "active_listings": {
-        "file": "paint/active_listings-419f1d28.u8",
+        "file": "paint/active_listings-2106908e.u8",
         "bytes": 100000,
-        "sha256": "419f1d282af64a303fa51a9bd11b888742236c2c1757825e606e9c148a85db91",
-        "zips_set": 28493,
+        "sha256": "2106908e02eff589f1db6966927fc263e4c15ac7a25bafa6214abd433fa65a76",
+        "zips_set": 28527,
         "max_byte": 62,
         "fade_exempt": true
       },
       "median_dom": {
-        "file": "paint/median_dom-17d234a3.u8",
+        "file": "paint/median_dom-7ebf0a48.u8",
         "bytes": 100000,
-        "sha256": "17d234a3437c3f7d4854e7aa2d4a0e426e365836c49013f40e583f3bf9e2bf9d",
-        "zips_set": 25576,
+        "sha256": "7ebf0a48672f9c1dd98bb2e45a55d7fbe504e935261580fc3c79b6a33edc87c8",
+        "zips_set": 25582,
         "max_byte": 62,
         "fade_exempt": false
       },
       "sold_above_list": {
-        "file": "paint/sold_above_list-dd4d9309.u8",
+        "file": "paint/sold_above_list-ba4c189e.u8",
         "bytes": 100000,
-        "sha256": "dd4d9309a3dc15b7f2a47620ede9841422addefe74fa5a88e773c410a49e9303",
-        "zips_set": 25603,
-        "max_byte": 59,
+        "sha256": "ba4c189ef09084c88f012c041ce36d6fdd5c80c331f596d7415a6f409087cff6",
+        "zips_set": 25602,
+        "max_byte": 60,
         "fade_exempt": false
       },
       "months_of_supply": {
-        "file": "paint/months_of_supply-90c5134b.u8",
+        "file": "paint/months_of_supply-fd94a408.u8",
         "bytes": 100000,
-        "sha256": "90c5134bc6a5f91a7b24f3f5f586e72472dec6e5149b07fadd729fe25a759219",
-        "zips_set": 24220,
+        "sha256": "fd94a4088fdb483fc6fd51df9d119971c6673529f06ddfcc912d07eadfcba9ab",
+        "zips_set": 24261,
         "max_byte": 62,
         "fade_exempt": false
       },
       "zhvi_yoy": {
-        "file": "paint/zhvi_yoy-7e97a7da.u8",
+        "file": "paint/zhvi_yoy-6c57fd29.u8",
         "bytes": 100000,
-        "sha256": "7e97a7da1ce1ab2823ab66fcdfcd6565afd3badff59438287071bf05165bd941",
-        "zips_set": 26260,
+        "sha256": "6c57fd29eabdcc73cd9d1dd95368955f6b8a9e32f22152ac6afcba202df516fe",
+        "zips_set": 26259,
         "max_byte": 59,
         "fade_exempt": false
       }
     },
     "snapshot": "zip-data.json",
-    "history": "history/<zip3>.json"
+    "history": "history/<zip4>.json"
   }
 }
