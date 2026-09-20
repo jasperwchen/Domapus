@@ -71,12 +71,21 @@ RECONCILE = ("median_sale_price", "median_ppsf", "median_list_price", "median_li
 # so the wrong one misses by ~99x the change itself.
 SCALE_CANDIDATES = (1.0, 100.0)
 
-# Tolerance per metric, measured on 2026-06-30 against 2025-06-30. The gap is entirely the
-# published LEVEL's own rounding — the difference spans two levels, each rounded
-# independently, while Redfin computes its column from unrounded internals. There is no
-# revision noise in it at all: DOM's gap is exactly 0.0 or exactly 0.5 (max 0.5000, integer
-# level) and months-of-supply's max is 0.0993 (a 1 dp level, so 2 x 0.05). These are 3x those
-# measured maxima, the same order of margin the ratio family's bound carries.
+# Tolerance per metric. Mostly the published LEVEL's own rounding: the difference spans two
+# levels, each rounded independently, while Redfin computes its column from unrounded
+# internals.
+#
+# Measured on the x100 generation (2026-06-30 vs 2025-06-30), where there was no revision
+# noise at all: DOM's gap was exactly 0.0 or exactly 0.5 (max 0.5000) and months-of-supply's
+# max was 0.0993 (a 1 dp level, so 2 x 0.05).
+#
+# Re-measured on the first x1 release (2026-07-31 vs 2025-07-31): DOM's worst is 1.0, not
+# 0.5, because Redfin now rounds the difference to whole days ITSELF, so both sides round
+# independently instead of only ours. 0 of 23,945 ZIPs exceed. Months of supply threw one
+# genuine outlier at 1.4637 — a restated base, 1 of 22,889 — which the share contract
+# absorbs rather than the flat bound. So treat these as the rounding floor, not a hard
+# ceiling: RECONCILE_MAX_SHARE is what actually decides, and a units error moves nearly
+# every ZIP rather than one.
 SCALE_TOL = {"median_dom": 1.5, "months_of_supply": 0.3}
 
 # Only ZIPs whose change is well clear of the tolerance can tell the candidates apart; a ZIP

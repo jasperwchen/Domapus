@@ -30,10 +30,12 @@ in `CLAUDE.md`. Delete an item here when it is done and record it there.
       says one release; make the code mean it. The hold has to be remembered somewhere the
       next run can tell apart from a real class — a `manifest.spatial` list of held ZIPs is
       cheaper than a wire column, which would drag `SNAPSHOT_COLUMNS`, `FIELD_OF` and the
-      golden fixtures with it. Add a two-release test. The PUBLISHED release reports
-      `hysteresis_held: 0`, so nothing is wrong on the live site yet — but the 2026-08 data
-      run is the first release that can create a hold, and a hold created there comes back as
-      `previous` next month and sticks. The deadline is the run AFTER this one, not this one.
+      golden fixtures with it. Add a two-release test.
+      **Now dated.** The 2026-08 release published on 2026-09-20 reports
+      `spatial.hysteresis_held: 172` — the previous release held 0, so these are the first
+      real holds. Next month's run reads those 172 back as `previous`, recomputes `ns`, and
+      holds them again; from then on they never stop being drawn as outliers. Fix before the
+      scheduled run on 18 October, or those 172 ZIPs are permanent.
 - [ ] **`msp_yoy_se` has no producer.** It is column 47 of 50 and every ZIP ships null: no
       stage writes it, and the only other mentions are `map/types.ts` and an export test
       fixture. Either compute it in S5 (the standard error of a log ratio of two medians, so

@@ -3481,3 +3481,62 @@ and a simulated `ImportError` under `CI=1` exits 1.
 - `bench/README.md` and `bench/history.mjs` pointed at `docs/ENGINEERING-LOG.md` without
   saying it is gitignored, so a public reader followed a link to nothing. Both now say it is
   local-only and point at `docs/CHANGES.md` for the decisions.
+
+## 2026-09-20 — the 2026-08 release published; what the real run proved
+
+Dispatched `update_data.yml` against `fix/redfin-yoy-schema-drift`
+(run 35484310990). Both jobs green, and **a Deploy job did appear in the run graph** —
+that is the `workflow_call` acceptance test, which CLAUDE.md warns must be checked by
+looking at the graph rather than at whether the YAML parses.
+
+Published 2026-08-31 for both feeds, gap 0 months, period age 20 days. Gate passed with
+no failures and `overridden: false`. 33,771 ZIPs, 50 columns.
+
+**The scale derivation ran on real data and got it right:**
+`changes.reconciliation.feed_scale = {"median_dom": 1.0, "months_of_supply": 100.0}`,
+derived on 2026-07-31 against 2025-07-31. That is the first production confirmation that
+Redfin moved DOM to x1 while leaving months of supply on x100.
+
+Reconciliation, now covering six metrics instead of four:
+
+| metric | compared | exceeded | share | worst gap | scale |
+|---|---|---|---|---|---|
+| median_sale_price | 24,013 | 1 | 0.004% | 10.0 | — |
+| median_ppsf | 23,960 | 68 | 0.284% | 15.64 | — |
+| median_list_price | 25,672 | 4 | 0.016% | 49.92 | — |
+| median_list_ppsf | 25,625 | 58 | 0.226% | 67.06 | — |
+| median_dom | 23,945 | 0 | 0.000% | 1.0 | x1 |
+| months_of_supply | 22,889 | 1 | 0.004% | 1.4637 | x100 |
+
+Two numbers worth recording against the tolerances chosen from the x100 generation:
+
+- DOM's worst gap is **1.0, not the 0.5 measured before**. Redfin now rounds the day
+  difference itself, so both sides round independently rather than only ours. `SCALE_TOL`
+  of 1.5 still clears it, but the margin is 1.5x rather than the 3x it was designed for.
+- Months of supply threw one genuine outlier at **1.4637**, nearly 5x its 0.3 bound — a
+  restated base, absorbed by the share contract (1 of 22,889 against a 1% allowance).
+
+So the flat bounds are a rounding floor, not a ceiling; `RECONCILE_MAX_SHARE` is what
+decides, and a units error moves nearly every ZIP rather than one. Comment in `changes.py`
+updated to say so, because the old one cited only the x100 measurement.
+
+`fingerprints` is populated for the first time in the published manifest
+(`redfin: 8fa7ae85b761abda`, matching the local probe exactly), so the 0.2 s upstream
+short-circuit is armed and a second dispatch can now acceptance-test it.
+`assets.history` ships `history/<zip4>.json`.
+
+### New, and dated: LISA hysteresis now holds 172 ZIPs
+
+`spatial.hysteresis_held` went from 0 to **172**. These are the first real holds, so the
+open bug — `spatial.run()` reads `previous` from the live snapshot and republishes the held
+class, which comes back as `previous` next month — now has a deadline rather than being
+theoretical. Fix before the scheduled run on 18 October or those 172 ZIPs are drawn as
+outliers permanently.
+
+### Open: main does not have the data commit
+
+The dispatch ran against the branch, so the data commit and the gh-pages deploy both came
+from `fix/redfin-yoy-schema-drift`. `main` is still at `d148d62` with the 2026-07 data,
+and `deploy.yml` fires on push to main with `paths-ignore` covering only `**.md` and
+`docs/**`. Until the branch is merged, **any code push to main republishes July's data over
+the live August site.** Merging closes the window.
