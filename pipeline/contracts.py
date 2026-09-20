@@ -56,9 +56,11 @@ RANGES = {
     "inventory": (0, 1e6),              # max 1,948
     "median_dom": (0, 2e4),             # latest max 5,304 · full file max 18,504
     "months_of_supply": (0, 1e4),       # max 1,327.9
-    # The two mislabelled YoY columns, AFTER the /100 in units.DIVIDE_BY_100.
-    # These bounds are what catches a forgotten division: undivided, the same
-    # columns reach +-1,846,550 and +-171,574, far outside either bound.
+    # The two difference-family YoY columns, as WE compute them in `changes.recompute`:
+    # a change in days and in months. These bounds are what catches the feed's own
+    # column reaching the wire instead of ours — on the x100 scale it still uses for
+    # months of supply, the same columns reach +-654,499 and +-35,608 (measured
+    # 2026-07-31), far outside either bound.
     "median_dom_yoy": (-2e4, 2e4),          # divided range -18,413..18,466
     "months_of_supply_yoy": (-1e4, 1e4),    # divided range -1,715.7..702.7
 }

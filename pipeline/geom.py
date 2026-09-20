@@ -28,7 +28,7 @@ def load(path: Path) -> dict:
     if not path.exists():
         raise PipelineError(
             f"geometry sidecar missing: {path}. Build it with "
-            f"`bash scripts/geometry/build_sidecar.sh`."
+            f"`bash scripts/geometry/build_geometry.sh`."
         )
 
     out: dict[str, dict] = {}

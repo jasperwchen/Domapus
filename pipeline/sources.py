@@ -5,6 +5,7 @@
 - MD5-vs-ETag applies to Redfin only. Zillow's ETag is multipart (MD5 of MD5s).
 """
 
+import csv
 import hashlib
 import logging
 import time
@@ -73,6 +74,17 @@ def probe(url: str, label: str) -> dict:
         label, f"{info['content_length']:,}", info["etag"][:12], info["last_modified"],
     )
     return info
+
+
+def probe_header(info: dict) -> list[str]:
+    """The probe's `header` line as column names.
+
+    `info["header"]` is the file's first line verbatim, and Redfin quotes every field, so
+    splitting on commas leaves `'"LAST UPDATED"'` and matches nothing. pyarrow strips the
+    quotes when it reads the real file, so anything comparing the probed header against the
+    ingested one has to strip them the same way.
+    """
+    return next(csv.reader([info["header"]]), [])
 
 
 def download(url: str, dest: Path, label: str, expect_bytes: int | None = None,

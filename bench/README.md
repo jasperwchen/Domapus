@@ -96,7 +96,8 @@ A code-only comparison — holding today's data fixed — is still valid, but on
 *within* era 3, where the data contract is stable. Use it to isolate the
 optimisation work from data growth.
 
-See `docs/ENGINEERING-LOG.md` Part 5.
+Reasoning in `docs/ENGINEERING-LOG.md` Part 5, which is local-only (gitignored) and so
+not present in a clone; `docs/CHANGES.md` carries the decisions that came out of it.
 
 ## Caveats to state alongside any number
 

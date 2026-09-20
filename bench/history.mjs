@@ -1,6 +1,7 @@
 // Benchmarks historical builds, each with the data it shipped. The geometry
 // format changed with the architecture (GeoJSON -> PMTiles), so there is no
-// "same app, different data" to hold constant. See docs/ENGINEERING-LOG.md Part 5.
+// "same app, different data" to hold constant. Reasoning in docs/ENGINEERING-LOG.md
+// Part 5, which is a local-only file (gitignored) — not available in a clone.
 //
 //   node bench/history.mjs                    # the default checkpoint set
 //   node bench/history.mjs <sha> <sha> ...    # explicit commits

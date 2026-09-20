@@ -76,3 +76,14 @@ scipy==1.18.1
 # the whole justification for not shipping statsmodels in the hot path, where it
 # measured 1,245x slower per series.
 statsmodels==0.15.0
+
+# PyYAML is not imported by the pipeline. It is what `scripts/check_workflows.py`
+# parses workflows with, and it is here because that script was SKIPPING on every
+# CI run: `import yaml` failed, the script printed "PyYAML not installed,
+# skipping" and returned 0, so the step had never parsed a workflow since the day
+# it was added (CI run 35157657711 shows the skip line). The script now fails
+# instead of skipping when CI is set, which only helps if the parser is present.
+#
+# 6.0.3 is the FIRST release with cp314 wheels; 6.0.2 and older have none, and CI
+# installs with `--only-binary=:all:` under Python 3.14.
+PyYAML==6.0.3

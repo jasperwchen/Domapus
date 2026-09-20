@@ -18,7 +18,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .contracts import PipelineError, assert_ranges
-from .units import LEVELS, coerce
+from .units import METRICS, coerce
 
 log = logging.getLogger(__name__)
 
@@ -30,9 +30,9 @@ NULL_SENTINEL = -2147483648
 METADATA_KEYS = ["city", "county", "state", "metro", "lat", "lng", "period_end"]
 ZHVI_KEYS = ["zhvi", "zhvi_mom", "zhvi_yoy"]
 
-# 14 Redfin metrics x (value, yoy), in the order of units.LEVELS.
+# 14 Redfin metrics x (value, yoy), in the order of units.METRICS.
 REDFIN_KEYS: list[str] = []
-for _key in LEVELS.values():
+for _key in METRICS:
     REDFIN_KEYS += [_key, f"{_key}_yoy"]
 
 SOURCE_KEYS = METADATA_KEYS + ZHVI_KEYS + REDFIN_KEYS

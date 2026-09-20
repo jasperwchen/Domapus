@@ -26,8 +26,14 @@ breaking *itself* — a file GitHub will not parse never runs the job that would
 have checked it. That case still shows up as the path-named failure above. Run
 from the pre-commit hook it catches everything, which is the point of wiring it
 there as well.
+
+A missing parser is only a reason to skip on a developer's machine. In CI it is
+the check not happening, so there it is a failure: this script printed "PyYAML
+not installed, skipping" on every CI run from the day it was added, because
+nothing in requirements.txt pulled PyYAML in. It has since been pinned there.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -39,7 +45,16 @@ def main() -> int:
     try:
         import yaml
     except ImportError:
-        # Do not block a commit on a machine without PyYAML; CI still checks.
+        if os.environ.get("CI"):
+            print(
+                "check_workflows: PyYAML is not installed, so NO workflow was parsed. "
+                "In CI that is the check silently not running, which is what this exit "
+                "code is for. Fix the environment (PyYAML is pinned in requirements.txt) "
+                "rather than skipping.",
+                file=sys.stderr,
+            )
+            return 1
+        # A developer's machine may not have it; the CI job above is the backstop.
         print("check_workflows: PyYAML not installed, skipping", file=sys.stderr)
         return 0
 

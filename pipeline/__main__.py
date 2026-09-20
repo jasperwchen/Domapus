@@ -21,7 +21,7 @@ from pathlib import Path
 from .contracts import PipelineError
 from . import (
     changes, classify, dim, forecast, gate, geom, history, noise, panel, paint, redfin,
-    serialize, sources, spatial, zhvi,
+    serialize, sources, spatial, units, zhvi,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -92,6 +92,16 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
             _report("s0_probe", "ok", probes=probes, fingerprints=fingerprints,
                     unchanged=True)
             return 0
+
+        # Bind the Redfin header HERE, off the 1 MB probe, not after the 1.33 GB download.
+        # The 2026-09-18 run spent the whole download before failing on a renamed column it
+        # had already seen in this probe. Same check, same message, 25 s and 1.33 GB earlier.
+        binding = units.resolve(sources.probe_header(probes["redfin"]), PipelineError)
+        if binding.aliased or binding.missing_yoy:
+            log.warning(
+                "Redfin header drift seen at probe: aliased=%s missing_yoy=%s",
+                binding.aliased, binding.missing_yoy,
+            )
     _report("s0_probe", "ok", probes=probes, fingerprints=fingerprints)
 
     tmpdir = None
@@ -281,7 +291,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "classing": class_report["classing"],
         "history": history_report,
         "assets": {"paint": paint_assets, "snapshot": "zip-data.json",
-                   "history": "history/<zip3>.json"},
+                   "history": "history/<zip4>.json"},
     }
     (BUILD / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     (BUILD / "orphans.json").write_text(

@@ -3370,3 +3370,114 @@ history and were left as written.
 `docs/todos.md` was renamed to `docs/TODOS.md` in git to match the file on disk.
 
 The correct local dev url is actually http://localhost:3677/ without the /Domapus/ at the end which returns 404
+## 2026-09-19 — Redfin renamed AND rescaled a YoY column; the run died on a value it discards
+
+The 2026-09-18 `update_data.yml` run failed at S2 with
+
+    redfin_raw: 1 expected column(s) missing (schema drift): ['MEDIAN DAYS ON MARKET YOY (%)']
+
+after downloading the whole 1.33 GB file. Redfin's 2026-08 release renamed that column to
+`MEDIAN DAYS ON MARKET YOY (DAYS)` — and renamed `MEDIAN DAYS ON MARKET MOM (%)` to
+`(DAYS)` with it, which went unnoticed because the MoM columns are never read.
+
+### What was measured, on both sides
+
+Probed the live file's first 6 MB (`Range` GET, descending by period, so that is the
+2026-08-31 period) and compared against `build/panel.parquet` from the 2026-07 release:
+
+| | 2026-07 release, `(%)` | 2026-08 release, `(DAYS)` |
+|---|---|---|
+| n (latest period) | 23,917 | 19,072 |
+| min .. max | -654,499.14 .. 508,029.21 | -3,876 .. 7,074 |
+| median absolute | 1,301.22 | 11.00 |
+| values whole | no (cents present) | yes, 100% |
+| DOM level max | 5,304 days | 7,100 days |
+
+So the column was rescaled as well as renamed: `1301.22 / 100 = 13.01 days` against the new
+release's 11 days. The percent-change hypothesis is dead on the range alone — a percent
+change cannot reach -3,876%.
+
+A 4 MB window from byte 300,000,000 (the 2023-06 and 2023-07 periods) shows median |YoY| of
+10 and 28 days against level medians of 29 and 46, all whole numbers: **Redfin rewrote the
+entire column's history on the new scale, not just the new rows.** `MONTHS OF SUPPLY YOY` is
+untouched — still `(%)`, still x100, in both the newest period and 2023 (median |YoY| 60.52
+against a level median of 2.10).
+
+### The declared divisor was dead, and that is how it stayed wrong
+
+`units.DIVIDE_BY_100 = {"median_dom_yoy", "months_of_supply_yoy"}` was applied in
+`units.coerce`, called from `serialize.assemble` — and `changes.recompute` overwrites every
+`<metric>_yoy` from the levels on the very next line of `__main__`. The coerced feed value
+never reached the wire. Had the header simply been aliased and the divisor kept, a -6 day
+change would have become -0.06 with **no observable effect at all**: no test, contract or
+manifest field could see it. The old test that "proved" the /100 proved it against a frozen
+fixture, so it would have kept passing while asserting something upstream no longer did.
+
+Removed the divisor. `coerce` now maps a cell to its wire precision and nothing else.
+`contracts.RANGES["median_dom_yoy"]` still guards the wire, but against a different thing:
+not a forgotten division, a `recompute` that did not run.
+
+### Criticality now follows the dependency
+
+`units.LEVEL_HEADERS` / `YOY_HEADERS` list accepted spellings newest-first and
+`units.resolve` binds each key to whichever the file has. Levels are the wire, so a missing
+one raises and the message carries `difflib` near-misses from the file's own header instead
+of printing 50 columns and leaving the reader to spot the rename. A missing YoY column is
+recorded and written as an all-null panel column, which keeps `redfin.PANEL_COLUMNS` fixed
+across releases — a column that vanishes crashes `changes` and `noise` two stages later.
+
+Binding moved to S0, off the 1 MB probe that already had the header: 0.1 ms to bind, against
+a 1.33 GB download to reach the same conclusion. Writing that check surfaced a bug in
+itself — the probe's raw first line is CSV-quoted (`"LAST UPDATED"`), which `.split(",")`
+does not strip and pyarrow does, so `sources.probe_header` parses it with `csv.reader`.
+
+### The scale is derived per release, and the two drifting columns are now reconciled
+
+`changes._derive_scale` votes the published column against our lag-12 level difference over
+`SCALE_CANDIDATES = (1.0, 100.0)`, counting only ZIPs that moved more than 8x the tolerance,
+and requires the winner to clear 50% and beat the runner-up 10x. Measured on the real panel
+(2026-06-30 vs 2025-06-30): x1 agrees with 0.0% and x100 with 100.0% of 12,985 discriminating
+ZIPs for DOM, and of 6,791 for months of supply. Simulated the 2026-08 shape by dividing the
+column by 100 and the derivation flips to x1; a x7 column raises rather than snapping to the
+nearest candidate.
+
+`_reconcile` was prices only, which is why a units change in DOM was invisible to it. It now
+covers `median_dom` and `months_of_supply` at the derived scale. Tolerances are measured, not
+guessed: the gap is entirely the published level's own rounding, with **no revision noise at
+all** — DOM's gap is exactly 0.0 or 0.5 (max 0.5000, integer level) and months-of-supply's max
+is 0.0993 (a 1 dp level, so 2 x 0.05). `SCALE_TOL` is 3x those maxima; 0 of 23,660 and 0 of
+22,562 ZIPs exceed it. The ratio family's numbers are unchanged by the refactor (0, 71, 1, 59
+exceeded), which is the check that `_pairs` extracted the loop faithfully.
+
+Losing every reconcilable metric now raises: one degrading is survivable, all of them means
+the detector is gone.
+
+### Fixtures
+
+`tests/fixtures/redfin_sample_2026_08.csv` is the same real rows under the new header
+generation — DOM MoM/YoY renamed to `(DAYS)` and the YoY rescaled to whole days. Both
+generations are parametrised through the scale-derivation test, so the suite exercises the
+alias rather than asserting a constant. Eight tests added, two removed (`DIVIDE_BY_100` and
+the fixture-based /100 proof, both of which asserted things that are no longer true).
+
+## 2026-09-19 — the workflow YAML check had never run
+
+`scripts/check_workflows.py` returned 0 with "PyYAML not installed, skipping" when
+`import yaml` failed, and nothing in `requirements.txt` pulled PyYAML in, so the CI step had
+never parsed a workflow since it was added. Pinned `PyYAML==6.0.3` — the first release with
+cp314 wheels, which matters because CI installs with `--only-binary=:all:` under Python 3.14
+— and made the script return 1 when `CI` is set and the parser is missing. The pre-commit
+hook still skips on a machine without it. Verified both paths: 6 workflows parse OK locally,
+and a simulated `ImportError` under `CI=1` exits 1.
+
+## 2026-09-19 — stale references cleared
+
+- `manifest.assets.history` said `history/<zip3>.json`; `BUCKET_DEPTH` is 4 and the files are
+  `<zip4>.json`. This one is a published string, so it would have gone out with the release.
+- `pipeline/geom.py` pointed at `scripts/geometry/build_sidecar.sh`; it is `build_geometry.sh`.
+- `scripts/palette/derive_ramp.mjs` line 1 said "the 7-class choropleth ramp"; `CLASSES` is 14.
+- `CLAUDE.md` said the forecast has an 82-origin backtest; the published manifest says 83
+  (41 calibration, 42 evaluation, stride 3, ~20 effectively independent).
+- `bench/README.md` and `bench/history.mjs` pointed at `docs/ENGINEERING-LOG.md` without
+  saying it is gitignored, so a public reader followed a link to nothing. Both now say it is
+  local-only and point at `docs/CHANGES.md` for the decisions.

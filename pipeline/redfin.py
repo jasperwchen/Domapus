@@ -20,7 +20,7 @@ from .contracts import (
     assert_unique_key,
     assert_zip_format,
 )
-from .units import LEVELS, READ_COLUMNS, YOY_HEADER
+from .units import METRICS, resolve
 
 log = logging.getLogger(__name__)
 
@@ -37,8 +37,10 @@ FORCED_TYPES = {
     "METRO": pa.string(),
 }
 
-# panel.parquet column order. zip + period_end + 14 levels + 14 YoY.
-PANEL_LEVELS = list(LEVELS.values())
+# panel.parquet column order. zip + period_end + 14 levels + 14 YoY. Fixed across releases
+# even when the feed stops publishing a YoY column: that column is written all-null, because
+# a column that vanishes crashes `changes` and `noise` instead of reporting a gap.
+PANEL_LEVELS = list(METRICS)
 PANEL_YOY = [f"{k}_yoy" for k in PANEL_LEVELS]
 PANEL_COLUMNS = ["zip", "period_end"] + PANEL_LEVELS + PANEL_YOY
 
@@ -54,15 +56,27 @@ def read_header(path: Path) -> list[str]:
         return list(r.schema.names)
 
 
-def _rename_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
-    """Redfin headers -> our keys, keeping only the panel columns."""
+def _rename_batch(batch: pa.RecordBatch, binding) -> pa.RecordBatch:
+    """Redfin headers -> our keys, keeping only the panel columns.
+
+    A YoY column the feed no longer publishes is written as an all-null float, so the panel
+    schema in PANEL_COLUMNS holds whatever the release looked like.
+    """
+    def col(header):
+        return batch.column(batch.schema.get_field_index(header)).cast(pa.float64())
+
+    nulls = None
     cols = [batch.column(batch.schema.get_field_index("REGION NAME")),
             batch.column(batch.schema.get_field_index("PERIOD END"))]
-    for header, key in LEVELS.items():
-        cols.append(batch.column(batch.schema.get_field_index(header)).cast(pa.float64()))
-    for header in LEVELS:
-        yoy = YOY_HEADER[header]
-        cols.append(batch.column(batch.schema.get_field_index(yoy)).cast(pa.float64()))
+    cols.extend(col(binding.level[key]) for key in METRICS)
+    for key in METRICS:
+        header = binding.yoy[key]
+        if header is not None:
+            cols.append(col(header))
+        else:
+            if nulls is None:
+                nulls = pa.nulls(batch.num_rows, type=pa.float64())
+            cols.append(nulls)
     return pa.RecordBatch.from_arrays(cols, schema=PANEL_SCHEMA)
 
 
@@ -70,15 +84,18 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
     """Stream the CSV to `panel_path`. Returns (report, latest-period rows). Schema checks run first."""
     header = read_header(csv_path)
     assert_columns_absent(header, "redfin_raw")
-    missing = [c for c in READ_COLUMNS if c not in header]
-    if missing:
-        raise PipelineError(
-            f"redfin_raw: {len(missing)} expected column(s) missing (schema drift): "
-            f"{missing}\nFile has {len(header)} columns: {header}"
+    binding = resolve(header, PipelineError)
+    for key, found in binding.aliased.items():
+        log.warning("redfin_raw: %s bound to an older header spelling %r", key, found)
+    if binding.missing_yoy:
+        log.warning(
+            "redfin_raw: %d YoY column(s) not published this release, carried as null: %s. "
+            "Nothing published depends on them; `changes` loses that much reconciliation.",
+            len(binding.missing_yoy), binding.missing_yoy,
         )
 
     convert = pacsv.ConvertOptions(
-        include_columns=READ_COLUMNS,
+        include_columns=binding.read_columns,
         column_types=FORCED_TYPES,
         null_values=["NA", ""],
         strings_can_be_null=True,
@@ -140,7 +157,7 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
                     if keep.num_rows:
                         latest_rows.extend(keep.to_pylist())
 
-                out = _rename_batch(batch)
+                out = _rename_batch(batch, binding)
                 if writer is None:
                     writer = pq.ParquetWriter(panel_path, PANEL_SCHEMA, compression="zstd")
                 writer.write_batch(out)
@@ -171,6 +188,7 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
         "last_updated": last_updated.pop(),
         "frequency": frequency.pop(),
         "panel_bytes": panel_path.stat().st_size,
+        "binding": binding.report(),
     }
     log.info(
         "Redfin: %s rows, %s periods (%s..%s), %s ZIPs; latest %s has %s ZIPs",
@@ -182,12 +200,21 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
 
 def latest_records(latest_rows: list[dict]) -> dict:
     """Latest-period rows -> {zip: {our_key: raw value}}. Raw: `serialize.assemble` is the one
-    place `units.coerce` runs (coercing twice once divided two columns by 10,000)."""
+    place `units.coerce` runs (coercing twice once divided two columns by 10,000).
+
+    The binding is re-derived from the rows' own keys rather than threaded through from
+    `ingest`, so the rows stay self-describing and there is one way to map a header.
+    """
+    if not latest_rows:
+        return {}
+    binding = resolve(latest_rows[0].keys(), PipelineError)
+
     out = {}
     for row in latest_rows:
         rec = {"period_end": row["PERIOD END"], "period_begin": row["PERIOD BEGIN"]}
-        for header, key in LEVELS.items():
-            rec[key] = row.get(header)
-            rec[f"{key}_yoy"] = row.get(YOY_HEADER[header])
+        for key in METRICS:
+            rec[key] = row.get(binding.level[key])
+            yoy = binding.yoy[key]
+            rec[f"{key}_yoy"] = row.get(yoy) if yoy is not None else None
         out[row["REGION NAME"]] = rec
     return out

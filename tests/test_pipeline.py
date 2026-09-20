@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline import dim, redfin, serialize, sources, zhvi
+from pipeline import changes, dim, redfin, serialize, sources, zhvi
 from pipeline.contracts import (
     PipelineError,
     RANGES,
@@ -20,11 +20,25 @@ from pipeline.contracts import (
     assert_ranges,
     assert_zip_format,
 )
-from pipeline.units import DIVIDE_BY_100, LEVELS, READ_COLUMNS, YOY_HEADER, coerce
+from pipeline.units import (
+    LEVEL_HEADERS,
+    METRICS,
+    READ_COLUMNS,
+    YOY_HEADERS,
+    coerce,
+    resolve,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures"
 SAMPLE = FIXTURES / "redfin_sample.csv"
+# The same real rows under the 2026-08 header generation: MEDIAN DAYS ON MARKET YOY renamed
+# to "(DAYS)" and rescaled from (now - before) * 100 to a whole-day difference.
+SAMPLE_2026_08 = FIXTURES / "redfin_sample_2026_08.csv"
+
+
+def _header_of(path: Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()[0].split(",")
 
 
 @pytest.fixture(scope="module")
@@ -103,49 +117,100 @@ def test_property_type_column_reappearing_is_rejected():
 
 # --- Units: the part that silently corrupts if rushed ----------------------
 
-def test_median_dom_yoy_is_a_day_difference_not_a_percent(latest):
-    """Redfin's `MEDIAN DAYS ON MARKET YOY (%)` is (now - year_ago) * 100.
-
-    Verified against real lag-12 levels in the fixture: `published / 100` matches
-    the level difference on every row, within the feed's own rounding of the
-    published level. The percent-change hypothesis is judged in aggregate, not
-    per row, because on a few rows the two happen to coincide numerically
-    (78701: -16 days against -16.33 percent).
-    """
+def _lag12_from(path):
+    """(now, before) keyed by ZIP in OUR key namespace, from a fixture's newest period and
+    the one twelve back. What `changes._derive_scale` and `_reconcile` consume."""
     import csv
-    rows = list(csv.DictReader(SAMPLE.open(encoding="utf-8")))
+    rows = list(csv.DictReader(path.open(encoding="utf-8")))
+    binding = resolve(rows[0].keys(), PipelineError)
     by = {}
     for r in rows:
         by.setdefault(r["REGION NAME"], {})[r["PERIOD END"]] = r
-    periods = sorted({r["PERIOD END"] for r in rows}, reverse=True)
-    t, lag = periods[0], periods[12]
+    ps = sorted({r["PERIOD END"] for r in rows}, reverse=True)
+    t, lag = ps[0], ps[changes.LAG]
 
-    checked = pct_matches = 0
+    def num(row, header):
+        v = (row.get(header) or "").strip()
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
+    now, before = {}, {}
     for zip_code, series in by.items():
-        now, then = series.get(t), series.get(lag)
-        if not now or not then:
+        a, b = series.get(t), series.get(lag)
+        if not a or not b:
             continue
-        for level_col, yoy_col, key in (
-            ("MEDIAN DAYS ON MARKET (DAYS)", "MEDIAN DAYS ON MARKET YOY (%)", "median_dom_yoy"),
-            ("MONTHS OF SUPPLY", "MONTHS OF SUPPLY YOY (%)", "months_of_supply_yoy"),
-        ):
-            try:
-                a, b, pub = float(now[level_col]), float(then[level_col]), float(now[yoy_col])
-            except ValueError:
-                continue
-            shipped = coerce(key, pub)
-            # The contract: what we ship IS the level difference, within the
-            # rounding of the published integer/1-dp level.
-            assert abs(shipped - (a - b)) <= 0.6, (zip_code, key, shipped, a - b)
-            if b and abs(shipped - (a / b - 1) * 100) <= 0.6:
-                pct_matches += 1
-            checked += 1
+        now[zip_code] = {
+            **{m: num(a, binding.level[m]) for m in changes.DIFFERENCE},
+            **{f"{m}_yoy": num(a, binding.yoy[m]) for m in changes.DIFFERENCE
+               if binding.yoy[m]},
+        }
+        before[zip_code] = {m: num(b, binding.level[m]) for m in changes.DIFFERENCE}
+    return now, before
 
-    assert checked >= 15, f"only {checked} comparisons — fixture too thin to prove anything"
-    assert pct_matches / checked < 0.25, (
-        f"{pct_matches}/{checked} rows also fit a percent change — this fixture cannot "
-        f"tell the two hypotheses apart, so it does not prove the /100"
-    )
+
+@pytest.mark.parametrize(
+    "fixture, dom_scale",
+    [(SAMPLE, 100.0), (SAMPLE_2026_08, 1.0)],
+    ids=["2026-07 feed", "2026-08 feed"],
+)
+def test_difference_family_scale_is_derived_from_the_data(fixture, dom_scale):
+    """The scale of Redfin's DOM and months-of-supply YoY columns is MEASURED per release.
+
+    Both fixtures hold the same real rows. In the 2026-07 generation the DOM column is
+    "(%)" carrying (now - before) * 100; in the 2026-08 generation it is "(DAYS)" carrying a
+    whole-day difference. Nothing but the data distinguishes them, which is the point: a
+    declared divisor was wrong about this for a release and no contract could see it, because
+    `changes.recompute` overwrites the column before anything reads it.
+    """
+    now, before = _lag12_from(fixture)
+    assert changes._derive_scale("median_dom", now, before)["scale"] == dom_scale
+    # Months of supply is still "(%)" and still x100 in both generations.
+    assert changes._derive_scale("months_of_supply", now, before)["scale"] == 100.0
+
+
+def test_a_scale_outside_the_candidates_is_refused_not_rounded_to_the_nearest():
+    """An unlisted scale means the column stopped being a level difference. Guessing the
+    closest candidate would publish a reconciliation that proves nothing."""
+    now, before = _lag12_from(SAMPLE)
+    bad = {z: {**r, "median_dom_yoy": (r["median_dom_yoy"] or 0) / 14.0}
+           for z, r in now.items()}
+    with pytest.raises(PipelineError, match="cannot establish the scale"):
+        changes._derive_scale("median_dom", bad, before)
+
+
+def test_coerce_applies_no_scale_correction():
+    """`coerce` maps a cell to its wire precision and nothing else. The /100 that used to
+    live here was dead — `changes.recompute` overwrites every `*_yoy` from the levels — and
+    being dead is how it stayed wrong about median_dom_yoy through a release."""
+    assert coerce("median_dom_yoy", -654.0) == -654.0
+    assert coerce("months_of_supply_yoy", -8175.0) == -8175.0
+    # Precision still applies: integers round, decimals clamp to their declared places.
+    assert coerce("median_dom", 43.4) == 43
+    assert coerce("months_of_supply", 3.4567) == 3.46
+
+
+def test_the_feeds_own_yoy_never_reaches_the_wire(tmp_path):
+    """The invariant that makes a YoY rename survivable: whatever the feed publishes, the
+    shipped value is our own lag-12 computation. Asserted with an absurd feed value so a
+    regression cannot pass by coincidence."""
+    panel = tmp_path / "panel.parquet"
+    _report, rows = redfin.ingest(SAMPLE, panel)
+    records = redfin.latest_records(rows)
+    for rec in records.values():
+        rec["median_dom_yoy"] = 999_999.0
+        rec["months_of_supply_yoy"] = 999_999.0
+
+    period = next(iter(records.values()))["period_end"]
+    changes.recompute(panel, records, period)
+
+    assert not [z for z, r in records.items() if r["median_dom_yoy"] == 999_999.0], \
+        "recompute left the feed's value in place"
+    lo, hi = RANGES["median_dom_yoy"]
+    for zip_code, rec in records.items():
+        v = rec["median_dom_yoy"]
+        assert v is None or lo <= v <= hi, (zip_code, v)
 
 
 def test_percent_columns_are_not_multiplied_again(latest):
@@ -162,8 +227,71 @@ def test_mom_columns_are_never_read():
     assert len(READ_COLUMNS) == 36
 
 
-def test_divide_by_100_is_exactly_the_two_mislabelled_columns():
-    assert DIVIDE_BY_100 == {"median_dom_yoy", "months_of_supply_yoy"}
+def test_both_header_generations_bind_to_the_same_keys():
+    """A renamed column must not stop a release. The 2026-09-18 run died on a missing
+    `MEDIAN DAYS ON MARKET YOY (%)` — a column whose value is discarded before publication."""
+    old = resolve(_header_of(SAMPLE), PipelineError)
+    new = resolve(_header_of(SAMPLE_2026_08), PipelineError)
+
+    assert old.yoy["median_dom"] == "MEDIAN DAYS ON MARKET YOY (%)"
+    assert new.yoy["median_dom"] == "MEDIAN DAYS ON MARKET YOY (DAYS)"
+    assert not new.aliased, "the newest spelling must be listed first in YOY_HEADERS"
+    assert old.aliased == {"median_dom_yoy": "MEDIAN DAYS ON MARKET YOY (%)"}
+    for b in (old, new):
+        assert set(b.level) == set(METRICS)
+        assert not b.missing_yoy
+        assert len(b.read_columns) == 36
+
+
+def test_a_missing_level_stops_the_run_and_a_missing_yoy_does_not():
+    """Criticality follows the dependency: the levels are the published wire, the YoY columns
+    are evidence for a check."""
+    header = _header_of(SAMPLE)
+
+    without_yoy = [c for c in header if c != "MEDIAN DAYS ON MARKET YOY (%)"]
+    b = resolve(without_yoy, PipelineError)
+    assert b.missing_yoy == ["median_dom"]
+    assert b.yoy["median_dom"] is None
+    assert len(b.read_columns) == 35
+
+    without_level = [c for c in header if c != "MEDIAN DAYS ON MARKET (DAYS)"]
+    with pytest.raises(PipelineError, match="LEVEL column"):
+        resolve(without_level, PipelineError)
+
+
+def test_a_missing_level_error_names_the_near_miss():
+    """The 2026-09-18 failure printed all 50 columns and left the reader to spot the rename."""
+    header = [c if c != "MEDIAN DAYS ON MARKET (DAYS)" else "MEDIAN DAYS ON MARKET (D)"
+              for c in _header_of(SAMPLE)]
+    with pytest.raises(PipelineError, match=r"Closest in file: \['MEDIAN DAYS ON MARKET \(D\)'"):
+        resolve(header, PipelineError)
+
+
+def test_a_yoy_column_the_feed_drops_becomes_a_null_panel_column(tmp_path):
+    """The panel's schema is fixed across releases. A column that VANISHES crashes `changes`
+    and `noise` three stages later; an all-null column reads cleanly and is reported."""
+    import csv
+
+    import pyarrow.parquet as pq
+
+    rows = list(csv.reader(SAMPLE.open(encoding="utf-8", newline="")))
+    drop = rows[0].index("MEDIAN DAYS ON MARKET YOY (%)")
+    trimmed = tmp_path / "no_dom_yoy.csv"
+    with trimmed.open("w", encoding="utf-8", newline="") as f:
+        csv.writer(f, lineterminator="\n").writerows(
+            [r[:drop] + r[drop + 1:] for r in rows]
+        )
+
+    panel = tmp_path / "panel.parquet"
+    report, latest_rows = redfin.ingest(trimmed, panel)
+    assert report["binding"]["missing_yoy"] == ["median_dom"]
+
+    tbl = pq.read_table(panel)
+    assert tbl.column_names == redfin.PANEL_COLUMNS
+    assert tbl["median_dom_yoy"].null_count == tbl.num_rows
+    assert tbl["median_dom"].null_count < tbl.num_rows
+    assert redfin.latest_records(latest_rows)[latest_rows[0]["REGION NAME"]][
+        "median_dom_yoy"] is None
 
 
 # --- Output shape ----------------------------------------------------------
@@ -182,7 +310,7 @@ def test_snapshot_is_50_columns_and_carries_no_redfin_mom():
 
 def test_every_redfin_metric_has_a_level_and_a_yoy_on_the_wire():
     """Both halves of every metric survive the projection to short names."""
-    for key in LEVELS.values():
+    for key in METRICS:
         assert key in serialize.SOURCE_OF.values(), key
         assert f"{key}_yoy" in serialize.SOURCE_OF.values(), key
 
@@ -292,6 +420,20 @@ def test_multipart_etag_is_not_used_for_integrity():
 def test_download_host_allowlist():
     with pytest.raises(PipelineError, match="not allowlisted"):
         sources._check_host("https://evil.example.com/all_zips.csv", "Redfin")
+
+
+def test_the_probed_header_parses_to_the_same_names_pyarrow_reads():
+    """S0 binds columns off the 1 MB probe so a rename costs 0.2 s instead of a 1.33 GB
+    download. That only works if the probe's raw first line is read the way pyarrow reads
+    it: Redfin quotes every field, so splitting on commas yields '"LAST UPDATED"' and
+    matches nothing."""
+    quoted = ",".join(f'"{c}"' for c in _header_of(SAMPLE))
+    assert sources.probe_header({"header": quoted}) == _header_of(SAMPLE)
+    # Unquoted files parse the same way, and an empty probe is empty rather than [''].
+    assert sources.probe_header({"header": "A,B,C"}) == ["A", "B", "C"]
+    assert sources.probe_header({"header": ""}) == []
+    # End to end: the quoted live-shaped header must bind.
+    assert resolve(sources.probe_header({"header": quoted}), PipelineError).level
 
 
 # --- Freshness -------------------------------------------------------------

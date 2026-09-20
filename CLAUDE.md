@@ -177,6 +177,34 @@ and a grey map. `update_data.yml` replaces `public/data/paint` wholesale, verifi
 declared sha256 before the commit, and stages with `git add -A` so last month's files are
 staged as deletions.
 
+**A Redfin column is required only as far as something published depends on it.**
+`units.LEVEL_HEADERS` and `units.YOY_HEADERS` list the accepted spellings of every header,
+newest first, and `units.resolve` binds each key to whichever one the file actually has. The
+14 levels are the wire, so a missing level stops the run and the error names the near-miss
+from the file's own header. The 14 YoY columns are not: `changes.recompute` overwrites every
+`<metric>_yoy` from the levels before validation, so a missing one becomes an all-null panel
+column and a logged gap. Keeping `redfin.PANEL_COLUMNS` fixed that way is the point — a
+column that vanishes crashes `changes` and `noise` two stages later, where nothing remembers
+why. The 2026-09-18 run died on a renamed `MEDIAN DAYS ON MARKET YOY (%)`, a column whose
+value is discarded before publication.
+
+**The header is bound at S0, off the 1 MB probe, not after the 1.33 GB download.** Same check
+and same message, 25 s and 1.33 GB earlier. `sources.probe_header` parses that line as CSV
+rather than splitting on commas, because Redfin quotes every field and pyarrow strips the
+quotes when it reads the real file.
+
+**The scale of the two difference-family YoY columns is measured every run, never declared.**
+`changes._derive_scale` votes the feed's published column against our own lag-12 level
+difference over `SCALE_CANDIDATES`, requires a dominant winner, and records the answer in
+`manifest.changes.reconciliation.feed_scale`. Redfin shipped `MEDIAN DAYS ON MARKET YOY` as
+`(now - before) * 100` under a "(%)" header through the 2026-07 release and as a plain
+whole-day difference under "(DAYS)" from 2026-08, rewriting the whole column's history;
+`MONTHS OF SUPPLY YOY` is still x100 under "(%)". A declared divisor lived in `units.coerce`,
+was dead in the production path because `recompute` overwrote its output, and so was wrong
+about `median_dom_yoy` for a release with no test or contract able to see it. `coerce` now
+corrects no scales at all. `_reconcile` covers those two as well as the four prices, which is
+what makes a units change visible on the release it happens.
+
 **`SNAPSHOT_COLUMNS` in the pipeline and `FIELD_OF` in `src/lib/zip-table.ts` are two halves of
 one wire format.** Change them together.
 
@@ -271,14 +299,15 @@ says `ok`. Nothing here touches `public/data/`.
 | S3 assemble | `serialize.py`, `dim.py`, `geom.py`, `changes.py` | Join the latest period to the ZCTA dimension and polygon bounds, recompute every YoY from published levels at lag 12, validate. |
 | S4 gate | `gate.py` | Refuse to publish a snapshot that moved more than a real month can. Runs before anything is written. |
 | S5 noise | `noise.py` | Fit K on the panel; write `msp_rse` and the `rel` tier into every record. |
-| S5b forecast | `forecast.py` | AR(1) on log ZHVI growth plus an 82-origin backtest. Fills `f_h12`, `f_sigma`, `f_tier`. |
+| S5b forecast | `forecast.py` | AR(1) on log ZHVI growth plus an 83-origin backtest. Fills `f_h12`, `f_sigma`, `f_tier`. |
 | S5c spatial | `spatial.py` | Local Moran's I over the rankable set only. Fills `lisa`. Hand-rolled numpy + KD-tree; `libpysal`/`esda` are deliberately refused. |
 | S6 classify | `classify.py` | Derive the diverging bound from the pooled ZHVI panel this release, compute breaks, assign classes. |
 | S7 paint | `paint.py` | One byte per ZIP per painted metric, then assert the paint bytes agree with the snapshot. |
 | S8 history | `history.py` | Per-ZIP time series, bucketed 4 deep by ZIP prefix, into `build/history/`. ~6,100 files, ~121 MB. |
 
-Supporting modules: `units.py` maps Redfin headers to our keys and the scale each column
-arrives on; `contracts.py` holds the declared invariants and raises `PipelineError`.
+Supporting modules: `units.py` maps Redfin headers to our keys, declares the accepted
+spellings of each header and which of them a release cannot survive losing;
+`contracts.py` holds the declared invariants and raises `PipelineError`.
 
 Outputs land in `build/`: `zip-data.json`, `manifest.json`, `last_updated.json`,
 `orphans.json`, `paint/*.u8`, `history/<zip4>.json`, the two parquet panels, and the stage

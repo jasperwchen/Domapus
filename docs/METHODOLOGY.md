@@ -29,9 +29,9 @@ touches `public/data/`.
 | S7 paint | `paint.py` | `paint/*.u8` | `assets.paint` |
 | S8 history | `history.py` | `history/*.json` | `history` |
 
-Supporting: `units.py` maps Redfin headers to our keys and declares the scale each
-column arrives on; `contracts.py` holds the declared invariants and raises
-`PipelineError`.
+Supporting: `units.py` maps Redfin headers to our keys, declares the accepted spellings
+of each header and which of them a release cannot survive losing; `contracts.py` holds
+the declared invariants and raises `PipelineError`.
 
 ---
 
@@ -47,13 +47,14 @@ methodology page goes stale.
 | `LAG_USED` | `noise.py` | chosen, justified | 3 is the first lag with no shared transactions in a rolling three-month window. `noise.K_lag` publishes every lag so the plateau is checkable. |
 | `TIER_EDGES` | `noise.py` | chosen | `0.10, 0.06, 0.04` on the relative standard error. The **edges** are the contract; the implied sample sizes move with `K` and are published as `noise.tier_n_implied`, never hardcoded. |
 | `RANKABLE_RSE` | `noise.py` | chosen | `0.10`. Implied `n` published as `noise.rankable_n_implied` (32 on the 2026-07 release). |
-| `CLASSES` | `classify.py` and `choropleth.generated.ts` | chosen | 7. **Both must agree** — `PaintTable.from` refuses to construct when `manifest.classes` and the ramp length disagree. |
+| `CLASSES` | `classify.py` and `choropleth.generated.ts` | **measured, not chosen** | 14. The count is the largest that keeps the separable span/classes ratio no worse than the old 7-class ramp gave; 13 and 15 fail. The paint byte imposes a second ceiling of 15 (the class field is the low nibble holding `class + 1`), which `paint.py` raises on. **Both must agree** — `PaintTable.from` refuses to construct when `manifest.classes` and the ramp length disagree. Re-run `derive_ramp.mjs` and the byte check before moving it. |
 | `SCHEMES` | `classify.py` | chosen per metric family | log-equal for prices, quantile for counts, equal-anchored-100 for shares, diverging for YoY. |
 | `COUNT_METRICS` | `classify.py` | chosen, justified | The metrics exempt from the rankable gate on their break population. See §4. |
 | `DIVERGING_BOUND` | `classify.py` | **derived per release** | Smallest multiple of 5 pp not below the pooled p95 of `abs(yoy)`. Published as `diverging.bound`. There is deliberately **no** copy of it in `src/lib/choropleth.ts`. |
 | Colour ramp | `choropleth.generated.ts` | **derived at build time** | `scripts/palette/derive_ramp.mjs`. Refuses to emit a ramp whose L\* is not monotone or whose minimum adjacent dE76 under simulated CVD falls below 10. Never hand-edit. |
 | `FULL_OPACITY` | `choropleth-painter.ts` | chosen, measured | `1`. Any value below it reintroduces the lightness confound in §5. |
 | `MAX_BBOX_SPAN_DEG` | `zip-table.ts` / `geom.py` | chosen, measured | `10`. The widest real ZCTA is 99503 (Anchorage) at 8.3966°. |
+| Feed YoY scale | `changes.py` | **derived per release** | Which of `SCALE_CANDIDATES` (1, 100) Redfin's own `median_dom_yoy` / `months_of_supply_yoy` column is on, voted against our lag-12 level difference. Published as `changes.reconciliation.feed_scale`. Derived rather than declared because Redfin moved DOM from x100 under a "(%)" header to x1 under "(DAYS)" for the 2026-08 release. Months of supply is still x100. |
 
 ---
 

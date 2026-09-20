@@ -1,4 +1,4 @@
-// Derive the 7-class choropleth ramp from the 12-hex source ramp by resampling
+// Derive the CLASSES-class choropleth ramp from the 12-hex source ramp by resampling
 // at equal arc length in CIELAB, then report the numbers that justify it.
 //
 //     node scripts/palette/derive_ramp.mjs          # print the report
