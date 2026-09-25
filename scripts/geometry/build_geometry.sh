@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The whole geometry workflow: simplify, tile, sidecar, tiny points, verify.
+# The whole geometry workflow: simplify, tile, sidecar, verify.
 #
 # This script plus Dockerfile.tippecanoe is the reproducibility record the release
 # notes carry. Do not paraphrase the invocations below into the notes; paste them.
@@ -152,35 +152,26 @@ $MS mapshaper build/zcta-master.json -points inner \
   -filter-fields ZCTA5CE20,lon,lat,bw,bs,be,bn \
   -o public/data/zcta-geom.csv format=csv
 
-# --- tiny-ZIP dots --------------------------------------------------------------------------------
-# The honest answer to sub-pixel ZCTAs: a dot layer under the fill, coloured by the same
-# constant match on the same feature id, so dense downtown ZIPs show as 3 px dots instead of
-# vanishing. There is no county overview layer.
-echo "== tiny-ZIP dot layer =="
-$MS mapshaper public/data/zcta-geom.csv \
-  -filter '(be-bw)*88 + (bn-bs)*111 < 2' \
-  -points x=lon y=lat \
-  -o public/data/zcta-tiny-points.geojson format=geojson precision=0.00001
-
 # --- verify --------------------------------------------------------------------------------
 # awk, not `wc -l`: mapshaper writes the CSV with no trailing newline, so wc undercounts by
 # one and the coverage check would compare against 33,779 while the archive correctly carries 33,780.
 EXPECT=$(awk 'END{print NR-1}' public/data/zcta-geom.csv)
 echo "== coverage against ${EXPECT} source features =="
-# --strict-from 3: the main map sets minZoom 3. z2 is reported but not gated — see the
-# comment in verify_coverage.mjs.
+# --sizes: below z7 tile quantisation drops ZCTAs smaller than a pixel (567 at z2, 207 at z3,
+# none at z7+, all under 0.12 px across). The gate allows an absence only under 0.5 px, so a
+# ZCTA big enough to see can never go missing.
 # --max-tile-bytes 1000000: the original 500 KB cap was written when the tileset still dropped features
 # to stay small. Carrying every ZCTA at low zoom is the point of this rebuild, and the
 # measured worst tile is 806,400 B raw at z2 (0.71 MB stored across all three z2 tiles). The
 # cap stays a tripwire against a genuinely pathological future vintage, with ~24% headroom
 # over what we actually produce.
 node scripts/geometry/verify_coverage.mjs build/us_zip_codes.pmtiles \
-  --expect "$EXPECT" --min 2 --max 10 --strict-from 3 --max-tile-bytes 1000000 \
-  --cover public/data/zcta-tiny-points.geojson \
+  --expect "$EXPECT" --min 2 --max 10 --max-tile-bytes 1000000 \
+  --sizes public/data/zcta-geom.csv \
   --report build/coverage-after.json
 
 echo
 echo "== sizes =="
-ls -l build/us_zip_codes.pmtiles public/data/zcta-geom.csv public/data/zcta-tiny-points.geojson
+ls -l build/us_zip_codes.pmtiles public/data/zcta-geom.csv
 echo
 echo "Lock file to update: $LOCK"

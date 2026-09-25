@@ -6,10 +6,13 @@
 // pipeline ever opened the finished archive and counted what was actually in it. This does.
 //
 // Decodes the .pmtiles directly: header -> directories -> every tile -> MVT -> the id
-// attribute, and asserts the distinct id count at EVERY zoom equals the source feature count.
+// attribute, and asserts every source feature is present at EVERY zoom. With --sizes, a
+// feature may be absent at a zoom where its bounding box is under --max-dropped-px across:
+// tile quantisation drops those, and at that size nothing on screen can show the difference.
 //
 //   node scripts/geometry/verify_coverage.mjs build/us_zip_codes.pmtiles --expect 33780
-//   node scripts/geometry/verify_coverage.mjs <file> --expect N --min 2 --max 10
+//   node scripts/geometry/verify_coverage.mjs <file> --expect N --min 2 --max 10 \
+//     --sizes public/data/zcta-geom.csv --max-dropped-px 0.5
 //
 // Exits non-zero on any shortfall, so it is usable as a workflow gate.
 
@@ -18,6 +21,8 @@ import zlib from "node:zlib";
 import { bytesToHeader, tileIdToZxy } from "pmtiles";
 
 const MAX_RAW_TILE_BYTES = 500_000;
+// Measured 2026-09-24: every ZCTA the tileset drops, at any zoom, is under 0.12 CSS px.
+const MAX_DROPPED_PX = 0.5;
 const ID_ATTRIBUTE = "ZCTA5CE20";
 
 // ---------------------------------------------------------------- byte plumbing
@@ -250,7 +255,7 @@ const expect = Number(arg("expect", NaN));
 const minZoom = Number(arg("min", header.minZoom));
 const maxZoom = Number(arg("max", header.maxZoom));
 const tileCap = Number(arg("max-tile-bytes", MAX_RAW_TILE_BYTES));
-const strictFrom = Number(arg("strict-from", minZoom));
+const maxDroppedPx = Number(arg("max-dropped-px", MAX_DROPPED_PX));
 
 if (!Number.isFinite(expect)) {
   console.error("--expect <feature-count> is required: coverage compares against the source count.");
@@ -261,20 +266,28 @@ console.log(`archive   ${file}`);
 console.log(`header    z${header.minZoom}..z${header.maxZoom}, tileCompression=${header.tileCompression}, ${fs.statSync(file).size.toLocaleString()} B`);
 console.log(`expecting ${expect.toLocaleString()} distinct ${ID_ATTRIBUTE} at every zoom z${minZoom}..z${maxZoom}\n`);
 
-// The tiny-ZIP dot layer renders under the fill across z2..z10, coloured by the same
-// constant match on the same feature id. A ZCTA that reaches the reader as a 3 px dot is
-// represented on the map, so it counts toward coverage. Without this the check demands that
-// a 0.05 px polygon survive tile quantisation at z2, which no tiling can deliver — and
-// failing on that would hide the failures that matter.
-const covered = new Set();
-const coverPath = arg("cover", "");
-if (coverPath) {
-  const text = fs.readFileSync(coverPath, "utf8");
-  const ids = coverPath.endsWith(".geojson")
-    ? JSON.parse(text).features.map((f) => f.properties[ID_ATTRIBUTE])
-    : text.trim().split(/\r?\n/).slice(1).map((l) => l.split(",")[0]);
-  for (const id of ids) covered.add(String(id).padStart(5, "0"));
-  console.log(`cover     ${coverPath}: ${covered.size.toLocaleString()} ids from the dot layer\n`);
+// Bounding boxes from the geometry sidecar (absolute degrees), keyed by ZCTA.
+const boxes = new Map();
+const sizesPath = arg("sizes", "");
+if (sizesPath) {
+  const [head, ...rows] = fs.readFileSync(sizesPath, "utf8").trim().split(/\r?\n/);
+  const col = Object.fromEntries(head.split(",").map((n, i) => [n, i]));
+  for (const line of rows) {
+    const c = line.split(",");
+    boxes.set(c[col[ID_ATTRIBUTE]].padStart(5, "0"), {
+      w: +c[col.be] - +c[col.bw], h: +c[col.bn] - +c[col.bs], lat: +c[col.lat],
+    });
+  }
+  console.log(`sizes     ${sizesPath}: ${boxes.size.toLocaleString()} boxes, absent allowed under ${maxDroppedPx} px\n`);
+}
+
+/** Larger side of a feature's bounding box in CSS px at zoom z (512 px tiles), or Infinity
+ *  when its size is unknown, so an unmeasured absence always fails. */
+function pxAt(id, z) {
+  const b = boxes.get(id);
+  if (!b) return Infinity;
+  const perDeg = (512 * 2 ** z) / 360;
+  return Math.max(b.w * perDeg, (b.h * perDeg) / Math.cos((b.lat * Math.PI) / 180));
 }
 
 const perZoom = new Map(); // z -> { ids:Set, tiles, rawBytes, maxRaw, maxRawAt }
@@ -333,40 +346,38 @@ if (universe.size !== expect) {
   failed = true;
 }
 
-console.log("  z |    tiles | polygons | +dots |  missing |  raw MB | stored MB | max raw tile | at");
-console.log("----+----------+----------+-------+----------+---------+-----------+--------------+------------");
+console.log("  z |    tiles | polygons |  absent | largest absent px | visible absent |  raw MB | stored MB | max raw tile | at");
+console.log("----+----------+----------+---------+-------------------+----------------+---------+-----------+--------------+------------");
 for (let z = minZoom; z <= maxZoom; z++) {
   const b = perZoom.get(z);
   if (!b) {
     console.log(`  ${String(z).padStart(2)} | ${"NO TILES".padStart(8)}`);
     failed = true;
-    summary.push({ zoom: z, tiles: 0, polygons: 0, missing: expect, max_raw_tile_bytes: 0 });
+    summary.push({ zoom: z, tiles: 0, polygons: 0, absent: expect, visible_absent: expect, max_raw_tile_bytes: 0 });
     continue;
   }
   const absent = [...universe].filter((id) => !b.ids.has(id));
-  const uncovered = absent.filter((id) => !covered.has(id));
+  const sizes = absent.map((id) => pxAt(id, z));
+  const visible = absent.filter((_, i) => sizes[i] >= maxDroppedPx);
+  const largest = sizes.length ? Math.max(...sizes) : 0;
   const overCap = b.maxRaw >= tileCap;
-  // Zooms below `strictFrom` are reported but do not fail. z2 exists only so the Alaska and
-  // Hawaii export insets have tiles to draw — the main map sets minZoom 3 — and at z2 one
-  // pixel is ~39 km at 40°N, so a ZIP smaller than that cannot survive quantisation however
-  // it is tiled. The ZIPs it loses are lower-48 (Illinois, Michigan, Ohio, New York), which
-  // no z2 inset ever shows.
-  const bad = uncovered.length !== 0 && z >= strictFrom;
-  if (bad) failed = true;
+  if (visible.length) failed = true;
   console.log(
     `  ${String(z).padStart(2)} | ${b.tiles.toLocaleString().padStart(8)} | ` +
-      `${b.ids.size.toLocaleString().padStart(8)} | ${String(absent.length - uncovered.length).padStart(5)} | ` +
-      `${String(uncovered.length).padStart(8)} | ${(b.rawBytes / 1048576).toFixed(2).padStart(7)} | ` +
+      `${b.ids.size.toLocaleString().padStart(8)} | ${String(absent.length).padStart(7)} | ` +
+      `${(sizes.length ? largest.toFixed(3) : "-").padStart(17)} | ${String(visible.length).padStart(14)} | ` +
+      `${(b.rawBytes / 1048576).toFixed(2).padStart(7)} | ` +
       `${(b.storedBytes / 1048576).toFixed(2).padStart(9)} | ${b.maxRaw.toLocaleString().padStart(12)} | ` +
-      `${b.maxRawAt}${bad ? "  <-- FAIL" : overCap ? "  (over raw cap)" : ""}`,
+      `${b.maxRawAt}${visible.length ? "  <-- FAIL" : overCap ? "  (over raw cap)" : ""}`,
   );
   summary.push({
     zoom: z,
     tiles: b.tiles,
     polygons: b.ids.size,
-    covered_by_dots: absent.length - uncovered.length,
-    missing: uncovered.length,
-    missing_ids: uncovered.slice(0, 50),
+    absent: absent.length,
+    largest_absent_px: sizes.length ? +largest.toFixed(3) : null,
+    visible_absent: visible.length,
+    visible_absent_ids: visible.slice(0, 50),
     raw_bytes: b.rawBytes,
     stored_bytes: b.storedBytes,
     max_raw_tile_bytes: b.maxRaw,
@@ -380,7 +391,10 @@ if (outPath) {
   fs.writeFileSync(
     outPath,
     JSON.stringify(
-      { archive: file, expect, min_zoom: minZoom, max_zoom: maxZoom, tile_cap: tileCap, per_zoom: summary },
+      {
+        archive: file, expect, min_zoom: minZoom, max_zoom: maxZoom, tile_cap: tileCap,
+        max_dropped_px: sizesPath ? maxDroppedPx : 0, per_zoom: summary,
+      },
       null,
       2,
     ),
@@ -389,31 +403,29 @@ if (outPath) {
 }
 
 if (failed) {
-  const worst = summary.filter((s) => s.missing > 0).sort((a, b) => b.missing - a.missing)[0];
+  const worst = summary.filter((s) => s.visible_absent > 0).sort((a, b) => b.visible_absent - a.visible_absent)[0];
   if (worst) {
     console.error(
-      `\nFAIL (coverage): z${worst.zoom} is missing ${worst.missing} ${ID_ATTRIBUTE} that neither ` +
-        `the tileset nor the dot layer carries, e.g. ${worst.missing_ids.slice(0, 8).join(" ")}`,
+      `\nFAIL (coverage): z${worst.zoom} is missing ${worst.visible_absent} ${ID_ATTRIBUTE}` +
+        `${sizesPath ? ` at least ${maxDroppedPx} px across` : ""}, ` +
+        `e.g. ${(worst.visible_absent_ids ?? []).slice(0, 8).join(" ")}`,
     );
   }
   process.exit(1);
 }
+const dropped = summary.filter((s) => s.absent > 0);
 console.log(
-  `\nOK (coverage): every one of the ${expect.toLocaleString()} ${ID_ATTRIBUTE} is represented at ` +
-    `every zoom z${strictFrom}..z${maxZoom}, as a polygon or as a dot.`,
+  dropped.length
+    ? `\nOK (coverage): every ${ID_ATTRIBUTE} at least ${maxDroppedPx} px across is drawn at every zoom ` +
+        `z${minZoom}..z${maxZoom}. Smaller ones are absent at ` +
+        `${dropped.map((s) => `z${s.zoom} (${s.absent})`).join(", ")}.`
+    : `\nOK (coverage): every one of the ${expect.toLocaleString()} ${ID_ATTRIBUTE} is drawn at every ` +
+        `zoom z${minZoom}..z${maxZoom}.`,
 );
 const capped = summary.filter((s) => s.over_raw_cap).map((s) => `z${s.zoom}`);
 if (capped.length) {
   console.log(
     `NOTE (tile size): raw tile size exceeds ${tileCap.toLocaleString()} B at ${capped.join(", ")}. ` +
       `Raw is the decode cost, not the wire cost — see stored MB above.`,
-  );
-}
-const lax = summary.filter((s) => s.missing > 0 && s.zoom < strictFrom);
-if (lax.length) {
-  console.log(
-    `NOTE (coverage): z${lax.map((s) => s.zoom).join(", z")} below the strict floor z${strictFrom} ` +
-      `— ${lax.map((s) => `${s.missing} uncovered`).join(", ")}. The main map does not render ` +
-      `below z${strictFrom}; z2 exists for the AK/HI export insets.`,
   );
 }

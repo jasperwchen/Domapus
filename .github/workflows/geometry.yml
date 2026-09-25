@@ -55,12 +55,11 @@ jobs:
           {
             echo '### Geometry build'
             echo '```'
-            ls -l build/us_zip_codes.pmtiles public/data/zcta-geom.csv \
-                  public/data/zcta-tiny-points.geojson
+            ls -l build/us_zip_codes.pmtiles public/data/zcta-geom.csv
             echo '```'
             echo '#### Coverage'
             echo '```'
-            jq -r '.per_zoom[] | "z\(.zoom)  polygons \(.polygons)  +dots \(.covered_by_dots)  missing \(.missing)  stored \(.stored_bytes)"' \
+            jq -r '.per_zoom[] | "z\(.zoom)  polygons \(.polygons)  absent \(.absent)  largest absent px \(.largest_absent_px)  stored \(.stored_bytes)"' \
               build/coverage-after.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -72,7 +71,6 @@ jobs:
             build/us_zip_codes.pmtiles
             build/coverage-after.json
             public/data/zcta-geom.csv
-            public/data/zcta-tiny-points.geojson
           retention-days: 14
 
       # The release notes carry the exact invocations, because they are the only
@@ -102,7 +100,6 @@ jobs:
           gh release create "$RELEASE_TAG" \
             build/us_zip_codes.pmtiles \
             public/data/zcta-geom.csv \
-            public/data/zcta-tiny-points.geojson \
             geometry.lock.json \
             --title "Geometry $RELEASE_TAG" \
             --notes-file /tmp/notes.md

@@ -45,22 +45,19 @@
     "rows": 33780,
     "bytes": 2058046
   },
-  "tiny_points": {
-    "file": "public/data/zcta-tiny-points.geojson",
-    "$comment": "Rendered as a circle layer under the fill, coloured by the same constant match on the same feature id, so a sub-pixel ZCTA reaches the reader as a dot instead of vanishing. This is the entire low-zoom answer;. There is no county overview layer.",
-    "filter_km": 2,
-    "features": 991,
-    "bytes": 200770
-  },
   "coverage": {
-    "$comment": "A7, measured by scripts/geometry/verify_coverage.mjs against the finished archive. `strict_from` is the floor the gate enforces: the main map sets minZoom 3, and z2 exists only so the Alaska and Hawaii export insets have tiles to draw. At z2 one pixel is ~39 km at 40 N, so a ZIP smaller than that cannot survive quantisation however it is tiled; the 75 it loses are lower-48 and appear in no z2 inset.",
-    "strict_from": 3,
+    "$comment": "A7, measured by scripts/geometry/verify_coverage.mjs against the finished archive. Below z7 tile quantisation drops ZCTAs too small to see; the gate allows an absence only when the ZCTA's bounding box is under `max_dropped_px` CSS px at that zoom (512 px tiles). Measured largest absent: 0.12 px. A dot file used to be counted as covering them; the site never drew it, and it was removed 2026-09-24.",
+    "max_dropped_px": 0.5,
     "polygons_by_zoom": {
       "2": 33213, "3": 33573, "4": 33712, "5": 33769, "6": 33779,
       "7": 33780, "8": 33780, "9": 33780, "10": 33780
     },
-    "uncovered_by_zoom": {
-      "2": 75, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0, "10": 0
+    "absent_by_zoom": {
+      "2": 567, "3": 207, "4": 68, "5": 11, "6": 1,
+      "7": 0, "8": 0, "9": 0, "10": 0
+    },
+    "largest_absent_px_by_zoom": {
+      "2": 0.113, "3": 0.118, "4": 0.102, "5": 0.099, "6": 0.109
     },
     "previous_polygons_by_zoom": {
       "$comment": "The tileset this replaces, decoded by the same tool. It shipped a 5.8% loss at z3 and 2.5% at z4 — the default view — and nothing ever opened it to look.",
