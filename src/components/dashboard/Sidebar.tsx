@@ -126,7 +126,7 @@ export function Sidebar({
         onClose={onClose}
       />
 
-      <div className="flex flex-col flex-1 overflow-hidden min-h-0" aria-live="polite">
+      <div className="flex flex-col flex-1 overflow-hidden min-h-0">
         {comparing ? (
           <div className="flex-1 overflow-y-auto px-4 py-3">
             <Suspense fallback={
@@ -268,6 +268,10 @@ function Header({
               </span>
             )}
           </div>
+          {/* The live region is one line; around the whole panel it read out every metric. */}
+          <p className="sr-only" aria-live="polite">
+            {`ZIP ${zipData.zipCode}${place ? `, ${place}` : ""}${comparing ? ", comparing" : ""}`}
+          </p>
           {place && (
             <p className="mt-1 text-sm font-medium text-foreground truncate">{place}</p>
           )}
@@ -427,11 +431,8 @@ function MetricGroup({
 
       {open && (
         <div className="rounded-lg border border-border bg-card divide-y divide-border/60">
-          {/* The change column is year-over-year for fourteen of the fifteen
-              metrics, so it is named once here rather than repeated on every
-              row. ZHVI is the exception — it is the only series Redfin's rolling
-              window does not apply to, so it is the only one with a real
-              month-over-month — and that row carries its own "MoM" marker. */}
+          {/* Year-over-year for every row, so it is named once. ZHVI's month-over-month
+              is in the hero card when ZHVI is painted. */}
           <div className="flex items-baseline gap-2 px-3 py-1">
             <span className="min-w-0 flex-1" aria-hidden="true" />
             <span className="w-[88px] shrink-0 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -439,10 +440,8 @@ function MetricGroup({
             </span>
           </div>
           {rows.map(({ m, value }) => {
-            const mom = m.momKey ? formatChange(zipData[m.momKey] as number | null, m.momFormat) : null;
             const yoy = m.yoyKey ? formatChange(zipData[m.yoyKey] as number | null, m.yoyFormat) : null;
-            const change = (mom && !mom.isZero) ? mom : (yoy && !yoy.isZero) ? yoy : null;
-            const changeIsYoy = !(mom && !mom.isZero);
+            const change = yoy && !yoy.isZero ? yoy : null;
             const isPainted = m.key === highlight;
 
             return (
@@ -461,12 +460,7 @@ function MetricGroup({
                 </span>
                 <span className="w-[88px] shrink-0 text-right">
                   {change && (
-                    <Delta
-                      change={change}
-                      suffix={changeIsYoy ? "YoY" : "MoM"}
-                      compact
-                      showSuffix={!changeIsYoy}
-                    />
+                    <Delta change={change} suffix="YoY" compact showSuffix={false} />
                   )}
                 </span>
               </div>

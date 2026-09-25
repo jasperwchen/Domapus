@@ -22,12 +22,13 @@ export function SearchBox({ onSearch }: SearchBoxProps) {
       // Increment trigger to force flyTo even if same ZIP
       const newTrigger = searchTrigger + 1;
       setSearchTrigger(newTrigger);
-      onSearch(searchValue.trim(), newTrigger);
+      // "501" means 00501: ZIPs are strings, and New England's lose their zeros when typed.
+      onSearch(searchValue.trim().padStart(5, "0"), newTrigger);
     }
   }, [searchValue, searchTrigger, onSearch]);
 
   return (
-    <form id="ZIP code" onSubmit={handleSubmit} className="flex items-center gap-2 w-full min-w-0 group">
+    <form id="zip-search" onSubmit={handleSubmit} className="flex items-center gap-2 w-full min-w-0 group">
       <div className="relative flex-1 min-w-0">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dashboard-text-secondary" />
         <Input

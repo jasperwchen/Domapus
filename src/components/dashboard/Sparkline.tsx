@@ -277,7 +277,7 @@ function Chart({
             fill="none"
           />
         )}
-        <path d={geom.line} className="stroke-primary" strokeWidth={1.5} fill="none" />
+        <path d={geom.line} className="stroke-primary" strokeWidth={1.5} strokeLinecap="round" fill="none" />
 
         {/* A break marker is drawn only where the data actually breaks. `at` is
             null for both restated series, so today this renders for nothing. */}
@@ -429,8 +429,15 @@ function buildGeometry(
   const sx = (i: number) => PAD.l + ((i - xMin) / Math.max(xMax - xMin, 1)) * PLOT_W;
   const sy = (v: number) => PAD.t + (1 - (v - min) / (max - min)) * PLOT_H;
 
+  // A missing period breaks the line: joining across it drew months that have no data.
+  // A point with no neighbour on either side is a zero-length segment, a dot under round caps.
   const line = present
-    .map(([i, v], k) => `${k ? "L" : "M"}${sx(i).toFixed(1)},${sy(v).toFixed(1)}`)
+    .map(([i, v], k) => {
+      const pt = `${sx(i).toFixed(1)},${sy(v).toFixed(1)}`;
+      if (k > 0 && present[k - 1][0] === i - 1) return `L${pt}`;
+      const alone = k === present.length - 1 || present[k + 1][0] !== i + 1;
+      return `M${pt}${alone ? "h0" : ""}`;
+    })
     .join("");
 
   let forecastLine: string | null = null;

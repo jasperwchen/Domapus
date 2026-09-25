@@ -6,7 +6,7 @@ import { MetricSelector, MetricType } from "./MetricSelector";
 import { SearchBox } from "./SearchBox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { trackError } from "@/lib/analytics";
-import { fetchDataDates, formatPeriod, formatPeriodDay, formatRedfinWindow, EMPTY_DATA_DATES, type DataDates } from "@/lib/data-dates";
+import { fetchDataDates, formatPeriod, formatPeriodDay, formatRedfinWindow, stalePeriod, EMPTY_DATA_DATES, type DataDates } from "@/lib/data-dates";
 
 const GithubIcon = ({ className }: { className?: string }) => (
   <svg
@@ -35,9 +35,8 @@ export function TopBarShell({
   center?: React.ReactNode;
   /** Page-specific actions, placed before the site-wide links. */
   actions?: React.ReactNode;
-  /** Which route the first button goes to: the one the reader is not on. The
-   *  wordmark also links to the map, but a titled icon is the only exit a reader
-   *  will look for, and the methodology page previously offered none. */
+  /** Which route the first button goes to: the one the reader is not on. A titled
+   *  icon is the exit a reader looks for, even though the logo also leads to the map. */
   nav?: "methodology" | "map";
 }) {
   // Carry the query string so returning from methodology restores the map view.
@@ -50,10 +49,11 @@ export function TopBarShell({
       className="flex items-center justify-between gap-3 px-3 sm:px-5 py-2 bg-dashboard-panel border-b border-dashboard-border h-14 sm:h-16"
     >
       <div className="flex items-center gap-3 lg:gap-5 min-w-0">
+        {/* No query string: the logo is the reset, a full reload into the default view. */}
         <a
-          href={`${BASE_PATH}${search}`}
+          href={BASE_PATH}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0"
-          title="Back to the map"
+          title="Reset the map"
         >
           <img
             src={`${BASE_PATH}Logo.svg`}
@@ -69,7 +69,7 @@ export function TopBarShell({
             <h1 className="text-base font-bold text-dashboard-text-primary leading-tight truncate">
               Domapus
             </h1>
-            <p className="text-xs text-dashboard-text-secondary leading-tight hidden xl:block">
+            <p className="text-xs text-dashboard-text-secondary leading-tight truncate hidden sm:block">
               {subtitle}
             </p>
           </div>
@@ -190,6 +190,7 @@ export function TopBar({
   const periodPhrase = isZillowMetric
     ? `through ${formatPeriod(activePeriod)}`
     : formatRedfinWindow(activePeriod);
+  const stale = stalePeriod(dataDates);
   const runDate = dataDates.last_updated_utc
     ? new Date(dataDates.last_updated_utc).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
     : "unknown";
@@ -208,17 +209,15 @@ export function TopBar({
                 <SearchBox onSearch={onSearch} />
               </div>
             )}
-            {/* The period is the first thing to go: it is also printed in the
-                detail panel and on every export, so losing it here costs the
-                reader nothing they cannot get one hover away. */}
+            {/* The only date on screen until a ZIP is opened, so it stays down to xl, where it still leaves the search box its width. */}
             {!isMobile && (
               <div
-                className="items-center text-dashboard-text-secondary gap-2 hidden 2xl:flex"
+                className="items-center text-dashboard-text-secondary gap-2 flex-shrink-0 hidden xl:flex"
                 title={`${sourceLabel} data, ${periodPhrase}. Site last refreshed ${runDate}.`}
               >
                 <Calendar className="h-4 w-4 opacity-80" />
                 <div className="flex flex-col">
-                  <span className="text-xs font-medium">{periodLabel}</span>
+                  <span className="text-xs font-medium whitespace-nowrap">{periodLabel}</span>
                   <span className="text-xs font-medium whitespace-nowrap">{periodValue}</span>
                 </div>
               </div>
@@ -227,6 +226,13 @@ export function TopBar({
           </>
         }
       />
+
+      {stale && (
+        <div role="status" className="px-3 sm:px-5 py-1.5 text-xs text-center bg-amber-50 text-amber-900 border-b border-amber-200">
+          This data is older than usual: the latest figures cover the period ending {formatPeriodDay(stale)}.
+          A newer monthly update has not been published yet.
+        </div>
+      )}
 
       {/* === Mobile Bottom Bar === */}
       {isMobile && !hideMobileControls && (

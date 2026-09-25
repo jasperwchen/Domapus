@@ -313,8 +313,9 @@ function Body({ mf }: { mf: Manifest }) {
             levels at a twelve-month lag, in each metric's own unit: percent for
             prices and counts, percentage points for shares, and whole days or
             months for days-on-market and months-of-supply. Redfin publishes the
-            last two as a difference multiplied by 100 under a percent label, so
-            recomputing means those columns are never read.
+            last two as differences whose scale has changed between releases
+            (days on market moved from a difference multiplied by 100 to whole days
+            in August 2026), so recomputing means those columns are never read.
           </p>
         </Detail>
       </Section>
@@ -332,11 +333,10 @@ function Body({ mf }: { mf: Manifest }) {
           approximately log-normal, so they are cut at equal intervals on a
           logarithmic scale, which preserves the ratio between classes. Counts are
           cut at quantiles, because rank is what a reader compares. A share of
-          sales is cut at equal intervals over its real zero-to-one-hundred domain;
-          the average sale-to-list ratio, which is the one series that genuinely
-          pivots at 100%, keeps a grid anchored there. Year-over-year change uses a
-          diverging scale symmetric about zero, with a boundary falling exactly on
-          zero so that no colour means &ldquo;no change&rdquo; ambiguously.
+          sales is cut at equal intervals over its real zero-to-one-hundred domain.
+          Where many ZIPs share one value, as when a large share sold exactly one
+          home, two boundaries can coincide and the class between them is empty;
+          the legend draws it as a sliver rather than hiding it.
         </p>
         <p>
           Which ZIPs are allowed to <em>set</em> the boundaries is not the same
@@ -376,19 +376,9 @@ function Body({ mf }: { mf: Manifest }) {
             the end classes, so no ZIP is dropped.
           </p>
           <p>
-            The diverging bound for year-over-year change is fixed rather than
-            recomputed, and the two cases differ for opposite reasons. Price levels
-            drift slowly, so a recomputed scale continues to fit them. Year-over-year
-            change swings between regimes; a recomputed scale would render a boom
-            and a flat year equally dramatic, which erases the difference that
-            showing change is for. The bound is stated on the legend, so a clamped
-            scale is not a hidden one.
-          </p>
-          <p>
             Restricting the boundaries for sample estimates has a measurable
             selection effect, since ZIPs with few transactions are cheaper on
-            average. It is reported in the release manifest and is the reason the
-            legend names the population the scale was cut over.
+            average. It is reported in the release manifest.
           </p>
         </Detail>
       </Section>
@@ -696,8 +686,10 @@ function Body({ mf }: { mf: Manifest }) {
         </ul>
         <p>
           This is an upstream definition change, not a data error and not a market
-          movement. Any time series crossing June 2026 requires a break marker for
-          these two rather than a continuous line.
+          movement. Redfin restated the full history of both series under the new
+          definitions, so each history chart here is consistent with itself and
+          carries no break. Figures quoted elsewhere from before the rebuild measure
+          the old quantity.
         </p>
       </Section>
 

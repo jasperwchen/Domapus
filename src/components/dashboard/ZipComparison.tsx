@@ -142,7 +142,7 @@ function Group({
       </h4>
       <div className="rounded-lg border border-border bg-card divide-y divide-border/60">
         {rows.map(({ m, av, bv }) => {
-          const rel = relative(av, bv);
+          const rel = relative(av, bv, m.format as FormatType);
           return (
             <div key={m.key as string} className="flex items-baseline gap-2 px-3 py-2">
               {/* The label column is whatever the three fixed columns leave,
@@ -204,12 +204,22 @@ function Value({
   );
 }
 
-/** B vs A as a percent of A (one column serves every unit). `dir` is 0 when undefined or
- *  when both round to the same value. */
-function relative(a: number | null, b: number | null): { text: string; dir: -1 | 0 | 1 } {
-  if (!Number.isFinite(a as number) || !Number.isFinite(b as number) || a === 0) {
+/** B vs A as a percent of A, or in points for metrics that are already percentages (20% vs
+ *  30% is +10 pts, not +50%). `dir` is 0 when undefined or when both round to the same value. */
+function relative(
+  a: number | null, b: number | null, format: FormatType,
+): { text: string; dir: -1 | 0 | 1 } {
+  if (!Number.isFinite(a as number) || !Number.isFinite(b as number)) {
     return { text: 'n/a', dir: 0 };
   }
+  if (format === 'percent') {
+    const pts = (b as number) - (a as number);
+    // One decimal under 10: sale-to-list ratios sit near 100 and differ by a point or two.
+    const text = Math.abs(pts) < 10 ? pts.toFixed(1) : pts.toFixed(0);
+    if (Number(text) === 0) return { text: '±0 pts', dir: 0 };
+    return { text: `${pts > 0 ? '+' : ''}${text} pts`, dir: pts > 0 ? 1 : -1 };
+  }
+  if (a === 0) return { text: 'n/a', dir: 0 };
   const pct = ((b as number) - (a as number)) / Math.abs(a as number) * 100;
   if (Math.abs(pct) < 0.5) return { text: '±0%', dir: 0 };
   return { text: `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`, dir: pct > 0 ? 1 : -1 };

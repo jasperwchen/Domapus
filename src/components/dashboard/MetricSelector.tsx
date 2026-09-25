@@ -5,8 +5,8 @@ export type MetricType = MetricKey;
 
 // The painted 8 of 15 metrics. Spearman on the latest period collapses the 14 Redfin metrics
 // to ~5 axes (counts rho 0.91-0.99), so the rest would repeat the same map.
-// Tests import `METRICS` here as a flat key -> label record.
-export const METRICS: Record<string, string> = Object.fromEntries(
+// Key -> label for the painted metrics.
+export const PAINTED_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(PAINTED_METRICS).map(([key, info]) => [key, info.label])
 );
 
@@ -36,7 +36,7 @@ export function MetricSelector({ selectedMetric, onMetricChange }: MetricSelecto
           </div>
         </SelectTrigger>
         <SelectContent className="z-[9999]">
-          {Object.entries(METRICS).map(([key, label]) => (
+          {Object.entries(PAINTED_LABELS).map(([key, label]) => (
             <SelectItem key={key} value={key}>
               {label}
             </SelectItem>

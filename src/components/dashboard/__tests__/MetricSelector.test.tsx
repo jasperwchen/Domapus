@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MetricSelector, METRICS } from '../MetricSelector';
+import { MetricSelector, PAINTED_LABELS } from '../MetricSelector';
 import { PAINTED_METRICS } from '@/lib/metrics';
 
 describe('MetricSelector', () => {
@@ -19,7 +19,7 @@ describe('MetricSelector', () => {
     // and appear in the ZIP detail panel, but never colour the map: pairwise
     // Spearman collapses the 14 Redfin metrics to ~5 independent axes, so
     // offering all of them would be offering the same map several times.
-    const metricEntries = Object.entries(METRICS);
+    const metricEntries = Object.entries(PAINTED_LABELS);
     expect(metricEntries.length).toBe(8);
 
     const expectedMetrics = [
@@ -40,7 +40,7 @@ describe('MetricSelector', () => {
   });
 
   it('should have correct metric keys', () => {
-    const metricKeys = Object.keys(METRICS);
+    const metricKeys = Object.keys(PAINTED_LABELS);
     const expectedKeys = [
       'zhvi',
       'median_sale_price',

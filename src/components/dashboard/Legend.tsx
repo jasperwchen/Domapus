@@ -10,9 +10,8 @@ import { OUTLIER_COLORS } from "@/lib/choropleth-painter";
 
 interface LegendProps {
   selectedMetric: string;
-  /** The SAME break values the map is painting, straight from the live
-   *  ClassSource. The legend used to compute its own quantiles from its own
-   *  sample, so it could describe a scale the map was not using. */
+  /** The SAME break values the map is painting, straight from the live ClassSource. A
+   *  legend that computes its own can describe a scale the map is not using. */
   breaks?: readonly number[] | null;
   autoScale?: boolean;
   onAutoScaleChange?: (value: boolean) => void;
@@ -75,11 +74,8 @@ export function Legend({
             style={{ background: verticalGradient }}
             aria-hidden="true"
           />
-          {/* Each label sits at the height of the boundary it names, not at the
-              top/middle/bottom of the strip. The old markup spread three
-              PERCENTILES of the value list evenly down the bar, which described a
-              scale the map was not painting — the same second-authority problem
-              the desktop key was fixed for. */}
+          {/* Each label sits at the height of the boundary it names, so the key
+              describes the scale the map paints. */}
           {mobileTicks && (
             <div className="relative flex-1 text-[11px] font-medium tabular-nums text-muted-foreground">
               {mobileTicks.map(({ i, label }) => (
@@ -93,6 +89,15 @@ export function Legend({
               ))}
             </div>
           )}
+        </div>
+
+        <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-[2px] border border-border"
+            style={{ background: NO_DATA_COLOR }}
+            aria-hidden="true"
+          />
+          <span>No data reported</span>
         </div>
 
         {onAutoScaleChange && (
@@ -241,19 +246,13 @@ export function Legend({
           </div>
         )}
 
-        {/* The reliability channel is no longer a fill treatment. Fading tier 0
-            moved lightness on a ramp whose meaning IS lightness — measured at up
-            to 3.90 class steps of error on the darkest class — and it fell on
-            rural ZIPs, which the pipeline separately measures as genuinely
-            cheaper. Two errors, same direction. The number now lives where a
-            number can be read: the hover popup and the detail panel. This line
-            says the scale is still cut on the rankable subset, because that part
-            of the selection effect is real and unchanged. */}
+        {/* No reliability key: fading low-sample ZIPs moved lightness on a ramp that
+            encodes value in lightness (up to 3.90 class steps of error), so the numbers
+            live in the popup and the detail panel instead. */}
         {reliability && (
           <p className="text-[11px] leading-snug text-muted-foreground pt-0.5">
-            {/* Same tab, like every other route link. This used to open a new
-                one to protect the reader's map state; the query string carries
-                metric, ZIP and viewport now, so returning restores all of it. */}
+            {/* Same tab: the query string carries metric, ZIP and viewport, so
+                returning restores the map. */}
             <Link
               to={`/methodology${search}`}
               className="underline underline-offset-2 hover:text-foreground"
@@ -267,8 +266,7 @@ export function Legend({
   );
 }
 
-/** A checkbox, its label and its explanation as one row. Three copies of this
- *  markup drifted apart; the tooltip on one was 180 px wide and on another 220. */
+/** A checkbox, its label and its explanation as one row. */
 function ToggleRow({
   id, checked, onChange, label, help,
 }: {
