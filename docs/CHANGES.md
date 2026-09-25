@@ -3611,3 +3611,372 @@ lines with a test. The version that ran for one release did not earn its keep; t
 **Conditional permutation still samples neighbours with replacement.** Fixing it changes every
 published LISA class, and nothing available here can verify the new numbers without the 1.33 GB
 feed. It stays a todo rather than an unverified change to a published statistic.
+
+---
+
+## 2026-09-23: audit fixes, first pass
+
+Items from the 2026-09-22 audit that had one obvious fix. Everything below is in the working
+tree; the next monthly run is the first to publish the pipeline changes.
+
+**Pipeline**
+
+- **Tied quantile breaks are accepted.** `classify.compute` and `fitBreaks` allow equal edges
+  for the `quantile` scheme only, still refusing out-of-order edges or all-equal edges, and
+  stay strict for every other scheme. `homes_sold` tied in 80 of 173 periods; the 2027-01 run
+  would have failed. The class between tied edges is empty and the legend already draws it.
+  Tested on both sides with a sample where 16% of ZIPs sold one home.
+- **LISA uses sphere distances and draws distinct neighbours.** `_project` returns xyz on a
+  sphere (chord distance orders neighbours exactly like great-circle distance); the reported
+  8th-neighbour distance converts chord to km. The permutation now draws k distinct
+  neighbours per ZIP, by redrawing the ~0.3% of rows with a repeat. Measured on the 2026-08
+  snapshot with holds off: the projection moves 58 of 9,570 classes, the permutation fix 208.
+  Changing only the seed of the OLD method moves 236, so the permutation change is within
+  Monte Carlo noise and the earlier worry that it could not be verified without the feed was
+  unfounded: the published snapshot carries every input `spatial.run` needs. HL outliers go
+  29 -> 40, LH stays 14. Runtime at n = 9,456 is ~2 s.
+- **Local source files record no fingerprint.** A `--redfin-csv` or `--zhvi-csv` run drops
+  that source's upstream fingerprint, so the next scheduled run sees "changed" and rebuilds.
+- **Receipts are a log.** `run()` deletes `build/*_report.json` first. CLAUDE.md no longer
+  calls them a gate.
+- **The S0 probe is streamed and capped at 1 MB,** so a server ignoring `Range` cannot pull
+  1.33 GB into memory, and only the header and first row are decoded, so a multi-byte
+  character split by the cut cannot crash S0. Same bytes hashed, so fingerprints are unchanged.
+- **The coverage gate needs 2% and 100 ZIPs.** 2026-08's -1.82% on `zhvi_only` was 12 ZIPs.
+- **Renamed checks that compared code with itself:** `_assert_payload_matches_records`
+  (serialize) and `assert_files_match_classes` (paint). Making them read the snapshot is
+  still possible; the names now say what they check.
+- **Dead code:** unpainted metrics removed from `classify.SCHEMES`; `equal_anchored_100`
+  removed from Python and TypeScript; `contracts.GRAINS` down to `panel`; the forecast's
+  "naive is the honest thing to ship" log line now says it ships AR(1).
+
+**Workflows**
+
+- `deploy.yml` runs `npx vitest run` before building, so `classing.test.ts` guards production.
+- `update_data.yml`: `git pull --rebase` before the data push; the history tarball is
+  re-uploaded with `--clobber` when `content_changed`; `notify` also fires on a failed Deploy.
+- `requirements-dev.txt` holds pytest, statsmodels and PyYAML; CI installs it, the data run
+  installs `requirements.txt` only. Comments there cut from ~90 lines to one per pin.
+
+**Map**
+
+- **Paint path recovers from a stale manifest.** The boot script checks `r.ok` and reports
+  the metric it actually fetched. On any paint failure the dashboard refetches the manifest
+  with `cache: "no-cache"` and retries once; the manifest in use is kept in a ref, so a tab
+  open across a release recovers on its next switch. Keeping last release's paint files was
+  not needed. A switch that still fails toasts and reverts to the previous metric instead of
+  leaving the old colours under the new name. Checked in the built site by forcing a 404.
+- **`?metric=` is validated against `PAINTED_METRICS`.** `?metric=median_list_price` now
+  opens on ZHVI labelled as ZHVI.
+- **Tile errors no longer reload the site.** The map reloads only for an error before the
+  style has loaded and not tied to a source.
+- **The loading veil stays down once colours are on the map.**
+- **The worker timeout is 120 s without the prefetch** (it then covers the download).
+- **`history.ts` does not cache failures.**
+- **jsPDF left the critical path.** The `pdf-export` manualChunks rule is gone; jspdf now sits
+  in the lazy `ExportSidebar` chunk and `dist/index.html` preloads only the runtime, JSX
+  runtime and maplibre. fflate is in the entry, where pmtiles needs it anyway.
+- **prune-dist** also drops `zcta-geom.csv`, `zcta-tiny-points.geojson`, `orphans.json` and the
+  pmtiles metadata (21.1 MB pruned in total).
+
+**UI and copy**
+
+- Methodology: DOM YoY scale change, no stale diverging-bound or legend-population claims,
+  no sale-to-list classing, and no break marker (Redfin restated both histories). Tied
+  quantile edges are explained.
+- Sidebar "vs last year" is YoY for every row, ZHVI included.
+- Comparison shows points for `percent` metrics (one decimal under 10).
+- The live region is a one-line summary, not the whole panel.
+- `useIsMobile` reads the width synchronously. Search zero-pads (`501` -> `00501`); the form
+  id has no space. URL lat/lng at 4 dp, zoom at 2 dp. The reset button clears the view through
+  the debounced writer (a `reset` flag rides on `fitBounds`' moveend), so it is not undone.
+  PDF title uses the metric label. The debounce timer is cleared on unmount.
+- Removed: `SponsorBanner`, `useDataWorker`'s per-load `console.log`s. `MetricSelector`'s
+  label map is `PAINTED_LABELS`, no longer shadowing `lib/metrics.METRICS`. `ZipData`
+  comments for `median_dom_yoy`, `f_tier` and the bbox fields corrected.
+
+## 2026-09-23: the "just needs doing" list
+
+**Pipeline**
+
+- **A same-month rebuild keeps the live release's LISA holds.** `run()` read "last release" as
+  whatever was published, so a `force_rebuild` of the live period released every hold and
+  changed the digest over unchanged data. `spatial.hysteresis_inputs` now detects the same
+  period (live `redfin.period_end` equals the build's) and re-applies exactly the live holds
+  at the classes they were held at; a ZIP the fix makes significant again is not held. Over
+  unchanged input this reproduces `lisa` and `held` exactly (the permutations are seeded).
+  The alternative, storing last month's inputs in the manifest, was rejected: ~3,000 classes
+  would add ~25 KB to a file on the critical path, for a case (a code fix that flips a class)
+  where not holding is arguably right anyway.
+
+**Map**
+
+- **The basemap can no longer hold the map hostage.** A Carto style that fails, or has not
+  produced `load` after 10 s, is replaced by a one-layer background style with Carto's glyphs;
+  the ZIP layers need nothing else. This replaced the page-reload-on-style-error path
+  (`scheduleReload`, `RELOAD_ATTEMPTS_KEY`), which could only ever retry the same dead style.
+  Checked both paths in the browser against an unresolvable host and a non-routable IP; three
+  unit tests in `MapLibreMap.test.tsx`.
+- **Stale-data banner.** `stalePeriod` in `data-dates.ts`: shown when the pipeline published
+  data already past `STALE_WARN_DAYS` (45) or when a viewer sees it more than 65 days after
+  its period end (a healthy period is ~20 days old on release day, ~48 the day before the
+  next). The header date now shows from `xl` (1280 px), not `2xl`.
+- **Phones build one detail panel, not two.** The desktop `Sidebar` is not mounted under
+  `isMobile`.
+- **The sparkline breaks at missing periods** instead of drawing a straight line across them;
+  an isolated point is a dot.
+- **The hover popup follows a metric change under a still cursor.** Verified headless with a
+  typeahead metric change (the pointer never leaves the map), and verified the check fails
+  with the fix disabled.
+- **The logo resets the map** (bare URL, full reload) and the "Housing Market Analysis"
+  subtitle shows again from `sm` up.
+- **`perf.ts` no longer grows without bound.** `measure` drops its start mark and keeps the
+  newest 100-200 entries per name, re-creating the kept ones with their original timing.
+
+**Interaction profile (3g), no fix landed.** New baseline at 14 classes:
+`bench/results/uiux-14class.json` (same pinned conditions as `uiux.json`). CPU profiles of
+pan.z4 and both legend toggles under the 4x throttle: the app's own JavaScript is under 100 ms
+per interaction. The rest is MapLibre re-uploading whole-tile paint buffers after any
+feature-state change (hover included) and rasterising under headless software GL. Two candidate
+fixes were built and measured over 5 runs: skipping hover work while the map moves, and moving
+the border's zoom fade from `line-opacity` into the colour alpha (one fewer state-dependent
+buffer). Upload time in single profiles fell (outlier toggle 801 -> 31 ms), but dropped frames
+did not move (pan.z4 60 -> 59, toggle.autoScale 82 -> 83, toggle.outliers 75 -> 75), so both
+were reverted. The frame cost the bench sees is software rasterisation, which an app-side
+change cannot reach and a real GPU may not have at all.
+
+**PR previews (3m) were already fixed** by the stale-manifest recovery in the first audit pass:
+a build whose inlined paint names are stale fails the boot fetch, refetches the live manifest
+past the cache and paints. Verified by serving a build with every inlined name corrupted.
+
+**Tests added:** `spatial.run` (gate, cluster, determinism, refusal), `history.write` (axes,
+stale bucket removal, forecast fields), `noise.measure` write-back, the same-month hold,
+`history.ts` (leading zero, bucket reuse, failure retry, band), `perf.ts`, `data-dates.ts`,
+`HousingDashboard` (`?metric=` validation, stale manifest, metric-switch revert, fatal error).
+Still untested: `run()` end to end.
+
+## 2026-09-24: the section 1 answers
+
+**Stopped painting `zhvi_yoy` (1a, answer B).** The metric menu never offered it, so its paint
+table was built and shipped every month for nobody. `classify.PAINTED` and
+`serialize.PAINTED_SHORT` lose it; with it went everything that existed only for it: the
+`diverging` scheme, `DIVERGING_BOUND` and `derive_diverging_bound`, `zhvi.pooled_yoy` (a full
+read of the ZHVI panel every run), the manifest's `diverging` key, and `DIVERGING_COLORS` in
+`derive_ramp.mjs` / `choropleth.generated.ts`. The `zhvi_yoy` column itself stays on the wire:
+the sidebar shows it as the ZHVI metric's year-over-year companion. The live manifest keeps a
+`zhvi_yoy` classing entry until the next data run, so `classing.test.ts` now picks its metrics
+from `PAINTED_METRICS` rather than filtering out the `diverging` scheme. The next run's digest
+changes (one fewer paint table), so it publishes, and `update_data.yml` stages the old
+`zhvi_yoy-*.u8` as a deletion. To bring the map back: restore the scheme from git history and
+add a `painted` entry plus a two-sided legend.
+
+**Dropped `msp_yoy_se` from the snapshot (1b, answer B).** Nothing produced it and nothing read
+it. The wire goes from 50 to 49 columns. The frontend looks columns up by the names in `f`, so
+this is safe in either deploy order: an old frontend on new data materializes one fewer field
+nobody reads, a new frontend on old data one extra. Golden fixtures edited directly (column,
+scale and the `zhvi_yoy` break/paint entries removed); `make_golden.py` needed no change.
+
+**Phone legend shows the "no data" swatch (1g).** Nothing else was added; the outlier toggle and
+methodology link stay desktop-only.
+
+**Removed the `DATA-PIPELINE-REPORT.md` pointer from `CLAUDE.md` (1i).** The file never existed.
+
+**Closed without code:** 1e (green up / red down stays; the arrow carries direction), 1h (3x
+export works on an iPhone 15 Plus in Chrome, which runs on WebKit, the engine with the tightest
+canvas memory limits). 1c (stripes over low-sample ZIPs) is deferred: the map already reads as
+busy and stripes add texture on top.
+
+**`bench/run.mjs --channel <name> --headed`.** The default launch is Playwright's headless
+shell, which renders WebGL through SwiftShader (`ANGLE ... SwiftShader driver`), so every frame
+number in `bench/results/` so far is a software-rendering number. System Chrome
+(`--channel chrome`) reports `ANGLE (AMD, AMD Radeon(TM) Graphics ... D3D11)` on this machine
+even headless. The conditions block records `channel`, `headed` and the renderer string only
+when either flag is set, so default runs still compare cleanly against older results.
+
+**The pan stutter was the software renderer (1k, answer A, closed).**
+`bench/results/gpu-chrome-headed.json`: the same build and conditions as `uiux-14class.json`
+(slow4g, 4x CPU throttle, 1440x900, 5 runs), system Chrome 153 with a visible window on an
+integrated AMD Radeon. Medians, software -> GPU:
+
+| Scenario | Dropped frames | Longest frame | p95 frame |
+|---|---|---|---|
+| pan.z4 | 60 -> 1 | 350 -> 33 ms | 300 -> 17 ms |
+| pan.z7 | 48 -> 1 | 200 -> 33 ms | 150 -> 17 ms |
+| pan.z10 | 73 -> 5 | 167 -> 50 ms | 67 -> 33 ms |
+| hover.sweep | 63 -> 3 | 250 -> 33 ms | 183 -> 17 ms |
+| toggle.autoScale | 82 -> 0 | 250 -> 17 ms | 100 -> 17 ms |
+| toggle.outliers | 75 -> 1 | 133 -> 33 ms | 83 -> 17 ms |
+| metric.cycle | 35 -> 22 | 483 -> 334 ms | 50 -> 33 ms |
+| search.flyTo | 15 -> 11 | 1367 -> 434 ms | 283 -> 50 ms |
+
+TBT 3562 -> 1646 ms, LCP 6668 -> 5572 ms. Panning, hovering and both legend toggles hold 60 fps
+under a 4x CPU throttle on an entry-level laptop GPU. What remains is a metric switch (every
+tile repaints) and a fly-to (new tiles over slow 4G), both one-off costs of an action the reader
+asked for. The Chrome build differs from the headless shell too, but a version bump does not
+turn 60 dropped frames into 1. The two reverted fixes from 2026-09-23 were measured in software
+and stay reverted; nothing points at them now.
+
+## 2026-09-24 (later): second round of answers
+
+**The geometry check stopped counting dots nobody drew (1d, answer B).** `verify_coverage.mjs`
+used to pass a zoom if every missing ZCTA was in `zcta-tiny-points.geojson`, a dot file the site
+never loaded (`prune-dist` even stripped it from the deploy). Measured against the committed
+tileset: absent at z2 567, z3 207, z4 68, z5 11, z6 1, z7+ none; the largest absent ZCTA at any
+zoom is 0.118 CSS px across; of the 207 at z3, 174 have no data and none is rankable. The new
+gate is `--sizes public/data/zcta-geom.csv --max-dropped-px 0.5`: at every zoom z2..z10, a ZCTA
+may be absent only if its bounding box is under half a pixel there. Checked both ways: it
+passes the committed tileset, fails at `--max-dropped-px 0.1` (18 ZCTAs at z2), and fails on
+any absence without `--sizes`. `--cover` and `--strict-from` are gone; so are the dot file, its
+mapshaper step, the lock entry and the three `geometry.yml` references. The lock records
+`absent_by_zoom` and `largest_absent_px_by_zoom`. The `COVERAGE_MIN_ZOOM` comment in
+`MapLibreMap.tsx` claimed z3 "guarantees every ZCTA has a polygon"; it now says what is true.
+
+**Colour scale: National, State or Metro (1f, answer B).** Replaces "Adjust Contrast to View".
+`RegionClassSource` cuts the pipeline's scheme and break gate (via `fitBreaks`) on one region's
+ZIPs and applies the breaks to every ZIP, where `ViewportClassSource` classed only the ZIPs in
+view and left the rest as no-data. The region is the selected ZIP's state or metro, else the
+one nearest the map centre (`nearestRow`, a flat scan of the anchors); the centre is only
+followed while a region scale is on, and held as names so panning inside one region does not
+re-render. Fallbacks, each named in the legend: metro to state when the ZIP has no metro or the
+metro cannot be cut (735 of 869 have under 14 rankable ZIPs for the price metrics), state to
+the national table when the state cannot be cut (2 of 53), and national for `sold_above_list`,
+whose equal-interval scheme ignores the sample. The export now takes the breaks on screen and
+names the region in its key ("Zillow Home Value Index (Montana scale)"). Removed with the
+viewport cut: `visibleZipRows`, `loadedZips`, and the `loaded` argument of `onMapMove`. Bench:
+`toggle.autoScale` became `toggle.scale` (State, pan, National), `SCHEMA_VERSION` 2 -> 3. Checked
+in the browser: "Scaled to Kansas" at the national view, California then "Los Angeles, CA" after
+searching 90210, the no-metro note on 59011 (Montana), the export key, and `map:sourceReload`
+still 0. Tests: seven for `RegionClassSource`/`nearestRow` in `choropleth-painter.test.ts`, four
+in the new `Legend.test.tsx`, one for the export key. The desktop legend's first control sat
+under a `DO NOT CHANGE TEXT` marker; replacing that control was the decision, the outlier text
+under the second marker is unchanged.
+
+**The metro forecast path is dropped (1j).** `CLAUDE.md` now says when to reopen it
+(`manifest.forecast.tier_counts["0"] > 0`). No code existed to remove.
+
+**The snapshot drops its bounding-box columns (3m).** `bw`, `bs`, `be` and `bn` fed only the
+viewport cut 1f removed; they were 9.2% of the gzipped snapshot (2,669,832 -> 2,425,071 B on
+the live release). The wire goes from 49 to 45 columns. Removed with them: `geom.offsets`,
+`geom.assert_bbox_scale`, `ZipTable.boundsOf`/`checkBounds`, `MAX_BBOX_SPAN_DEG`, and the
+golden test that rebuilt the boxes. `zcta-geom.csv` keeps its bounds: `geom._assert_boxes`
+still checks each anchor sits inside its own box, and the coverage gate sizes ZCTAs from them.
+Name-based column lookup makes this safe in either deploy order, as with 1b.
+
+**Sitemap and structured data (2b, code half).** The sitemap's `lastmod` dates are removed
+rather than updated: the map changes monthly and a hand-typed date goes stale the next month,
+and Google ignores a `lastmod` it finds inaccurate. The JSON-LD description said "Real-time";
+it says "Monthly".
+
+**`run()` has an end-to-end test (3k).** `tests/test_run.py` drives the real driver offline on a
+generated release: 60 real Denver ZCTAs with their real metadata and geometry, 16 monthly
+Redfin periods and 96 ZHVI months ending last month (a committed file would trip the 120-day
+age check within months). Prices follow a geographic gradient so Moran's I finds clusters, log
+price noise is K / sqrt(sales) with K = 0.6 (the run fits 0.59), and every feed YoY is computed
+from the published levels in the feed's own units. Four tests, 3.6 s: a first run passes every
+stage and publishes; last month, this month, then this month again keeps the hold (80106) and
+reproduces the digest; an unchanged upstream exits at S0 without downloading; a local Redfin
+file drops only Redfin's fingerprint. Checked that the second one fails (held `[]` vs
+`['80106']`) when `hysteresis_inputs` is not told the live period. A first version with
+uniform random prices passed the same assertions with zero holds, which proved nothing; the
+test now asserts a hold exists before comparing them.
+
+**3l pass over the files touched today.** Scanned them for comment blocks of five or more lines
+that narrate old behaviour. Trimmed to their one-line reason: five in `Legend.tsx` (legend
+breaks authority, mobile tick placement, the reliability key, same-tab methodology link, the
+`ToggleRow` doc), two in `PrintStage.tsx` (export classing, key tick placement), one in
+`bench/scenarios.mjs`. Left alone: blocks whose history is the measurement that justifies the
+code (`choropleth-painter.ts`, `build_geometry.sh`, `derive_ramp.mjs`, the bench schema notes).
+
+## 2026-09-25: correction, 1f was misread; and the blank basemap
+
+**CORRECTION to "Colour scale: National, State or Metro (1f)" and "The snapshot drops its
+bounding-box columns (3m)" above.** The answer to 1f asked for a colour-scale choice in the
+EXPORT, not a new main-map scale. Both entries are undone:
+
+- The main map is back to "Adjust Contrast to View" (`ViewportClassSource`, `visibleZipRows`,
+  `loadedZips`, `onMapMove(loaded, ...)`), restored from the commit, not rewritten.
+  `RegionClassSource`, `nearestRow`, the legend's National/State/Metro control and
+  `Legend.test.tsx` are gone. Bench scenario `toggle.autoScale` and `SCHEMA_VERSION` 2 are back.
+- The bbox columns are back (49 wire columns, `geom.offsets`, `assert_bbox_scale`, `boundsOf`,
+  `checkBounds`, the golden bounds test): the viewport cut needs them.
+- What 1f actually asked for: the export's Region panel shows "Color scale" once a state or
+  metro is chosen, National (default) or "This state"/"This metro". `areaBreaks` in
+  `classing.ts` cuts the area with the pipeline's scheme and break gate via `fitBreaks`; the key
+  says "(Denver, CO scale)"; the scale is part of the export's map-rebuild key, since its maps
+  read their classes when built. An area too small to cut, or `sold_above_list`'s fixed 0-100
+  scheme, keeps the national breaks with a one-line note. Checked in the browser on Denver.
+  Tests: three for `areaBreaks` (gate on estimates, no gate on counts, refusals), three for the
+  panel (offered only with an area, key names it, small-area note).
+
+**The basemap went blank on slow first loads.** The 2026-09-23 fallback (a Carto style that
+fails or hangs is replaced by a one-layer background) cleared its 10 s timer on the map's
+`load` event. `load` also waits for the first ZIP tiles and a first draw, so a cold dev server,
+a slow connection, or a tab opened in the background passed 10 s with a working basemap and
+lost it for the session. The timer is now cleared on `styledata`, when the style itself has
+arrived; a style that errors or never arrives still falls back. The new test ("keeps the
+basemap when its style arrived but the first tiles are slow") failed before the change. Seen in
+the browser pane: a 25 s first load now keeps the Carto basemap.
+
+## 2026-09-25 (later): export panel, and a review of everything uncommitted
+
+**CORRECTION to "2026-09-25: correction" above, two details of the export colour scale.** The
+scale is no longer part of the export's map-rebuild key, and "Color scale" is no longer hidden
+until an area is chosen. Both changed on purpose, below.
+
+**Export panel.**
+
+- "Color scale" is its own section with a palette icon and an info button. The note says what
+  National and State/Metro do and that the key names the scale; Escape or a click outside
+  closes it before Escape would close the dialog. At national scope the section is shown
+  disabled, like Cities, so the row does not jump from three sections to four.
+- Switching the scale repaints the preview in place. The maps set each ZIP's class as a
+  per-ZIP value on the map (feature state) when their tiles arrive; a scale switch now re-sets
+  those values on the maps already built, the way the live map repaints, instead of tearing
+  down and re-downloading them. The "Rendering..." wait no longer happens on a scale switch.
+  The classes are read when the tiles arrive rather than when the map is created, so a switch
+  made while the preview is still loading is not lost.
+- Order is Region, Color scale, Customization, File.
+- Metro suggestions list bigger markets first, sized by the metro's total homes sold, after
+  how early the typed text appears in the name. ZIP count was tried first and ranked
+  Pittsburgh second, above Chicago and Los Angeles, because Pennsylvania cuts its metros into
+  small ZIPs. Empty query now starts New York, Chicago, Dallas, Houston, Atlanta.
+- On a phone the four sections sit on one row. The state picker, metro search and the notes
+  take a full row under it (CSS order), and sit under their own section on desktop. Headers
+  shorten to Region, Scale, Options, File below 768 px; checkbox labels are Title, Legend,
+  Cities at every width. The "Unavailable at national scale" line is desktop-only, since the
+  greyed checkbox says it in a 75 px column. Checked at 375 and 360 px: nothing wraps or clips,
+  no sideways scroll.
+- The colour-scale radios are named "National scale" and "State scale"/"Metro scale" for
+  screen readers, since the Region radios already use National, State and Metro.
+- Tests: disabled until an area is chosen, the info note and its Escape order, the in-place
+  repaint (same map count, classes 5 and 9 become 0 and 13, button stays enabled; fails if
+  the repaint is removed), bigger markets first.
+
+**Review of every uncommitted change (2026-09-23 to now).** Read file by file. One real
+regression found and fixed:
+
+- **The reset button left a shared link's view in the URL.** 2026-09-23 routed the reset
+  through the debounced URL writer, but put it after the "has the user touched the map yet"
+  check. Open a link with `lat/lng/zoom`, press reset without dragging first: the map went
+  national and the URL still said Denver, so a reload or a copied link went back to Denver.
+  The reset is now handled before that check. Test "clears a shared link's view on reset,
+  even before the map was touched" fails on the old order. Seen in the browser.
+
+Also found, left as they are:
+
+- `package-lock.json` moves maplibre-gl 6.10.0 to 6.11.2, lucide-react 1.46 to 1.48,
+  dompurify 3.4.15 to 3.4.16 and dev-tool patches. No session in this series ran an npm
+  install; `node_modules` already matches it, so every test and browser check ran on these
+  versions.
+- `SponsorBanner.tsx` is unused; the commented-out mount line in `HousingDashboard.tsx` is the
+  owner's. Both are kept on purpose and now carry a comment telling a future edit not to
+  remove them.
+- `verify_coverage.mjs` had a raw line break inside a log string from a broken heredoc; now
+  `\n`, same output.
+
+Verified: 79 pytest, 163 vitest, `tsc -b` clean, lint 0 errors (4 warnings, all of kinds
+already in the code), build OK, `derive_ramp.mjs` reproduces `choropleth.generated.ts`
+byte for byte. Browser: basemap and choropleth load, hover popup, click opens the panel, search
+"2134" opens 02134, metric switch repaints and updates the legend and URL, Adjust Contrast
+re-cuts on the view, outliers toggle with their key, reset clears the URL view, phone header
+fits 375 px.

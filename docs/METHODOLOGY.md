@@ -11,9 +11,9 @@ This file is the reference for the shipped behaviour.
 
 ## 1. Stage to module to manifest key
 
-Every stage writes `build/` plus a `build/<stage>_report.json` receipt, and the
-next stage refuses to start unless the previous receipt says `ok`. Nothing here
-touches `public/data/`.
+Every stage writes `build/` plus a `build/<stage>_report.json` receipt, a log of
+this run (`run()` clears old ones first). Any failure raises and stops the run.
+Nothing here touches `public/data/`.
 
 | Stage | Module | Produces | Manifest key |
 |---|---|---|---|
@@ -25,7 +25,7 @@ touches `public/data/`.
 | S5 noise | `noise.py` | `msp_rse`, `dom_rse`, `rel` | `noise` |
 | S5b forecast | `forecast.py` | `f_h12`, `f_sigma`, `f_tier` | `forecast` |
 | S5c spatial | `spatial.py` | `lisa` | `spatial` |
-| S6 classify | `classify.py` | class breaks | `classes`, `classing`, `diverging` |
+| S6 classify | `classify.py` | class breaks | `classes`, `classing` |
 | S7 paint | `paint.py` | `paint/*.u8` | `assets.paint` |
 | S8 history | `history.py` | `history/*.json` | `history` |
 
@@ -48,9 +48,8 @@ methodology page goes stale.
 | `TIER_EDGES` | `noise.py` | chosen | `0.10, 0.06, 0.04` on the relative standard error. The **edges** are the contract; the implied sample sizes move with `K` and are published as `noise.tier_n_implied`, never hardcoded. |
 | `RANKABLE_RSE` | `noise.py` | chosen | `0.10`. Implied `n` published as `noise.rankable_n_implied` (32 on the 2026-07 release). |
 | `CLASSES` | `classify.py` and `choropleth.generated.ts` | **measured, not chosen** | 14. The count is the largest that keeps the separable span/classes ratio no worse than the old 7-class ramp gave; 13 and 15 fail. The paint byte imposes a second ceiling of 15 (the class field is the low nibble holding `class + 1`), which `paint.py` raises on. **Both must agree** — `PaintTable.from` refuses to construct when `manifest.classes` and the ramp length disagree. Re-run `derive_ramp.mjs` and the byte check before moving it. |
-| `SCHEMES` | `classify.py` | chosen per metric family | log-equal for prices, quantile for counts, equal-anchored-100 for shares, diverging for YoY. |
+| `SCHEMES` | `classify.py` | chosen per metric family | log-equal for prices, quantile for counts, equal-anchored-100 for shares. |
 | `COUNT_METRICS` | `classify.py` | chosen, justified | The metrics exempt from the rankable gate on their break population. See §4. |
-| `DIVERGING_BOUND` | `classify.py` | **derived per release** | Smallest multiple of 5 pp not below the pooled p95 of `abs(yoy)`. Published as `diverging.bound`. There is deliberately **no** copy of it in `src/lib/choropleth.ts`. |
 | Colour ramp | `choropleth.generated.ts` | **derived at build time** | `scripts/palette/derive_ramp.mjs`. Refuses to emit a ramp whose L\* is not monotone or whose minimum adjacent dE76 under simulated CVD falls below 10. Never hand-edit. |
 | `FULL_OPACITY` | `choropleth-painter.ts` | chosen, measured | `1`. Any value below it reintroduces the lightness confound in §5. |
 | `MAX_BBOX_SPAN_DEG` | `zip-table.ts` / `geom.py` | chosen, measured | `10`. The widest real ZCTA is 99503 (Anchorage) at 8.3966°. |
@@ -121,7 +120,6 @@ The break population is **per scheme**, via `classify.break_population`:
 | Shares (`sold_above_list`, and the two panel-only ratios) | rankable only | A share **of** the sales inherits their sampling error. Four sales can only report 0/25/50/75/100%. |
 | `months_of_supply` | rankable only | Inventory over the sales **rate**, so it derives from a sale count. |
 | Exact counts (`COUNT_METRICS`) | every reporting ZIP | No sampling error exists to gate on, and the gate is a cut on `K / sqrt(n_sales)` — so gating a sale count on it means choosing the boundaries for "how many sold" by looking only at where a lot sold. |
-| `zhvi_yoy` | n/a — fixed diverging scale | |
 
 Measured effect of the correction, share of ZIPs in the lowest of seven classes on
 the 2026-07 release:
@@ -178,7 +176,7 @@ is the property that made opacity unusable. Deferred, not cancelled.
 
 | Invariant | Enforced by | Failure mode if removed |
 |---|---|---|
-| A stage never writes `public/data/` | stage receipts, `_require()` | A run passing weak validators overwrites known-good published data. |
+| A stage never writes `public/data/` | stages write only `build/`; the workflow copies after exit 0 | A run passing weak validators overwrites known-good published data. |
 | One colour ramp definition | `choropleth.generated.ts`, imported by map, legend and export | The legend shows colours the map never paints. |
 | Paint table agrees with the snapshot | `paint.py` assertion before publish | The colour and the number disagree for the same ZIP. |
 | `manifest.classes` == ramp length | `PaintTable.from` throws | The legend and the map disagree about what a colour means. |
@@ -186,7 +184,7 @@ is the property that made opacity unusable. Deferred, not cancelled.
 | `map:sourceReload` == 0 | `setPaintPropertyCounted`, and the bench asserts it | Rewriting a data-driven paint value reloads every tile: 3375 ms per metric switch. |
 | Bbox decodes to a sane span | `geom.assert_bbox_scale` (pipeline), `ZipTable.checkBounds` (client) | See below. |
 | Metric keys match `KEY_ORDER` | positional wire format; golden fixtures on both sides | A wrong name silently reads the neighbouring column. |
-| A LISA hold lasts one release | `spatial._apply_hysteresis` reads `manifest.spatial.held`; three-release tests | The published `lisa` column cannot tell a held class from a real one, so the hold comes back as `previous` next month and holds itself again. A ZIP that stopped being an outlier is drawn as one forever. |
+| A LISA hold lasts one release | `spatial._apply_hysteresis` reads `manifest.spatial.held`; `spatial.hysteresis_inputs` keeps a same-period rebuild from treating the live release as last month; three-release and same-month tests | The published `lisa` column cannot tell a held class from a real one, so the hold comes back as `previous` next month and holds itself again. A ZIP that stopped being an outlier is drawn as one forever. |
 
 ### The bbox scale bug, recorded because both failure modes look identical
 

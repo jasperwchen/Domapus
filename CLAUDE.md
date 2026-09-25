@@ -65,6 +65,7 @@ npm test               # vitest (frontend)
 npm run lint           # eslint
 npm run tree           # regenerate tree.txt (the pre-commit hook does this)
 npm run geometry       # rebuild the ZCTA tileset (Docker + tippecanoe); geometry:verify checks it
+pip install -r requirements-dev.txt   # pipeline + test deps; the data run installs requirements.txt only
 pytest                 # pipeline tests in tests/
 python -m pipeline     # full data run; --redfin-csv / --zhvi-csv reuse a local download
 ```
@@ -114,8 +115,8 @@ Do not reintroduce a path where the map waits on the snapshot to show colour.
 ## Rules the code depends on
 
 **The pipeline never writes `public/data/` from a stage.** Every stage writes `build/` plus a
-`build/<stage>_report.json` receipt, and the next stage refuses to start unless the previous
-receipt says `ok`. Publishing is a separate copy of a verified build. This rule exists because
+`build/<stage>_report.json` receipt. The receipts are a log of this run (`run()` clears old ones
+first), not a gate: an exception is what stops a run. Publishing is a separate copy of a verified build. This rule exists because
 a bug once let a run that passed weak validators overwrite the last known-good published data.
 
 **The colour ramp has one definition.** `src/lib/choropleth.generated.ts`, re-derived by
@@ -164,7 +165,10 @@ input and refuses to hold a ZIP that is already in it. Without that, the hold re
 itself as `previous` every month and a ZIP that stopped being an outlier is drawn as one
 forever; the 2026-08 release held its first 172 that way. An ABSENT `held` key means unknown,
 not empty: hold nothing that run. `_apply_hysteresis` is pure so the three-release tests
-drive the rule rather than fabricating spatial data to force a class.
+drive the rule rather than fabricating spatial data to force a class. A rebuild of the period that
+is already live (`force_rebuild`) must not treat that release as last month, or it releases
+every hold early and changes the digest over unchanged data: `spatial.hysteresis_inputs`
+re-applies exactly the live release's holds instead.
 
 **The publish decision is a digest, never a count.** `manifest.content_digest` is a sha256
 over the snapshot's content columns plus every paint table's own hash, with timestamps
@@ -227,18 +231,29 @@ deleted 2026-09-16: its last consumer computed legend percentiles that were neve
 
 **A class can be legitimately empty, and the legend says so by geometry.** `homes_sold` and
 `active_listings` break at 1.0 first and nothing reports under one sale, so class 0 draws nobody.
-The break is correct; ties collapsing classes is a real property of the distribution. The legend
+The break is correct; ties collapsing classes is a real property of the distribution.
+`classify.compute` and `fitBreaks` both accept equal edges for the `quantile` scheme only
+(`homes_sold` ties in every December-May period) and stay strict for every other scheme. The legend
 shrinks an unused band to a sliver and keeps its WIDTH, because the tick labels are positioned
 from `(i + 1) / CLASSES` and dropping a band would move every label off the boundary it names.
 Height rather than lightness, for the same reason the reliability fade came off the map.
 `classCounts` is withheld in auto-scale: the viewport re-cut has different boundaries, so the
 published counts would mislabel it.
 
+**The export can cut its own scale.** With a state or metro in scope, the export's "Color
+scale" choice is National (the default, so exports stay comparable) or that area alone:
+`areaBreaks` in `classing.ts` runs `fitBreaks` on the area's ZIPs with the pipeline's scheme and
+break gate, and the key names it ("(Denver, CO scale)"). Too small an area, or the fixed 0-100
+scheme, keeps the national breaks and says so. Switching it repaints the preview's feature
+state in place; the scale is not in PrintStage's map-rebuild key. This is export-only; the main
+map's re-cut is still "Adjust Contrast to View".
+
 **Forecast tier 1 is never assigned, deliberately.** The ladder is 3 (>=60 obs), 2 (24-59) and 0
 (under 24, no forecast). Tier 1 was documented as a metro growth path that was never written, so
 it would have labelled an ordinary shrunk AR(1) forecast as something weaker. Collapsed into
-tier 0 on 2026-09-12. Implementing the metro path is still open; restoring the label without the
-branch is not.
+tier 0 on 2026-09-12. The metro path itself was dropped 2026-09-24: no ZIP with a Zillow value
+has under 24 months, and a ZIP with no Zillow value has no level to project. Reopen only if
+`manifest.forecast.tier_counts["0"]` goes above 0 (it counts only ZIPs with a Zillow history).
 
 **The 46.9 MB tileset stays committed in git.** `public/data/us_zip_codes.pmtiles` is tracked
 on purpose (user decision, 2026-09-06), so `deploy.yml` needs no download step and cannot
@@ -273,6 +288,7 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 - `docs/CHANGES.md` — decision history and reference facts moved out of the todos.
 - `docs/METHODOLOGY.md` — developer reference: stage-to-manifest map, constants, wire format,
   break populations, invariants and what enforces each.
+- `docs/PIPELINE-WALKTHROUGH.md`: beginner walkthrough of the code, cron to map, with worked examples.
 - `tree.txt` — generated file list. Never edit by hand.
 
 
@@ -297,9 +313,8 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 
 ## The pipeline, stage by stage
 
-`python -m pipeline` runs these in order. Each writes `build/<stage>_report.json`, and the
-next stage calls `_require()` on the one before it and refuses to start unless the receipt
-says `ok`. Nothing here touches `public/data/`.
+`python -m pipeline` runs these in order. Each writes `build/<stage>_report.json` as a log;
+any failure raises and stops the run. Nothing here touches `public/data/`.
 
 | Stage | Module | What happens |
 |---|---|---|
@@ -311,7 +326,7 @@ says `ok`. Nothing here touches `public/data/`.
 | S5 noise | `noise.py` | Fit K on the panel; write `msp_rse` and the `rel` tier into every record. |
 | S5b forecast | `forecast.py` | AR(1) on log ZHVI growth plus an 83-origin backtest. Fills `f_h12`, `f_sigma`, `f_tier`. |
 | S5c spatial | `spatial.py` | Local Moran's I over the rankable set only. Fills `lisa`. Hand-rolled numpy + KD-tree; `libpysal`/`esda` are deliberately refused. |
-| S6 classify | `classify.py` | Derive the diverging bound from the pooled ZHVI panel this release, compute breaks, assign classes. |
+| S6 classify | `classify.py` | Compute breaks for the 8 painted metrics, assign classes. |
 | S7 paint | `paint.py` | One byte per ZIP per painted metric, then assert the paint bytes agree with the snapshot. |
 | S8 history | `history.py` | Per-ZIP time series, bucketed 4 deep by ZIP prefix, into `build/history/`. ~6,100 files, ~121 MB. |
 
@@ -334,7 +349,8 @@ fails hard instead. The consequence is that a standalone deploy against a releas
 
 Two files in `public/data/` are pipeline *inputs*, not outputs: `zcta-meta.csv` (city,
 county, state, metro, lat, lng per ZIP) and `zcta-geom.csv` (real polygon bounds per ZCTA,
-which is what makes the map's auto-scale mode correct).
+which is what makes the map's auto-scale mode correct; the geometry coverage gate also sizes
+each ZCTA from it).
 
 ## The frontend, module by module
 
@@ -392,7 +408,9 @@ node bench/compare.mjs bench/results/baseline.json bench/results/candidate.json
 ```
 
 Pass the base path without slashes (`Domapus`, not `/Domapus/`) — Git Bash rewrites a leading
-slash into a Windows path. `bench/results/` is checked in, one file per measured era, so
+slash into a Windows path. The default browser is Playwright's headless shell, which renders
+WebGL in software; add `--channel chrome` for frame numbers that mean anything (the pan stutter
+in older results was SwiftShader, gone on a real GPU). `bench/results/` is checked in, one file per measured era, so
 before/after claims stay comparable.
 
 ## Workflows
