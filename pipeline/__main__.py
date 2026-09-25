@@ -76,6 +76,9 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         override_gate: bool = False, override_reason: str = "",
         force: bool = False) -> int:
     BUILD.mkdir(parents=True, exist_ok=True)
+    # Receipts are this run's log. Old ones beside new ones made the uploaded artifact mix runs.
+    for old in BUILD.glob("*_report.json"):
+        old.unlink()
 
     # --- S0 PROBE ----------------------------------------------------------
     # HEAD + 1 MB shape probe (~0.2 s). Unchanged fingerprint exits 0 without downloading.
@@ -102,6 +105,12 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
                 "Redfin header drift seen at probe: aliased=%s missing_yoy=%s",
                 binding.aliased, binding.missing_yoy,
             )
+    # A local file is not what upstream serves now. Stamping upstream's fingerprint on it made
+    # the next scheduled run believe it already had the current release; none means changed.
+    if redfin_csv is not None:
+        fingerprints.pop("redfin", None)
+    if zhvi_csv is not None:
+        fingerprints.pop("zhvi", None)
     _report("s0_probe", "ok", probes=probes, fingerprints=fingerprints)
 
     tmpdir = None
@@ -202,22 +211,22 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     # --- S5c SPATIAL --------------------------------------------------------
     # LISA over the rankable set only; needs `rel` from S5. Fills `lisa`.
     _require("s5_noise")
-    previous_lisa = {z: r["lisa"] for z, r in live.items() if r.get("lisa") is not None}
+    live_lisa = {z: r["lisa"] for z, r in live.items() if r.get("lisa") is not None}
     # Which of those classes the last run was HOLDING, so the hold expires after one
     # release instead of republishing itself as `previous` forever. Absent key (a manifest
     # older than this rule) is unknown, not empty — `spatial.run` then holds nothing.
-    live_held = live_manifest.get("spatial", {}).get("held")
-    spatial_report = spatial.run(
-        records, previous_lisa, set(live_held) if live_held is not None else None,
+    previous_lisa, previously_held = spatial.hysteresis_inputs(
+        live_lisa, live_manifest.get("spatial", {}).get("held"),
+        live_manifest.get("redfin", {}).get("period_end"), redfin_period,
     )
+    spatial_report = spatial.run(records, previous_lisa, previously_held)
     _report("s5c_spatial", "ok", **spatial_report)
 
     # --- S6 CLASSIFY --------------------------------------------------------
     _require("s5_noise")
-    bound = classify.derive_diverging_bound(zhvi.pooled_yoy(zhvi_panel_path))
-    class_report = classify.compute(records, bound["bound"])
+    class_report = classify.compute(records)
     classify.assign(records, class_report["breaks"])
-    _report("s6_classify", "ok", diverging=bound, **class_report)
+    _report("s6_classify", "ok", **class_report)
 
     # --- S7 PAINT -----------------------------------------------------------
     # The cross-artifact assertion keeps the map and the detail panel in agreement.
@@ -226,7 +235,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     if paint_dir.exists():
         shutil.rmtree(paint_dir)
     paint_assets = paint.write(records, classify.PAINTED, paint_dir)
-    paint.assert_agrees_with_snapshot(records, paint_assets, paint_dir)
+    paint.assert_files_match_classes(records, paint_assets, paint_dir)
     _report("s7_paint", "ok", assets=paint_assets)
 
     # --- S8 HISTORY ---------------------------------------------------------
@@ -293,7 +302,6 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "forecast": forecast_report,
         "spatial": spatial_report,
         "classes": class_report["classes"],
-        "diverging": bound,
         "classing": class_report["classing"],
         "history": history_report,
         "assets": {"paint": paint_assets, "snapshot": "zip-data.json",

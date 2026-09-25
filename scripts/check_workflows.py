@@ -30,7 +30,7 @@ there as well.
 A missing parser is only a reason to skip on a developer's machine. In CI it is
 the check not happening, so there it is a failure: this script printed "PyYAML
 not installed, skipping" on every CI run from the day it was added, because
-nothing in requirements.txt pulled PyYAML in. It has since been pinned there.
+nothing in requirements.txt pulled PyYAML in. It is pinned in requirements-dev.txt.
 """
 
 import os
@@ -49,7 +49,7 @@ def main() -> int:
             print(
                 "check_workflows: PyYAML is not installed, so NO workflow was parsed. "
                 "In CI that is the check silently not running, which is what this exit "
-                "code is for. Fix the environment (PyYAML is pinned in requirements.txt) "
+                "code is for. Fix the environment (PyYAML is pinned in requirements-dev.txt) "
                 "rather than skipping.",
                 file=sys.stderr,
             )

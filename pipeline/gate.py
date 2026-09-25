@@ -19,6 +19,8 @@ GATED = ["median_sale_price", "median_list_price", "median_ppsf", "zhvi"]
 NATIONAL_MEDIAN_LIMIT = 0.10
 HOMES_SOLD_TOTAL_LIMIT = 0.30
 COVERAGE_LIMIT = 0.02
+# Both must trip. 2026-08 moved zhvi_only (646 ZIPs) by -1.82%, 12 ZIPs from blocking a release.
+COVERAGE_MIN_ZIPS = 100
 
 MOVE = 0.25  # "moved" means |new/live - 1| > 25%
 
@@ -105,9 +107,10 @@ def gate(new: dict, live: dict, thresholds: dict, coverage: dict | None = None,
                 continue
             shift = coverage[k] / prev - 1.0
             observed.setdefault("coverage", {})[k] = round(shift, 5)
-            if abs(shift) > COVERAGE_LIMIT:
+            if abs(shift) > COVERAGE_LIMIT and abs(coverage[k] - prev) >= COVERAGE_MIN_ZIPS:
                 failures.append(
-                    f"coverage.{k} moved {shift:+.1%} (limit +/-{COVERAGE_LIMIT:.0%})"
+                    f"coverage.{k} moved {shift:+.1%}, {coverage[k] - prev:+,} ZIPs "
+                    f"(limit +/-{COVERAGE_LIMIT:.0%} and {COVERAGE_MIN_ZIPS} ZIPs)"
                 )
 
     report = {

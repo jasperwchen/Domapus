@@ -173,8 +173,8 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
     beats = all(v is not None and v < 1.0 for v in mase.values())
     if not beats:
         log.warning(
-            "forecast: AR(1) does not beat naive at every horizon (MASE %s). The "
-            "naive forecast is the honest thing to ship this release.", mase,
+            "forecast: AR(1) does not beat naive at every horizon (MASE %s). Shipping "
+            "AR(1) anyway; the MASE is recorded in the manifest.", mase,
         )
 
     return {

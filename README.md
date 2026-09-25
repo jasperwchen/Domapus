@@ -118,7 +118,7 @@ A Python pipeline runs monthly via GitHub Actions. It downloads the latest Redfi
 To run the pipeline locally (requires Python 3.14):
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # or requirements.txt for the pipeline alone
 python -m pipeline
 ```
 

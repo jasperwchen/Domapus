@@ -1,91 +1,19 @@
-# Pinned exactly. The pipeline's correctness depends on pandas semantics, so an
-# unpinned range means a library release can silently change published numbers
-# with no diff to review. This file was `pandas>=1.5.0` while PyPI's current
-# release was 3.0.5 — the next scheduled run would have installed a major
-# version with mandatory copy-on-write straight into the sort/dedup path.
+# What the data run installs. Test and lint tools are in requirements-dev.txt.
 #
-# EVERY PIN HERE MUST HAVE A cp314 WHEEL. `.python-version` is 3.14, so a pin
-# without one makes pip fall back to building from source — and pyarrow from
-# source needs Arrow C++ via CMake, which fails on the runner after four minutes
-# with a CMake error that says nothing about the real cause. CI installs with
-# `--only-binary=:all:` so that failure surfaces immediately as "no wheel for
-# this Python" instead. Check before bumping:
-#   pip index versions <pkg>  — or the wheel list on PyPI for cpXYZ tags.
+# Pinned exactly: the pipeline's numbers depend on library semantics, so an unpinned range
+# lets a release change published data with no diff to review.
 #
-# pandas 2.3.3 is the newest 2.x with cp314 wheels (2.3.2 and older have none,
-# and CI pins Python 3.14, so anything older would build from source).
-# Moving to pandas 3.x is a deliberate migration, not an accident: it makes
-# copy-on-write mandatory and changes several dtype behaviours.
+# Every pin must have a cp314 wheel (`.python-version` is 3.14). Installs use
+# `--only-binary=:all:` so a missing wheel fails at once instead of compiling Arrow C++ for
+# four minutes into an unrelated CMake error. Check with `pip index versions <pkg>`.
+
+# Newest 2.x with cp314 wheels. 3.x (mandatory copy-on-write) is a deliberate migration.
 pandas==2.3.3
-# 2.33.0 patches GHSA-gc5v-m9x4-r6x2, insecure temp file reuse in
-# extract_zipped_paths(). Pure-Python wheel, so no cp314 question.
+# 2.33.0 patches GHSA-gc5v-m9x4-r6x2.
 requests==2.33.0
-# 9.0.3 patches CVE-2025-71176 / GHSA-6w46-j5rx-g56g: pytest through 9.0.2 puts
-# its temp directories at the predictable path `/tmp/pytest-of-{user}` on UNIX,
-# which lets a local user cause a denial of service or possibly escalate. The pin
-# was 8.4.2, which is inside the vulnerable range — Dependabot alert 46 on the
-# default branch was this, and `pytest==9.0.3` was the fix rather than
-# an arbitrary newer number.
-#
-# Pinned to the LATEST 9.x rather than the 9.0.3 minimum, on the same reasoning as
-# pyarrow below: a minimum satisfies one advisory and can leave the next one open.
-# 9.x is a MAJOR bump, so it was verified rather than assumed — all 37 tests pass
-# on 9.1.1 under Python 3.14. Pure-Python wheel, so no cp314 question.
-pytest==9.1.1
-
-# pyarrow does the CSV streaming ingest: 1.33 GB in ~35 s against pandas'
-# minutes, and its typed `include_columns` is what keeps "07002" a string
-# rather than the integer 7002.
-#
-# 22.0.0 is the FIRST release with cp314 wheels — 19.0.1 was pinned here briefly
-# because that is what happened to be installed locally on Python 3.13, and CI
-# spent four minutes trying to compile Arrow C++ before failing. Verified on the
-# real 1.33 GB file under Python 3.14: `zip-data.json` is byte-identical to the
-# 19.0.1 output, so the bump changes no published number.
-#
-# Pinned to the LATEST rather than that 22.0.0 minimum, and the difference turned
-# out to matter: GHSA-rgxp-2hwp-jwgg (high, use-after-free reading an IPC file
-# with pre-buffering) covers >= 15.0.0 and < 23.0.1, so 22.0.0 would have kept a
-# high-severity advisory open while satisfying the wheel requirement.
+# CSV streaming ingest; typed columns keep "07002" a string. 25.x is past GHSA-rgxp-2hwp-jwgg.
 pyarrow==25.0.1
-
-# numpy was deliberately unpinned while nothing imported it directly. Phase 4's
-# `noise.py` is the something: it fits K on a 173 x 33,952 array and every
-# published relative standard error comes out of that fit.
-#
-# The version matters more here than it usually does. K is not a constant we
-# looked up, it is a number this file's numpy produces from the panel, and it is
-# then baked into every reliability tier and every paint byte. Pinning a version
-# other than the one K was derived under would mean the committed constant and
-# the running code disagree about a published number. K = 0.5598 was derived
-# under 2.5.2 on Python 3.14; that is what is pinned.
-#
-# cp314 wheels start at 2.3.2, so anything older would build from source on CI.
+# `noise.py` fits K on the panel every run, and every reliability tier comes from that fit.
 numpy==2.5.2
-
-# scipy is Phase 5's, for `spatial.py`'s KNN (cKDTree over ~10k inner points).
-# It is NOT here to bring in a spatial-statistics library: libpysal and esda are
-# deliberately refused. Local Moran's I is ~15 lines of numpy
-# and is more explainable hand-written, and KNN weights are the right choice on
-# their own merits — ZCTA islands and disjoint parts produce zero-neighbour units
-# for which contiguity-based Moran's I is undefined.
+# cKDTree for `spatial.py`. libpysal and esda are deliberately refused.
 scipy==1.18.1
-
-# TEST-ONLY. `forecast.py` never imports it. It is here for
-# `test_closed_form_ar1_matches_statsmodels`, which checks the hand-written
-# geometric sum against SARIMAX's own AR(1) recursion at the same (mu, rho) —
-# the justification for not shipping statsmodels in the hot path, where it
-# measured 1,245x slower per series. The pin was dead weight until that test
-# was written (2026-09-19): nothing imported it in either CI job.
-statsmodels==0.15.0
-
-# PyYAML is not imported by the pipeline. It is what `scripts/check_workflows.py`
-# parses workflows with, and it is here because that script was SKIPPING on every
-# CI run: `import yaml` failed, the script printed "PyYAML not installed,
-# skipping" and returned 0, so the step had never parsed a workflow since the day
-# it was added (CI run 35157657711 shows the skip line). The script now fails
-# instead of skipping when CI is set, which only helps if the parser is present.
-#
-# 6.0.3 is the FIRST release with cp314 wheels; 6.0.2 and older have none, and CI
-# installs with `--only-binary=:all:` under Python 3.14.
-PyYAML==6.0.3

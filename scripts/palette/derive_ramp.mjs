@@ -52,11 +52,6 @@ const CLASSES = 14;
 // identical to "not a ZCTA at all" AND to a genuine zero.
 const NO_DATA_COLOR = "#E8E8E8";
 
-// Signed data on a sequential ramp is a correctness bug, not a taste question.
-// These are ANCHORS, resampled to CLASSES below — one half each side of neutral.
-const DIVERGING_COOL = ["#2166AC", "#67A9CF", "#D1E5F0", "#F7F7F7"];
-const DIVERGING_WARM = ["#F7F7F7", "#FDDBC7", "#EF8A62", "#B2182B"];
-
 // --- colour maths -----------------------------------------------------------
 
 const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
@@ -166,29 +161,6 @@ function resampleEqualArcLength(hexes, n) {
   return out;
 }
 
-/**
- * `n` colours for a diverging scale, `n` EVEN, resampled per half.
- *
- * Even `n` is not an accident of wanting 14. With an even class count the
- * boundary list has an odd length and its middle edge lands exactly on zero, so
- * "no change" is a LINE rather than a band: every warm colour means growth and
- * every cool one means decline, with nothing ambiguous in the middle. That is
- * why no swatch here sits on the neutral anchor — each half is sampled from its
- * extreme up to but not including it.
- *
- * Sampling the two halves separately rather than resampling one 7-colour
- * polyline is what keeps the scale symmetric. The cool and warm arms of RdBu are
- * not the same CIELAB arc length, so one pass over the whole path would put the
- * neutral point off-centre and a -5% ZIP would not mirror a +5% one.
- */
-function resampleDiverging(cool, warm, n) {
-  const half = n / 2;
-  return [
-    ...resampleEqualArcLength(cool, half + 1).slice(0, half),
-    ...resampleEqualArcLength(warm, half + 1).slice(1),
-  ];
-}
-
 // --- report -----------------------------------------------------------------
 
 function stats(hexes) {
@@ -243,11 +215,10 @@ function separableSpan(hexes) {
 }
 
 const ramp = resampleEqualArcLength(SOURCE, CLASSES);
-const diverging = resampleDiverging(DIVERGING_COOL, DIVERGING_WARM, CLASSES);
 const before = stats(SOURCE);
 const after = stats(ramp);
 
-const report = { source: SOURCE, ramp, diverging, before, after };
+const report = { source: SOURCE, ramp, before, after };
 console.log(JSON.stringify(report, null, 2));
 
 // The properties the ramp has to have. Failing loudly here is the point: a ramp
@@ -275,9 +246,6 @@ if (after.minAdjacentNormal < NORMAL_FLOOR) {
 }
 if (after.cv > before.cv) {
   problems.push(`step CV got worse: ${before.cv} -> ${after.cv}`);
-}
-if (diverging.length !== CLASSES) {
-  problems.push(`diverging ramp is ${diverging.length} colours, expected ${CLASSES}`);
 }
 if (problems.length) {
   console.error("\nRAMP REJECTED:\n  " + problems.join("\n  "));
@@ -323,18 +291,6 @@ export const CLASSES = ${CLASSES};
  * genuine zero. It gets its own legend entry.
  */
 export const NO_DATA_COLOR = "${NO_DATA_COLOR}";
-
-/**
- * For signed series. Painting signed data on a sequential ramp is a correctness bug.
- *
- * Resampled per half from the RdBu anchors, so the two arms stay symmetric even
- * though their CIELAB arc lengths are not. With an even class count the middle
- * boundary lands exactly on zero and no swatch sits on neutral: every cool colour
- * means decline, every warm one means growth, and there is no ambiguous middle.
- */
-export const DIVERGING_COLORS = [
-${diverging.map((h) => `  "${h}",`).join("\n")}
-] as const;
 `;
   const out = join(ROOT, "src", "lib", "choropleth.generated.ts");
   mkdirSync(dirname(out), { recursive: true });

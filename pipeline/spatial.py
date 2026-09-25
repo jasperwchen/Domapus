@@ -30,9 +30,30 @@ CLASS_NAMES = {0: "ns", 1: "HH", 2: "LL", 3: "LH", 4: "HL"}
 
 
 def _project(lon: np.ndarray, lat: np.ndarray) -> np.ndarray:
-    """Equirectangular km around the mean latitude; adequate for a KNN graph."""
-    lat0 = np.deg2rad(np.nanmean(lat))
-    return np.c_[EARTH_R * np.deg2rad(lon) * np.cos(lat0), EARTH_R * np.deg2rad(lat)]
+    """Points on a sphere of radius EARTH_R. Chord distance orders neighbours exactly as
+    great-circle distance does; a flat projection centred near 38N stretched east-west
+    distance ~1.6x in Alaska and shrank it ~0.87x in Florida."""
+    lo, la = np.deg2rad(lon), np.deg2rad(lat)
+    return EARTH_R * np.c_[np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)]
+
+
+def _chord_to_km(chord: np.ndarray) -> np.ndarray:
+    return 2.0 * EARTH_R * np.arcsin(np.clip(chord / (2.0 * EARTH_R), 0.0, 1.0))
+
+
+def _draw_distinct(rng: np.random.Generator, n: int, k: int) -> np.ndarray:
+    """[n x k] indices into 0..n-1, each row k distinct values none equal to its own row."""
+    idx = np.arange(n)[:, None]
+    samp = rng.integers(0, n - 1, size=(n, k))
+    samp += samp >= idx
+    while True:
+        s = np.sort(samp, axis=1)
+        dup = (s[:, 1:] == s[:, :-1]).any(axis=1)
+        if not dup.any():
+            return samp
+        redo = rng.integers(0, n - 1, size=(int(dup.sum()), k))
+        redo += redo >= idx[dup]
+        samp[dup] = redo
 
 
 def benjamini_hochberg(p: np.ndarray, q: float) -> np.ndarray:
@@ -57,14 +78,12 @@ def local_moran(v: np.ndarray, nb: np.ndarray, nperm: int = NPERM, q: float = FD
     lag = z[nb].mean(1)                                # row-standardised, w_ij = 1/k
     Ii = z * lag
 
-    # Conditional permutation: resample neighbours from the other n-1 points, holding self fixed.
+    # Conditional permutation: k distinct neighbours from the other n-1 points, self held fixed.
     rng = np.random.default_rng(seed)
     n = z.size
     ge = np.zeros(n, dtype=np.int32)
-    idx = np.arange(n)[:, None]
     for _ in range(nperm):
-        samp = rng.integers(0, n - 1, size=(n, k))
-        samp += (samp >= idx)
+        samp = _draw_distinct(rng, n, k)
         ge += np.abs(z * z[samp].mean(1)) >= np.abs(Ii)
 
     p = (ge + 1) / (nperm + 1)
@@ -100,6 +119,23 @@ def _apply_hysteresis(cls: np.ndarray, zips: list[str], previous: dict | None,
             cls[i] = was
             held.append(zip_code)
     return cls, held
+
+
+def hysteresis_inputs(live_lisa: dict, live_held: list[str] | None,
+                      live_period: str | None, period: str) -> tuple[dict, set[str] | None]:
+    """`previous` and `previously_held` for this run, read off the live release.
+
+    A rebuild of the period that is already live (a `force_rebuild` shipping a pipeline fix)
+    must not treat that release as last month: it would release every hold it made, and the
+    digest would change with no change in the data. Instead it re-applies exactly the holds
+    the live release made, with the classes it held them at. Over unchanged input that
+    reproduces the live `lisa` column and held set; a ZIP the fix makes significant again
+    is simply not held."""
+    if live_period == period:
+        if live_held is None:
+            return {}, None
+        return {z: live_lisa[z] for z in live_held if live_lisa.get(z)}, set()
+    return live_lisa, set(live_held) if live_held is not None else None
 
 
 def run(records: dict, previous: dict | None = None,
@@ -149,7 +185,7 @@ def run(records: dict, previous: dict | None = None,
     z = (v - v.mean()) / v.std(ddof=0)
     moran = {str(k): round(float((z * z[idx[:, 1:k + 1]].mean(1)).mean()), 4) for k in K_REPORTED}
 
-    d8 = dist[:, K_SHIPPED]
+    d8 = _chord_to_km(dist[:, K_SHIPPED])
 
     bonferroni = FDR_Q / len(zips)
     report = {

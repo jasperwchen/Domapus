@@ -22,7 +22,7 @@ export interface SnapshotHeader {
   classes: number;
   dicts: Record<string, string[]>;
   scales: Record<string, number>;
-  /** Class edges for the 9 painted columns only. `classes - 1` of them each. */
+  /** Class edges for the 8 painted columns only. `classes - 1` of them each. */
   breaks: Record<string, number[]>;
   classing: Record<string, string>;
   f: string[];

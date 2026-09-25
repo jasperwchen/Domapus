@@ -207,9 +207,13 @@ jobs:
         NEW_PERIOD=$(jq -r '.period_end' public/data/last_updated.json)
         TAG="data-${NEW_PERIOD%-*}"
         ASSET="history-$NEW_PERIOD.tar.gz"
+        CHANGED=$(jq -r 'if .content_changed == null then true else .content_changed end' \
+          public/data/last_updated.json)
 
-        if gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null \
-             | grep -qx "$ASSET"; then
+        # A same-month rebuild that changed the content (a forecast fix, say) replaces the
+        # tarball; otherwise the chart keeps the old forecast beside the new snapshot.
+        if [ "$CHANGED" != "true" ] && gh release view "$TAG" --json assets \
+             --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; then
           echo "Already archived on $TAG. Skipping."
           exit 0
         fi
@@ -219,7 +223,7 @@ jobs:
         gh release view "$TAG" > /dev/null 2>&1 \
           || gh release create "$TAG" --title "Data ${NEW_PERIOD%-*}" \
                --notes "Monthly ZIP snapshots for the period ending $NEW_PERIOD."
-        gh release upload "$TAG" "$ASSET"
+        gh release upload --clobber "$TAG" "$ASSET"
         rm -f "$ASSET"
 
     - name: Check for changes to commit
@@ -264,6 +268,8 @@ jobs:
                 public/data/manifest.json public/data/orphans.json
         git add -A public/data/paint
         git commit -m "Update market data - $(date +'%Y-%m-%d %H:%M:%S' --utc)"
+        # The checkout is 30+ minutes old by now; a commit to main in between rejects the push.
+        git pull --rebase
         git push
         echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       env:
@@ -294,7 +300,7 @@ jobs:
 
   notify:
     needs: [update-data, deploy]
-    if: always() && needs.update-data.result == 'failure'
+    if: always() && (needs.update-data.result == 'failure' || needs.deploy.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       issues: write

@@ -44,11 +44,10 @@ export interface ZipData {
 
   // Speed and ratios.
   median_dom: number | null;
-  /** A change in DAYS, not a percent. Redfin ships (now - year_ago) x 100 under
-   *  a "(%)" suffix; the pipeline divides by 100 and this is the honest unit. */
+  /** A change in DAYS, not a percent: recomputed from the levels at lag 12. */
   median_dom_yoy: number | null;
   months_of_supply: number | null;
-  /** A change in MONTHS, not a percent. Same correction as median_dom_yoy. */
+  /** A change in MONTHS, not a percent, recomputed the same way. */
   months_of_supply_yoy: number | null;
   /** Percent, 50..200 — Redfin clamps it there. */
   avg_sale_to_list_ratio: number | null;
@@ -70,20 +69,18 @@ export interface ZipData {
    *  count, not of the painted metric. This is what the paint byte's high nibble
    *  carries, which is why it is metric-invariant. */
   rel: number | null;
-  /** Standard error of the year-over-year change, propagated. */
-  msp_yoy_se: number | null;
   /** 12-month-ahead ZHVI forecast, in dollars. */
   f_h12: number | null;
   /** One-step residual sd. The client reconstructs any confidence band as
    *  `exp(log(f_h12) + q[h][p] * f_sigma)` — two multiplies and an exp. */
   f_sigma: number | null;
-  /** 3 full AR(1) fit · 2 short history · 1 metro path · 0 no forecast. */
+  /** 3 full AR(1) fit · 2 short history · 0 no forecast. Tier 1 is never assigned. */
   f_tier: number | null;
   /** Local Moran's I class: 0 ns · 1 HH · 2 LL · 3 LH · 4 HL. Computed only over
    *  the rankable set — ungated it is a low-sample detector, not a statistic. */
   lisa: number | null;
 
-  /** Bbox offsets from the anchor, x1e4 degrees. Real polygon bounds. */
+  /** Bbox offsets from the anchor, in degrees (x1e4 on the wire). Real polygon bounds. */
   bw: number | null;
   bs: number | null;
   be: number | null;

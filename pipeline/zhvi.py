@@ -108,15 +108,3 @@ def process(frame: pd.DataFrame, date_cols: list[str]) -> tuple[dict, str]:
     log.info("Zillow: %s ZIPs (period %s)", f"{len(results):,}", curr)
     return results, curr
 
-
-def pooled_yoy(panel_path: Path) -> np.ndarray:
-    """Every finite lag-12 percent change, pooled across ZIPs and years (the diverging bound sample)."""
-    from . import panel
-
-    months, zips, a = panel.zhvi_matrix(panel_path)
-
-    if len(months) <= 12:
-        raise PipelineError(f"zhvi panel has {len(months)} months; need > 12 for a lag-12 change")
-    with np.errstate(divide="ignore", invalid="ignore"):
-        yoy = (a[12:] / a[:-12] - 1.0) * 100.0
-    return yoy[np.isfinite(yoy)]

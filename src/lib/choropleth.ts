@@ -1,11 +1,9 @@
 // The one colour ramp, used by the map, the Legend and the export. Derived by
-// `scripts/palette/derive_ramp.mjs --write`, never hand-edited. No diverging bound here:
-// the pipeline publishes it in the manifest.
+// `scripts/palette/derive_ramp.mjs --write`, never hand-edited.
 export {
   CHOROPLETH_COLORS,
   CLASSES,
   NO_DATA_COLOR,
-  DIVERGING_COLORS,
 } from "./choropleth.generated";
 
 import { CHOROPLETH_COLORS } from "./choropleth.generated";

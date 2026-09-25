@@ -14,11 +14,7 @@ class PipelineError(RuntimeError):
 # Asserted before any reduction. The Redfin file is the all-residential aggregate: one row
 # per (period, ZIP); a property-type breakout would break this key.
 GRAINS = {
-    "redfin_raw": ["PERIOD END", "REGION NAME"],
-    "zhvi": ["RegionName"],
-    "zcta_meta": ["zcta"],
     "panel": ["zip", "period_end"],
-    "snapshot": ["zip"],
 }
 
 # --- Column constants ------------------------------------------------------

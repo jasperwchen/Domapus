@@ -119,6 +119,14 @@ def test_coverage_shift_is_caught(thresholds):
                                  "zhvi_only": 658, "no_data": 4_194})
 
 
+def test_a_small_bucket_moving_a_few_zips_passes(thresholds):
+    """2026-08: zhvi_only moved -1.82% on 646 ZIPs. 3% of it is 19 ZIPs, not a regression."""
+    live = _snapshot(100, 400_000)
+    new = _snapshot(100, 400_000)
+    cov = {"both": 25_604, "redfin_only": 3_315, "zhvi_only": 646, "no_data": 4_194}
+    gate.gate(new, live, thresholds, coverage={**cov, "zhvi_only": 627}, live_coverage=cov)
+
+
 def test_override_requires_a_written_reason(thresholds):
     """The first run of a fixed pipeline trips the gate on purpose, so the very
     first thing anyone does with it is override it. An unexplained override is

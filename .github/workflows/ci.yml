@@ -65,7 +65,7 @@ jobs:
         # plain scalar GitHub rejects the whole file and the run shows up named
         # ".github/workflows/ci.yml" instead of "CI", with no job ever starting.
         run: |
-          pip install --only-binary=:all: -r requirements.txt
+          pip install --only-binary=:all: -r requirements-dev.txt
 
       - name: Ban implicit deduplication
         # drop_duplicates and groupby().last() delegate the tie-break to a sort

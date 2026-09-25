@@ -38,7 +38,7 @@ for _key in METRICS:
 SOURCE_KEYS = METADATA_KEYS + ZHVI_KEYS + REDFIN_KEYS
 
 # Statistics written by noise.py / classify.py / forecast.py / spatial.py.
-STAT_KEYS = ["msp_rse", "dom_rse", "rel", "msp_yoy_se", "f_h12", "f_sigma", "f_tier", "lisa"]
+STAT_KEYS = ["msp_rse", "dom_rse", "rel", "f_h12", "f_sigma", "f_tier", "lisa"]
 
 # Coverage classes, so "no data" can be told apart from "zero" downstream.
 COVERAGE = ("both", "redfin_only", "zhvi_only", "no_data")
@@ -77,7 +77,6 @@ COLUMNS: list[tuple[str, str, float]] = [
     ("zhvi_mom", "zhvi_mom", 100),
 
     ("msp_rse", "msp_rse", 1e4), ("dom_rse", "dom_rse", 1e4), ("rel", "rel", 1),
-    ("msp_yoy_se", "msp_yoy_se", 1e4),
     ("f_h12", "f_h12", 1), ("f_sigma", "f_sigma", 1e4), ("f_tier", "f_tier", 1),
     ("lisa", "lisa", 1),
 ]
@@ -86,14 +85,14 @@ SNAPSHOT_COLUMNS = [short for short, _, _ in COLUMNS]
 SCALES = {short: scale for short, _, scale in COLUMNS}
 SOURCE_OF = {short: src for short, src, _ in COLUMNS}
 
-assert len(SNAPSHOT_COLUMNS) == 50, f"f is {len(SNAPSHOT_COLUMNS)} names, the wire format has 50"
-assert len(set(SNAPSHOT_COLUMNS)) == 50, "duplicate short name in SNAPSHOT_COLUMNS"
+assert len(SNAPSHOT_COLUMNS) == 49, f"f is {len(SNAPSHOT_COLUMNS)} names, the wire format has 49"
+assert len(set(SNAPSHOT_COLUMNS)) == 49, "duplicate short name in SNAPSHOT_COLUMNS"
 
 # Long painted name -> wire name. Only these may carry `breaks`.
 PAINTED_SHORT = {
     "zhvi": "zhvi", "median_sale_price": "msp", "median_ppsf": "ppsf",
     "homes_sold": "hs", "active_listings": "al", "median_dom": "dom",
-    "sold_above_list": "abv", "months_of_supply": "mos", "zhvi_yoy": "zhvi_yoy",
+    "sold_above_list": "abv", "months_of_supply": "mos",
 }
 
 
@@ -482,7 +481,7 @@ def write_snapshot(records: dict, out_path: Path, envelope: dict, encoded=None) 
     # the payload and the 11 MB re-parse is unnecessary.
     out_path.write_text(json.dumps(payload, separators=(",", ":"), allow_nan=False),
                         encoding="utf-8")
-    _assert_value_round_trip(payload, records)
+    _assert_payload_matches_records(payload, records)
 
     return {"zips": len(zips), "columns": len(SNAPSHOT_COLUMNS),
             "bytes": out_path.stat().st_size,
@@ -495,8 +494,8 @@ def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> 
 
     if f != SNAPSHOT_COLUMNS:
         raise PipelineError("snapshot: f does not match SNAPSHOT_COLUMNS")
-    if len(f) != 50:
-        raise PipelineError(f"snapshot: f has {len(f)} names, expected 50")
+    if len(f) != 49:
+        raise PipelineError(f"snapshot: f has {len(f)} names, expected 49")
     if len(d) != len(f):
         raise PipelineError(f"snapshot: {len(d)} columns for {len(f)} names")
     bad = [f[j] for j, col in enumerate(d) if len(col) != len(zips)]
@@ -548,8 +547,10 @@ def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> 
             )
 
 
-def _assert_value_round_trip(payload: dict, records: dict, sample: int = 200) -> None:
-    """Compare the written JSON against the in-memory records, on encoded ints.
+def _assert_payload_matches_records(payload: dict, records: dict, sample: int = 200) -> None:
+    """Compare the encoded payload against the in-memory records, on encoded ints. The file
+    is `json.dumps(payload)` with allow_nan=False, so it equals the payload; this checks the
+    encoder (scales, sentinel, dictionaries), not the write.
 
     Integer comparison, not a float tolerance: any tolerance loose enough for legitimate
     quantisation hides real errors. The sample is padded with ZIPs holding a real 0 and a

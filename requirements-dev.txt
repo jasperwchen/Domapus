@@ -1,0 +1,8 @@
+-r requirements.txt
+
+# 9.0.3+ patches CVE-2025-71176.
+pytest==9.1.1
+# Only for test_closed_form_ar1_matches_statsmodels; forecast.py never imports it.
+statsmodels==0.15.0
+# scripts/check_workflows.py parses workflows with it. First release with cp314 wheels.
+PyYAML==6.0.3

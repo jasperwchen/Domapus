@@ -296,10 +296,10 @@ def test_a_yoy_column_the_feed_drops_becomes_a_null_panel_column(tmp_path):
 
 # --- Output shape ----------------------------------------------------------
 
-def test_snapshot_is_50_columns_and_carries_no_redfin_mom():
+def test_snapshot_is_49_columns_and_carries_no_redfin_mom():
     f = serialize.SNAPSHOT_COLUMNS
-    assert len(f) == 50
-    assert len(set(f)) == 50
+    assert len(f) == 49
+    assert len(set(f)) == 49
     # Redfin publishes no MoM at ZIP level: 0 non-null cells in 4,930,000 x 14.
     # ZHVI does, because it is smoothed and seasonally adjusted on real months.
     assert not [k for k in f if k.endswith("_mom") and k != "zhvi_mom"]
@@ -325,7 +325,7 @@ def test_every_column_declares_a_scale():
 def test_breaks_may_only_name_painted_columns():
     """A break set for an unpainted column implies a legend that does not exist."""
     assert set(serialize.PAINTED_SHORT.values()) <= set(serialize.SNAPSHOT_COLUMNS)
-    assert len(serialize.PAINTED_SHORT) == 9
+    assert len(serialize.PAINTED_SHORT) == 8
 
 
 def _envelope(**over):
@@ -346,8 +346,8 @@ def test_snapshot_round_trips_and_keeps_leading_zeros(tmp_path, latest):
     back = json.loads(out.read_text(encoding="utf-8"))
     assert "00501" in back["z"], "leading zero destroyed — ZIP was read as an integer"
     assert back["f"] == serialize.SNAPSHOT_COLUMNS
-    # COLUMN-major: 50 arrays each as long as z, not one row per ZIP.
-    assert len(back["d"]) == 50
+    # COLUMN-major: 49 arrays each as long as z, not one row per ZIP.
+    assert len(back["d"]) == 49
     assert all(len(col) == len(back["z"]) for col in back["d"])
 
 
@@ -751,53 +751,69 @@ def test_release_digest_covers_the_paint_tables(tmp_path, latest):
     assert serialize.release_digest(snap, PAINT) == serialize.release_digest(snap, dict(PAINT))
 
 
-# --- The diverging scale ---------------------------------------------------
+def test_paint_encode_matches_the_golden_bytes():
+    """`golden.test.ts` checks the frontend reader against `paint_50.json`; this is the writer's
+    half. Without it, dropping the `+ 1` from the class nibble passed pytest: only
+    `assert_files_match_classes`, inside a real run, read the bytes back."""
+    from pipeline import classify, paint
 
-def test_diverging_breaks_are_symmetric_and_reach_the_bound():
-    """Shipped as `bound / (EDGES / 2 + 0.5)`, which put the edges at
-    -20 -14.29 -8.57 -2.86 +2.86 +8.57: six edges, strictly increasing, passing
-    every assertion in `compute()`, and asymmetric. The top class then meant
-    ">= +8.57%" on a scale whose whole purpose is that the two sides compare."""
+    snap = json.loads((ROOT / "tests" / "golden" / "snapshot_50.json").read_text(encoding="utf-8"))
+    gold = json.loads((ROOT / "tests" / "golden" / "paint_50.json").read_text(encoding="utf-8"))
+    null = snap["null_sentinel"]
+
+    def column(short):
+        return snap["d"][snap["f"].index(short)]
+
+    records = {z: {"rel": None if r == null else r} for z, r in zip(snap["z"], column("rel"))}
+    for metric, short in serialize.PAINTED_SHORT.items():
+        edges, scale = snap["breaks"][short], snap["scales"][short]
+        for z, v in zip(snap["z"], column(short)):
+            records[z][f"class_{metric}"] = (
+                None if v == null else classify.class_of(v / scale, edges)
+            )
+        table = paint.encode(records, metric)
+        got = {z: table[int(z)] for z in snap["z"] if table[int(z)]}
+        assert got == gold["bytes"][metric], metric
+
+
+def test_quantile_breaks_may_tie_and_the_empty_class_stays_empty():
+    """2026-03: 15.1% of ZIPs sold exactly one home, more than 1/14, so two `homes_sold`
+    quantiles land on 1.0. Refusing that failed every December-May period."""
+    import numpy as np
+
     from pipeline import classify
 
-    edges = classify._diverging_breaks(20.0)
-    assert len(edges) == classify.EDGES
-    assert edges[0] == -20.0 and edges[-1] == 20.0
-    assert [-e for e in reversed(edges)] == edges, "the scale is not symmetric about zero"
-    # Equal steps TO THE SHIPPED PRECISION. The edges are rounded to 4 dp before
-    # they go in the manifest, and at 14 classes the nominal step is 40/12 = 3.33...,
-    # so consecutive rounded edges differ by 3.3333 or 3.3334 depending on where
-    # they land. That is a 0.0001 percentage-point artefact of rounding, not an
-    # asymmetric scale — symmetry is asserted exactly, above. At 7 classes the step
-    # was exactly 8.0 and this never showed.
-    nominal = 2.0 * 20.0 / (classify.EDGES - 1)
-    steps = [b - a for a, b in zip(edges, edges[1:])]
-    assert max(abs(x - nominal) for x in steps) <= 1e-4, f"unequal steps {steps}"
+    rng = np.random.default_rng(0)
+    counts = np.concatenate([np.ones(160), rng.integers(2, 400, 840)]).astype(float)
+    records = {}
+    for i, c in enumerate(counts):
+        rec = {m: None for m in classify.PAINTED}
+        rec.update(zhvi=1e5 + i * 100, median_sale_price=1e5 + i * 100, median_ppsf=100 + i,
+                   median_dom=10 + i % 90, sold_above_list=i % 100,
+                   months_of_supply=1 + i % 12, active_listings=1 + i % 50,
+                   homes_sold=c, rel=2)
+        records[f"{i:05d}"] = rec
 
-    # Zero's treatment follows the PARITY of the class count, and both readings
-    # are correct for their parity. An odd count has an even number of edges and
-    # no edge on zero, so the middle class straddles it. An even count — 14 today
-    # — has an odd number of edges and the middle one IS zero, so no class
-    # straddles it and every colour commits to a sign.
-    if classify.CLASSES % 2:
-        assert 0.0 not in edges
-        assert classify.class_of(0.0, edges) == classify.CLASSES // 2
-        assert classify.class_of(-0.001, edges) == classify.class_of(0.001, edges)
-    else:
-        assert 0.0 in edges
-        assert classify.class_of(-0.001, edges) == classify.CLASSES // 2 - 1
-        assert classify.class_of(0.0, edges) == classify.CLASSES // 2
+    out = classify.compute(records)["classing"]["homes_sold"]
+    edges = out["breaks"]
+    assert any(a == b for a, b in zip(edges, edges[1:])), "the sample was meant to tie"
+    assert all(a <= b for a, b in zip(edges, edges[1:]))
+    assert sum(out["class_counts"]) == len(counts)
+    tied = [i + 1 for i, (a, b) in enumerate(zip(edges, edges[1:])) if a == b]
+    assert all(out["class_counts"][k] == 0 for k in tied)
 
 
-def test_diverging_bound_is_reached_at_both_ends():
-    """A value at +bound clamps to the top class and -bound to the bottom, which
-    is what makes the end swatches' ">= +B%" / "<= -B%" labels true."""
+def test_non_quantile_schemes_still_refuse_ties():
     from pipeline import classify
+    from pipeline.contracts import PipelineError
 
-    edges = classify._diverging_breaks(20.0)
-    assert classify.class_of(-25.0, edges) == 0
-    assert classify.class_of(25.0, edges) == classify.CLASSES - 1
-    assert classify.class_of(19.9, edges) == classify.CLASSES - 2
+    records = {}
+    for i in range(100):
+        rec = {m: 1.0 + i for m in classify.PAINTED}
+        rec.update(median_sale_price=250_000.0, rel=2)
+        records[f"{i:05d}"] = rec
+    with pytest.raises(PipelineError):
+        classify.compute(records)
 
 
 def _release(computed: dict, previous: dict, previously_held: set | None):
@@ -857,6 +873,127 @@ def test_lisa_hysteresis_holds_nothing_when_the_held_set_is_unknown():
     # Known-empty is the ordinary case and still holds.
     pub, held = _release({"10001": 0}, previous={"10001": 1}, previously_held=set())
     assert pub == {"10001": 1} and held == {"10001"}
+
+
+def test_lisa_same_month_rebuild_reproduces_the_live_holds():
+    """A `force_rebuild` of the live period used to read the live release as last month
+    and release every hold it had made, changing `lisa` and the digest over unchanged data."""
+    from pipeline import spatial
+
+    # Month N-1 published 10001 as HH (1). Month N computes ns and holds it.
+    computed_n = {"10001": 0, "10002": 2, "10003": 0}
+    live, live_held = _release(computed_n, previous={"10001": 1}, previously_held=set())
+    assert live["10001"] == 1 and live_held == {"10001"}
+
+    # Rebuild of month N over the same input: same classes, same held set.
+    prev, held_in = spatial.hysteresis_inputs(live, sorted(live_held), "2026-08-31", "2026-08-31")
+    assert _release(computed_n, prev, held_in) == (live, live_held)
+
+    # The next real month still expires the hold.
+    prev, held_in = spatial.hysteresis_inputs(live, sorted(live_held), "2026-08-31", "2026-09-30")
+    pub, held = _release(computed_n, prev, held_in)
+    assert pub["10001"] == 0 and held == set()
+
+    # A rebuild over a live release with no `held` key knows nothing: hold nothing.
+    assert spatial.hysteresis_inputs(live, None, "2026-08-31", "2026-08-31") == ({}, None)
+
+
+def test_noise_measure_writes_a_tier_every_record_can_be_read_by(tmp_path, latest, monkeypatch):
+    """`noise.measure` had no test. Every published ZIP needs `rel`, including one with no
+    sales, and `msp_rse` must be K / sqrt(n) for the K it reports. The 13-period fixture is
+    too short for the lag-7 fit, so K is fixed and only the write-back is under test."""
+    from pipeline import noise
+
+    panel = tmp_path / "panel.parquet"
+    redfin.ingest(SAMPLE, panel)
+    monkeypatch.setattr(noise, "calibrate", lambda L, N: {"K": 0.5, "plateau_ratio": 1.0})
+    monkeypatch.setattr(noise, "measure_per_metric", lambda *a: {})
+    records = {z: dict(r) for z, r in latest.items()}
+    records["99998"] = {"homes_sold": None}
+    fit = noise.measure(panel, records)
+
+    assert sum(fit["tiers"].values()) == len(records)
+    assert records["99998"]["rel"] == 0 and records["99998"]["msp_rse"] is None
+    for rec in records.values():
+        assert rec["rel"] in (0, 1, 2, 3)
+        if rec.get("homes_sold"):
+            assert rec["msp_rse"] == pytest.approx(fit["K"] / rec["homes_sold"] ** 0.5, abs=1e-6)
+            assert rec["rel"] == noise.tier_of(rec["msp_rse"])
+
+
+def test_history_buckets_carry_full_length_series(tmp_path):
+    """`history.write` had no test. The chart reads each series against the shared axes in
+    index.json, so a short array would silently shift every point."""
+    from pipeline import history
+
+    panel = tmp_path / "panel.parquet"
+    redfin.ingest(SAMPLE, panel)
+    zcsv = ("RegionID,RegionName,2026-06-30,2026-07-31\n"
+            "1,30309,400000,410000\n").encode()
+    zpanel = tmp_path / "zhvi-panel.parquet"
+    zhvi.write_panel(*zhvi.read(zcsv), zpanel)
+
+    out = tmp_path / "history"
+    out.mkdir()
+    (out / "9999.json").write_text("{}", encoding="utf-8")
+    records = {"30309": {"f_h1": 1.0, "f_h3": 2.0, "f_h6": 3.0, "f_h12": 4.0, "f_sigma": 0.05}}
+    report = history.write(panel, zpanel, records, out, q_table={})
+
+    assert not (out / "9999.json").exists(), "last run's buckets are removed first"
+    index = json.loads((out / "index.json").read_text(encoding="utf-8"))
+    assert index["zhvi_months"] == ["2026-06-30", "2026-07-31"]
+    bucket = json.loads((out / "3030.json").read_text(encoding="utf-8"))
+    rec = bucket["zips"]["30309"]
+    assert len(rec["msp"]) == len(index["periods"]) == report["periods"] == 13
+    assert rec["zhvi"] == [400000, 410000]
+    assert rec["f"] == [1.0, 2.0, 3.0, 4.0] and rec["sig"] == 500
+    assert all(len(p.stem) == 4 for p in out.glob("*.json") if p.stem != "index")
+
+
+def _spatial_records():
+    """A 20x20 grid of rankable ZIPs with one expensive 5x5 corner, plus one thin ZIP."""
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    records = {}
+    for r in range(20):
+        for c in range(20):
+            hot = r < 5 and c < 5
+            records[f"{r:02d}{c:03d}"] = {
+                "lat": 40.0 + r * 0.05, "lng": -90.0 + c * 0.05, "rel": 2, "homes_sold": 30,
+                "median_sale_price": float((2_000_000 if hot else 200_000) * rng.uniform(0.9, 1.1)),
+            }
+    records["99999"] = {"lat": 40.1, "lng": -89.9, "rel": 0, "homes_sold": 2,
+                        "median_sale_price": 5_000_000.0}
+    return records
+
+
+def test_spatial_run_finds_the_cluster_and_skips_thin_zips():
+    """`spatial.run` had no test: the gate, the class written back and determinism."""
+    from pipeline import spatial
+
+    records = _spatial_records()
+    report = spatial.run(records)
+    hot = [z for z in records if z != "99999" and int(z[:2]) < 5 and int(z[2:]) < 5]
+
+    assert report["n"] == 400, "the thin ZIP must not enter the graph"
+    assert records["99999"]["lisa"] is None
+    assert sum(records[z]["lisa"] == 1 for z in hot) >= 20, "the expensive corner is HH"
+    assert report["held"] == [] and report["class_counts"]["HH"] >= 20
+
+    again = _spatial_records()
+    spatial.run(again)
+    assert {z: r["lisa"] for z, r in again.items()} == {z: r["lisa"] for z, r in records.items()}, \
+        "seeded permutations: a rebuild over the same input must reproduce the classes"
+
+
+def test_spatial_run_refuses_a_graph_it_cannot_build():
+    from pipeline import spatial
+    from pipeline.contracts import PipelineError
+
+    records = dict(list(_spatial_records().items())[:30])
+    with pytest.raises(PipelineError, match="rankable"):
+        spatial.run(records)
 
 
 def test_closed_form_ar1_matches_statsmodels():

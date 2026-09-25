@@ -48,28 +48,3 @@ export const CLASSES = 14;
  * genuine zero. It gets its own legend entry.
  */
 export const NO_DATA_COLOR = "#E8E8E8";
-
-/**
- * For signed series. Painting signed data on a sequential ramp is a correctness bug.
- *
- * Resampled per half from the RdBu anchors, so the two arms stay symmetric even
- * though their CIELAB arc lengths are not. With an even class count the middle
- * boundary lands exactly on zero and no swatch sits on neutral: every cool colour
- * means decline, every warm one means growth, and there is no ambiguous middle.
- */
-export const DIVERGING_COLORS = [
-  "#2166AC",
-  "#3D7BB7",
-  "#5291C3",
-  "#65A7CE",
-  "#8BBCDA",
-  "#B0D1E5",
-  "#D4E6F0",
-  "#FCE2D2",
-  "#FCC8AF",
-  "#F8AD8C",
-  "#F1926B",
-  "#DF7052",
-  "#C94A3E",
-  "#B2182B",
-] as const;

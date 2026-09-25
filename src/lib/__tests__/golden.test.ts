@@ -82,7 +82,6 @@ const PAINTED: Record<string, string> = {
   median_dom: "dom",
   sold_above_list: "abv",
   months_of_supply: "mos",
-  zhvi_yoy: "zhvi_yoy",
 };
 
 describe("golden fixture: the Python encoder and the TypeScript reader agree", () => {

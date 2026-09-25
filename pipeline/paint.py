@@ -103,9 +103,10 @@ def write(records: dict, metrics, out_dir: Path) -> dict:
     return assets
 
 
-def assert_agrees_with_snapshot(records: dict, assets: dict, out_dir: Path) -> None:
-    """CONTRACT: paint tables and snapshot class every ZIP identically. Catches stale files,
-    double writes and filename collisions, all of which would ship wrong colours silently."""
+def assert_files_match_classes(records: dict, assets: dict, out_dir: Path) -> None:
+    """CONTRACT: the paint files on disk carry every ZIP's assigned class and tier. Reads the
+    `class_<metric>` S6 assigned, not the snapshot. Catches stale files, double writes and
+    filename collisions, all of which would ship wrong colours silently."""
     failures = []
 
     for metric, asset in assets.items():

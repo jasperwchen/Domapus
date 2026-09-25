@@ -54,11 +54,15 @@ def probe(url: str, label: str) -> dict:
     r.raise_for_status()
     _check_host(r.url, label)
 
-    head = requests.get(url, timeout=120, headers={"Range": f"bytes=0-{PROBE_BYTES - 1}"})
-    head.raise_for_status()
-    _check_host(head.url, label)
-    text = head.content.decode("utf-8", errors="strict")
-    lines = text.splitlines()
+    # Streamed and capped: a server that ignores Range answers 200 with the whole file.
+    with requests.get(url, timeout=120, stream=True,
+                      headers={"Range": f"bytes=0-{PROBE_BYTES - 1}"}) as head:
+        head.raise_for_status()
+        _check_host(head.url, label)
+        body = head.raw.read(PROBE_BYTES, decode_content=True)
+    # Only the first two lines are decoded: the 1 MB cut can split a multi-byte character.
+    lines = [ln.decode("utf-8", errors="strict").rstrip("\r")
+             for ln in body.split(b"\n", 2)[:2]]
 
     info = {
         "url": url,
@@ -67,7 +71,7 @@ def probe(url: str, label: str) -> dict:
         "content_length": int(r.headers.get("Content-Length") or 0),
         "header": lines[0] if lines else "",
         "first_row": lines[1] if len(lines) > 1 else "",
-        "probe_sha256": hashlib.sha256(head.content).hexdigest(),
+        "probe_sha256": hashlib.sha256(body).hexdigest(),
     }
     log.info(
         "%s probe: %s bytes, ETag %s, Last-Modified %s",
