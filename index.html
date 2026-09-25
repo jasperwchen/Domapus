@@ -62,8 +62,11 @@
       var base = new URL('%VITE_DATA_BASE%', document.baseURI).href;
       var paint = JSON.parse('%VITE_PAINT_MAP%');
       var metric = new URLSearchParams(location.search).get('metric') || 'zhvi';
-      // Own keys only: ?metric=__proto__ must not resolve to a prototype.
-      var file = Object.prototype.hasOwnProperty.call(paint, metric) ? paint[metric] : paint.zhvi;
+      // Own keys only: ?metric=__proto__ must not resolve to a prototype. Report the metric
+      // actually fetched, so a fallback is never labelled with the requested name.
+      if (!Object.prototype.hasOwnProperty.call(paint, metric)) metric = 'zhvi';
+      var file = paint[metric];
+      var ok = function (r) { if (!r.ok) throw new Error(r.status); return r; };
 
       // The methodology page draws no map, so skip the paint table and snapshot.
       // Consumers treat a null boot as "fetch it yourself".
@@ -72,8 +75,8 @@
       // No inlined map (a build before the first pipeline run): resolve null.
       window.__domapusBoot = file && !mapless
         ? Promise.all([
-            fetch(base + 'manifest.json').then(function (r) { return r.json(); }),
-            fetch(base + file).then(function (r) { return r.arrayBuffer(); })
+            fetch(base + 'manifest.json').then(function (r) { return ok(r).json(); }),
+            fetch(base + file).then(function (r) { return ok(r).arrayBuffer(); })
           ]).then(function (v) {
             return { manifest: v[0], paint: v[1], metric: metric };
           }).catch(function () { return null; })
@@ -97,7 +100,7 @@
 
   <!-- Structured Data (JSON-LD) -->
   <script
-    type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Dataset","name":"Interactive U.S. Housing Data Analysis","description":"Aggregated Redfin and Zillow real estate data for 33,000+ US ZIP codes.","url":"https://jasperwchen.github.io/Domapus/","isAccessibleForFree":true,"license":"https://github.com/jasperwchen/Domapus/blob/main/LICENSE.md","creator":{"@type":"Person","name":"Jasper Chen"},"spatialCoverage":{"@type":"Place","name":"United States"},"distribution":{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":"https://jasperwchen.github.io/Domapus/data/zip-data.json"}},{"@type":"WebApplication","name":"Domapus","url":"https://jasperwchen.github.io/Domapus/","applicationCategory":"VisualizationTool","operatingSystem":"Web Browser","description":"Real-time ZIP-code-level housing data visualization tool exploring prices and inventory trends."}]}</script>
+    type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Dataset","name":"Interactive U.S. Housing Data Analysis","description":"Aggregated Redfin and Zillow real estate data for 33,000+ US ZIP codes.","url":"https://jasperwchen.github.io/Domapus/","isAccessibleForFree":true,"license":"https://github.com/jasperwchen/Domapus/blob/main/LICENSE.md","creator":{"@type":"Person","name":"Jasper Chen"},"spatialCoverage":{"@type":"Place","name":"United States"},"distribution":{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":"https://jasperwchen.github.io/Domapus/data/zip-data.json"}},{"@type":"WebApplication","name":"Domapus","url":"https://jasperwchen.github.io/Domapus/","applicationCategory":"VisualizationTool","operatingSystem":"Web Browser","description":"Monthly ZIP-code-level housing data visualization tool exploring prices and inventory trends."}]}</script>
 
   <!-- Open Graph / Social Media -->
   <meta property="og:image" content="https://jasperwchen.github.io/Domapus/preview.png" />

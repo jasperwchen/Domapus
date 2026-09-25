@@ -48,7 +48,6 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: (id) => {
             if (id.includes('maplibre-gl')) return 'maplibre';
-            if (id.includes('jspdf')) return 'pdf-export';
           },
         },
       },

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, act } from "@testing-library/react";
 import { MapLibreMap } from "../MapLibreMap";
 import * as maplibregl from "maplibre-gl";
 
@@ -7,14 +7,21 @@ import * as maplibregl from "maplibre-gl";
 const mocks = vi.hoisted(() => {
   const mockResize = vi.fn();
   const mockTriggerRepaint = vi.fn();
+  const mockSetStyle = vi.fn();
 
   class MockMap {
     static lastInstance: MockMap | null = null;
+    /** False models a basemap that never answers: no `load` until a test emits one. */
+    static autoLoad = true;
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
 
     constructor() {
       MockMap.lastInstance = this;
-      setTimeout(() => this.emit("load"), 0);
+      if (MockMap.autoLoad) setTimeout(() => this.emit("load"), 0);
+    }
+
+    setStyle(style: unknown) {
+      mockSetStyle(style);
     }
 
     on(event: string, cb: (payload?: unknown) => void) {
@@ -96,7 +103,7 @@ const mocks = vi.hoisted(() => {
     remove() {}
   }
 
-  return { MockMap, MockPopup, mockResize, mockTriggerRepaint };
+  return { MockMap, MockPopup, mockResize, mockTriggerRepaint, mockSetStyle };
 });
 
 interface MockMapLibreModule {
@@ -129,6 +136,7 @@ vi.mock("maplibre-gl", () => {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  mocks.MockMap.autoLoad = true;
   // Ensure container has size so map initializes
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, value: 800 });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 600 });
@@ -162,7 +170,7 @@ describe("MapLibreMap", () => {
       lastMapInstance?.emit("error", { error: { message: "decoding failed" } });
     });
 
-    expect(screen.queryByText("Map internal error. Reloading...")).toBeNull();
+    expect(mocks.mockSetStyle).not.toHaveBeenCalled();
   });
 
   it("suppresses recoverable context-loss errors", async () => {
@@ -190,6 +198,56 @@ describe("MapLibreMap", () => {
 
     expect(mod.__getMockResize()).toHaveBeenCalled();
     expect(mod.__getMockTriggerRepaint()).toHaveBeenCalled();
-    expect(screen.queryByText("Map internal error. Reloading...")).toBeNull();
+    expect(mocks.mockSetStyle).not.toHaveBeenCalled();
+  });
+
+  const renderMap = () => render(
+    <MapLibreMap
+      selectedMetric="zhvi"
+      onZipSelect={() => undefined}
+      store={null}
+      isLoading={false}
+      classSource={null}
+      onMapMove={() => undefined}
+    />
+  );
+  const isFallback = (style: unknown) =>
+    (style as { sources?: object }).sources !== undefined &&
+    Object.keys((style as { sources: object }).sources).length === 0;
+
+  it("draws without the basemap when its style fails to load", async () => {
+    mocks.MockMap.autoLoad = false;
+    renderMap();
+    await act(async () => {
+      mocks.MockMap.lastInstance?.emit("error", { error: { message: "Failed to fetch" } });
+    });
+    expect(mocks.mockSetStyle).toHaveBeenCalledTimes(1);
+    expect(isFallback(mocks.mockSetStyle.mock.calls[0][0])).toBe(true);
+  });
+
+  it("draws without the basemap when its style never arrives", async () => {
+    mocks.MockMap.autoLoad = false;
+    renderMap();
+    await act(async () => { vi.advanceTimersByTime(9_000); });
+    expect(mocks.mockSetStyle).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(2_000); });
+    expect(mocks.mockSetStyle).toHaveBeenCalledTimes(1);
+    expect(isFallback(mocks.mockSetStyle.mock.calls[0][0])).toBe(true);
+  });
+
+  it("keeps the basemap when its style arrived but the first tiles are slow", async () => {
+    // `load` also waits for the first ZIP tiles. A cold dev server or a slow connection
+    // passes 10 s with a working basemap, and falling back then blanked the background.
+    mocks.MockMap.autoLoad = false;
+    renderMap();
+    await act(async () => { mocks.MockMap.lastInstance?.emit("styledata"); });
+    await act(async () => { vi.advanceTimersByTime(20_000); });
+    expect(mocks.mockSetStyle).not.toHaveBeenCalled();
+  });
+
+  it("keeps the basemap once it has loaded", async () => {
+    renderMap();
+    await act(async () => { vi.advanceTimersByTime(20_000); });
+    expect(mocks.mockSetStyle).not.toHaveBeenCalled();
   });
 });

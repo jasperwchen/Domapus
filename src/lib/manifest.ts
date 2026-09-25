@@ -75,8 +75,9 @@ export function takeSnapshotPrefetch(): Promise<ArrayBuffer | null> {
   return p ? p.then((buf) => (buf && buf.byteLength > 0 ? buf : null)) : Promise.resolve(null);
 }
 
-export function fetchManifest(): Promise<Manifest> {
-  return fetch(dataUrl("manifest.json")).then((r) => {
+/** `fresh` revalidates past the HTTP cache: Pages serves JSON with max-age=600. */
+export function fetchManifest(fresh = false): Promise<Manifest> {
+  return fetch(dataUrl("manifest.json"), fresh ? { cache: "no-cache" } : undefined).then((r) => {
     if (!r.ok) throw new Error(`manifest.json returned ${r.status}`);
     return r.json() as Promise<Manifest>;
   });

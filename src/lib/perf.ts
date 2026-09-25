@@ -12,11 +12,29 @@ export function mark(name: string): void {
   }
 }
 
-/** Measure from `start` to now. Returns ms, or null when unavailable. */
+/** Entries kept per measure name. Every auto-scale re-cut adds a few, so an unbounded buffer
+ *  grows for the life of a tab. The bench reads a whole metric cycle back, which is well
+ *  under this, so only the oldest go. */
+const KEEP_PER_NAME = 100;
+
+function trim(name: string): void {
+  const entries = performance.getEntriesByName(name, "measure") as PerformanceMeasure[];
+  if (entries.length <= 2 * KEEP_PER_NAME) return;
+  const kept = entries.slice(-KEEP_PER_NAME);
+  performance.clearMeasures(name);
+  for (const e of kept) {
+    performance.measure(name, { start: e.startTime, duration: e.duration, detail: e.detail });
+  }
+}
+
+/** Measure from `start` to now, then drop the start mark. Returns ms, or null when unavailable. */
 export function measure(name: string, start: string, detail?: unknown): number | null {
   if (!PERF) return null;
   try {
-    return performance.measure(name, { start, detail })?.duration ?? null;
+    const duration = performance.measure(name, { start, detail })?.duration ?? null;
+    performance.clearMarks(start);
+    trim(name);
+    return duration;
   } catch {
     return null;
   }
@@ -43,6 +61,7 @@ export function count(name: string, by = 1): number {
   if (PERF) {
     try {
       performance.measure(name, { start: performance.now(), detail: { count: next } });
+      trim(name);
     } catch {
       /* ignore */
     }

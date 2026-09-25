@@ -73,4 +73,28 @@ export function formatRedfinWindow(period: string | null | undefined): string {
   return `3 months ending ${day}`;
 }
 
+const DAY_MS = 86_400_000;
+// `serialize.STALE_WARN_DAYS`: the pipeline publishes past this and promises this banner.
+const STALE_AT_BUILD_DAYS = 45;
+// A healthy period is ~20 days old on release day and ~50 just before the next one, so past
+// 65 at view time a monthly release has been missed.
+const STALE_AT_VIEW_DAYS = 65;
+
+/** The older of the two periods when the data is staler than a healthy monthly cycle, else null. */
+export function stalePeriod(dates: DataDates, now: Date = new Date()): string | null {
+  const built = dates.last_updated_utc ? new Date(dates.last_updated_utc) : null;
+  let oldest: string | null = null;
+  for (const period of [dates.period_end, dates.zhvi_period_end]) {
+    const end = parsePeriod(period);
+    if (!end) continue;
+    const viewAge = (now.getTime() - end.getTime()) / DAY_MS;
+    const buildAge = built ? (built.getTime() - end.getTime()) / DAY_MS : 0;
+    if ((viewAge > STALE_AT_VIEW_DAYS || buildAge > STALE_AT_BUILD_DAYS)
+        && (!oldest || period! < oldest)) {
+      oldest = period;
+    }
+  }
+  return oldest;
+}
+
 export { EMPTY as EMPTY_DATA_DATES };

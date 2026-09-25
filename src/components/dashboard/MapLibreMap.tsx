@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import * as maplibregl from 'maplibre-gl';
-import type { MapMouseEvent, LayerSpecification } from 'maplibre-gl';
+import type { MapMouseEvent, LayerSpecification, StyleSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@/lib/maplibre-worker";
 import { createMetricPopupContent } from "./map/utils";
@@ -37,7 +37,9 @@ interface MapProps {
   onMapMove: (
     loaded: () => readonly string[],
     bounds: maplibregl.LngLatBounds,
-    view?: { lat: number; lng: number; zoom: number }
+    view?: { lat: number; lng: number; zoom: number },
+    /** The move was the reset button's; the URL should drop its view, not record this one. */
+    reset?: boolean,
   ) => void;
   onUserInteraction?: () => void;
   /** Mark the ZIPs whose price disagrees with their neighbours. Off by default. */
@@ -46,9 +48,17 @@ interface MapProps {
   initialZoom?: number;
 }
 
-const MAP_RELOAD_DELAY_MS = 800;
-const RELOAD_ATTEMPTS_KEY = "domapus:map-reload-attempts";
-const MAX_RELOAD_ATTEMPTS = 2;
+const BASEMAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+/** The ZIP layers need nothing from Carto, so a basemap that fails or hangs past this
+ *  gives way to FALLBACK_STYLE instead of holding the whole map on "Loading map...". */
+const BASEMAP_TIMEOUT_MS = 10_000;
+const FALLBACK_STYLE: StyleSpecification = {
+  version: 8,
+  // Carto's glyphs, for the ZIP labels only. If they fail too the labels are missing, nothing else.
+  glyphs: "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf",
+  sources: {},
+  layers: [{ id: "background", type: "background", paint: { "background-color": "#fafaf8" } }],
+};
 
 const LABEL_SOURCE = "zip-labels";
 const OUTLIER_SOURCE = "zip-outliers";
@@ -71,8 +81,9 @@ const DEFAULT_BOUNDS: [[number, number], [number, number]] = [
 
 /** What the tileset actually carries (`geometry.lock.json` min_zoom). */
 const TILESET_MIN_ZOOM = 2;
-/** The floor that guarantees every ZCTA has a polygon. z2 is 75 short of
- *  33,780, which is why the map prefers to stop here. */
+/** How far out the map lets a wide screen zoom. Coverage is complete only from z7: below
+ *  it the tiles drop ZCTAs under 0.12 px across (207 at z3, 567 at z2), none with enough
+ *  sales to rank, and search flies to z10 where every one is drawn. */
 const COVERAGE_MIN_ZOOM = 3;
 /** How much of the container width the country is allowed to fill when the
  *  floor has to be relaxed, leaving a visible margin rather than bleeding the
@@ -114,6 +125,8 @@ export function MapLibreMap({
   const [error, setError] = useState<string | null>(null);
   const interactionsSetup = useRef(false);
   const [pmtilesLoaded, setPmtilesLoaded] = useState(false);
+  /** Colours have reached the map once; the loading veil must not come back over them. */
+  const [hasPainted, setHasPainted] = useState(false);
   const mousemoveRafRef = useRef<number | null>(null);
   const lastMouseEventRef = useRef<MapMouseEvent | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -126,7 +139,7 @@ export function MapLibreMap({
   const labelCountRef = useRef(0);
   const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const basemapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userInteractionNotifiedRef = useRef(false);
   const initialViewRef = useRef({ center: initialCenter, zoom: initialZoom });
 
@@ -162,22 +175,6 @@ export function MapLibreMap({
     propsRef.current = { store, selectedMetric, onZipSelect };
   }, [store, selectedMetric, onZipSelect]);
   const hasData = useMemo(() => (store?.n ?? 0) > 0, [store]);
-  const scheduleReload = useCallback(() => {
-    const attempts = Number(sessionStorage.getItem(RELOAD_ATTEMPTS_KEY) ?? "0");
-    if (attempts >= MAX_RELOAD_ATTEMPTS) {
-      setError("The map failed to load. Please refresh the page or try a different browser.");
-      return;
-    }
-    sessionStorage.setItem(RELOAD_ATTEMPTS_KEY, String(attempts + 1));
-
-    if (reloadTimeoutRef.current) {
-      clearTimeout(reloadTimeoutRef.current);
-    }
-    reloadTimeoutRef.current = setTimeout(() => {
-      window.location.reload();
-    }, MAP_RELOAD_DELAY_MS);
-  }, []);
-
   const recoverMapView = useCallback((map: maplibregl.Map) => {
     setError(null);
     requestAnimationFrame(() => {
@@ -191,9 +188,7 @@ export function MapLibreMap({
     addPMTilesProtocol();
     const dynamicPadding = getDynamicPadding(container);
 
-    // The starting view comes from props. This used to re-read lat/lng/zoom from
-    // the URL here as well, so two places independently decided where the map
-    // opens and could disagree.
+    // The starting view comes from props only, so one place decides where the map opens.
     const view = initialViewRef.current;
     const hasInitialView =
       view.center !== undefined && view.zoom !== undefined &&
@@ -201,7 +196,7 @@ export function MapLibreMap({
 
     const map = new maplibregl.Map({
       container,
-      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+      style: BASEMAP_STYLE,
       // Tiles go to z10; MapLibre overzooms to 12 with ~0.25 px error. Re-tile before raising
       // maxZoom past 14.
       minZoom: zoomFloorFor(container.clientWidth),
@@ -215,8 +210,28 @@ export function MapLibreMap({
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
     map.addControl(new maplibregl.NavigationControl(), "top-right");
 
+    let styleLoaded = false;
+    // Cleared when the style arrives, not on `load`: `load` also waits for the first ZIP
+    // tiles, and a slow first load threw away a working basemap and blanked the background.
+    map.once("styledata", () => {
+      styleLoaded = true;
+      if (basemapTimeoutRef.current) clearTimeout(basemapTimeoutRef.current);
+    });
+
+    let fellBack = false;
+    const fallBackToPlainBasemap = (reason: string) => {
+      if (fellBack) return;
+      fellBack = styleLoaded = true;
+      console.warn("[Map] Basemap unavailable, drawing without it:", reason);
+      trackError("basemap_fallback", reason);
+      map.setStyle(FALLBACK_STYLE);
+    };
+    basemapTimeoutRef.current = setTimeout(
+      () => fallBackToPlainBasemap(`no style after ${BASEMAP_TIMEOUT_MS} ms`), BASEMAP_TIMEOUT_MS,
+    );
+
     map.on("error", (e) => {
-      const mapError = e as { error?: { message?: string } };
+      const mapError = e as { error?: { message?: string }; sourceId?: string };
       const errMsg = mapError?.error?.message ?? "Map internal error";
       const normalizedErr = errMsg.toLowerCase();
       const isDecodingError = normalizedErr.includes('decoding') || normalizedErr.includes('decode');
@@ -228,15 +243,17 @@ export function MapLibreMap({
         recoverMapView(map);
         return;
       }
-      console.error("[Map] Internal error:", mapError?.error ?? e);
-      trackError("map_internal_error", errMsg);
-      setError("Map internal error. Reloading...");
-      scheduleReload();
+      if (styleLoaded || mapError.sourceId) {
+        console.warn("[Map] Non-fatal map error:", mapError?.error ?? e);
+        trackError("map_tile_error", errMsg);
+        return;
+      }
+      fallBackToPlainBasemap(errMsg);
     });
 
     map.once("load", () => {
       mark("map:styleLoad");
-      sessionStorage.removeItem(RELOAD_ATTEMPTS_KEY);
+      if (basemapTimeoutRef.current) clearTimeout(basemapTimeoutRef.current);
       applyLabelContrast(map);
       setIsMapReady(true);
       const center = map.getCenter();
@@ -248,7 +265,7 @@ export function MapLibreMap({
     });
 
     return map;
-  }, [applyLabelContrast, getDynamicPadding, recoverMapView, scheduleReload]);
+  }, [applyLabelContrast, getDynamicPadding, recoverMapView]);
 
   // 2. Setup Map Instance
   useEffect(() => {
@@ -320,9 +337,9 @@ export function MapLibreMap({
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current);
       }
-      if (reloadTimeoutRef.current !== null) {
-        clearTimeout(reloadTimeoutRef.current);
-        reloadTimeoutRef.current = null;
+      if (basemapTimeoutRef.current !== null) {
+        clearTimeout(basemapTimeoutRef.current);
+        basemapTimeoutRef.current = null;
       }
       if (mousemoveRafRef.current) {
         cancelAnimationFrame(mousemoveRafRef.current);
@@ -477,13 +494,14 @@ export function MapLibreMap({
       clearHover();
     };
 
-    const moveEndHandler = () => {
+    const moveEndHandler = (e: maplibregl.MapLibreEvent & { reset?: boolean }) => {
       const center = map.getCenter();
       labelBuildRef.current();
       onMapMoveRef.current(
         () => loadedZips(map),
         map.getBounds(),
-        { lat: center.lat, lng: center.lng, zoom: map.getZoom() }
+        { lat: center.lat, lng: center.lng, zoom: map.getZoom() },
+        e.reset === true,
       );
     };
 
@@ -664,6 +682,7 @@ export function MapLibreMap({
     const painter = painterRef.current;
     if (!painter) return;
     painter.schedule(classSource);
+    setHasPainted(true);
   }, [isMapReady, pmtilesLoaded, classSource]);
 
   // Metric-switch timing, end to end, so the headline number is measured by the
@@ -759,6 +778,16 @@ export function MapLibreMap({
   // The snapshot can land after the first moveend, so build once when it does.
   useEffect(() => { if (isMapReady && store) labelBuild(); }, [isMapReady, store, labelBuild]);
 
+  // The hover handler only rebuilds the popup when the ZIP under the cursor changes, so a
+  // metric switch under a still cursor has to rebuild it here.
+  useEffect(() => {
+    const zip = hoveredZipRef.current;
+    const row = zip ? store?.get(zip) : null;
+    if (row && popupRef.current?.isOpen()) {
+      popupRef.current.setDOMContent(createMetricPopupContent(row, selectedMetric));
+    }
+  }, [selectedMetric, store]);
+
   // 6. Fly to Search and Highlight ZIP
   useEffect(() => {
     if (!isMapReady || !mapRef.current || !pmtilesLoaded) return;
@@ -796,7 +825,7 @@ export function MapLibreMap({
     if (!map) return;
     const container = mapContainer.current;
     const padding = container ? getDynamicPadding(container) : 40;
-    map.fitBounds(DEFAULT_BOUNDS, { padding, duration: 1000 });
+    map.fitBounds(DEFAULT_BOUNDS, { padding, duration: 1000 }, { reset: true });
 
     // Clear any highlighted zip
     if (highlightedZipRef.current) {
@@ -824,19 +853,7 @@ export function MapLibreMap({
       {/* Reset to default bounds button */}
       {isMapReady && !error && (
         <button
-          onClick={() => {
-            handleResetBounds();
-            const params = new URLSearchParams(window.location.search);
-            params.delete('lat');
-            params.delete('lng');
-            params.delete('zoom');
-            const query = params.toString();
-            window.history.replaceState(
-              {},
-              document.title,
-              query ? `${window.location.pathname}?${query}` : window.location.pathname
-            );
-          }}
+          onClick={handleResetBounds}
           style={{
             position: 'absolute',
             top: 10 + 89 + 2 + 'px',
@@ -862,20 +879,17 @@ export function MapLibreMap({
           <Fullscreen style={{ width: '18px', height: '18px', color: '#333' }} />
         </button>
       )}
-      {/* Only blocks the view while there is nothing to look at. `isLoading` also
-          goes true for the background full-data refresh, which previously threw
-          this overlay back over an already-working map mid-session. */}
-      {((isLoading && !hasData) || !isMapReady || error) && (
+      {/* Only while there is nothing to look at: `isLoading` also goes true for the
+          background full-data refresh, over an already-working map. */}
+      {((isLoading && !hasData && !hasPainted) || !isMapReady || error) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 z-10">
           {error ? (
             <div className="text-red-500 font-bold px-6 text-center">{error}</div>
           ) : (
             <>
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-              {/* Always captioned. `phase` only exists once the snapshot worker
-                  starts reporting, so the wait on the map style, which is the
-                  first and longest one on a cold load, used to be a bare spinner
-                  on a white screen with nothing saying what it was for. */}
+              {/* Always captioned: `phase` only exists once the snapshot worker reports,
+                  and the wait on the map style before that is the longest one. */}
               <div className="w-56 flex flex-col items-center gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">
                   {/* `||`, not `??`: the worker reports an empty phase string

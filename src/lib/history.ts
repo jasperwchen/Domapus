@@ -55,7 +55,11 @@ function loadIndex(): Promise<HistoryIndex | null> {
   if (!indexPromise) {
     indexPromise = getJson<HistoryIndex>("history/index.json").then((idx) => {
       // A bad index is worse than no index: it would produce a chart with the wrong x-axis.
-      if (!idx || !Array.isArray(idx.periods) || !Array.isArray(idx.zhvi_months)) return null;
+      if (!idx || !Array.isArray(idx.periods) || !Array.isArray(idx.zhvi_months)) {
+        // Not cached: one dropped request used to disable every chart until reload.
+        indexPromise = null;
+        return null;
+      }
       return idx;
     });
   }
@@ -66,7 +70,10 @@ function loadBucket(name: string): Promise<Record<string, ZipHistory> | null> {
   let p = buckets.get(name);
   if (!p) {
     p = getJson<{ zips: Record<string, ZipHistory> }>(`history/${name}.json`)
-      .then((b) => b?.zips ?? null);
+      .then((b) => {
+        if (!b?.zips) buckets.delete(name);
+        return b?.zips ?? null;
+      });
     buckets.set(name, p);
   }
   return p;

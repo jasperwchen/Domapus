@@ -34,7 +34,6 @@ export function useDataWorker() {
     const worker = new DataProcessorWorker();
     workerRef.current = worker;
     isInitializedRef.current = true;
-    console.log('[useDataWorker] Worker initialized');
 
     worker.onmessage = (event: MessageEvent) => {
       const { id, type, data, error } = event.data;
@@ -67,7 +66,6 @@ export function useDataWorker() {
         }
 
         default: {
-          console.log(`[useDataWorker] ${type} completed for request ${id}`);
           settle();
           const pending = requestsRef.current.get(id);
           if (pending) {

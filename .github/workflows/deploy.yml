@@ -98,6 +98,10 @@ jobs:
             echo "::warning::unavailable state. Everything else deploys normally."
           fi
 
+      # CI runs beside this job and nothing waits on it; the frontend tests are what stop a
+      # class-count mismatch with the published data (a grey map) from shipping.
+      - run: npx vitest run
+
       - run: npm run build
 
       - name: Guard published size

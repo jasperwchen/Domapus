@@ -19,17 +19,20 @@ import { toast } from "@/hooks/use-toast";
 import { TopBar } from "./TopBar";
 import { MapLibreMap } from "./MapLibreMap";
 import { Legend } from "./Legend";
-import { SponsorBanner } from "./SponsorBanner";
 import { Sidebar } from "./Sidebar";
 import { MetricType } from "./MetricSelector";
 import { useUrlState } from "@/hooks/useUrlState";
+import { PAINTED_METRICS } from "@/lib/metrics";
 import { MobileBottomSheet } from "./MobileBottomSheet";
 
 function getInitialUrlParams() {
   const params = new URLSearchParams(window.location.search);
   return {
     zip: params.get('zip') || undefined,
-    metric: params.get('metric') || undefined,
+    // Unvalidated, a real but unpainted metric labelled the ZHVI fallback table with its name.
+    metric: Object.prototype.hasOwnProperty.call(PAINTED_METRICS, params.get('metric') ?? '')
+      ? params.get('metric')!
+      : undefined,
     lat: params.get('lat') ? parseFloat(params.get('lat')!) : undefined,
     lng: params.get('lng') ? parseFloat(params.get('lng')!) : undefined,
     zoom: params.get('zoom') ? parseFloat(params.get('zoom')!) : undefined,
@@ -52,7 +55,6 @@ export function HousingDashboard() {
   const [searchZip, setSearchZip] = useState<string>(initialUrlStateRef.current.zip || "");
   const [searchTrigger, setSearchTrigger] = useState<number>(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showSponsorBanner, setShowSponsorBanner] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [autoScale, setAutoScale] = useState(false);
@@ -74,40 +76,69 @@ export function HousingDashboard() {
   const { processData, isLoading, progress } = useDataWorker();
 
   // --- The paint path: manifest + one 100,000-byte table ---------------------
+  // The manifest in use, and the metric the table on the map belongs to.
+  const manifestRef = useRef<Manifest | null>(null);
+  const paintedMetricRef = useRef<MetricType | null>(null);
+
   useEffect(() => {
     let alive = true;
 
+    // Refuses to paint rather than painting a lie: a wrong byteLength or a class count the
+    // ramp cannot render means the legend and the map would disagree about a colour.
+    const build = (buf: ArrayBuffer, mf: Manifest) =>
+      PaintTable.from(buf, selectedMetric, mf.classes, CHOROPLETH_COLORS.length);
+
     (async () => {
+      let mf: Manifest;
+      let table: PaintTable;
       try {
-        // index.html started both fetches in one tick before the bundle parsed.
-        const booted = await boot();
-        const mf = booted?.manifest ?? (await fetchManifest());
-        if (!alive) return;
-        setManifest(mf);
-
-        const buf =
-          booted && booted.metric === selectedMetric
-            ? booted.paint
-            : await fetchPaint(mf, selectedMetric);
-        if (!alive) return;
-
-        // Refuses to paint rather than painting a lie: a wrong byteLength or a
-        // class count the ramp cannot render means the legend and the map would
-        // disagree about what a colour means.
-        setPaint(PaintTable.from(buf, selectedMetric, mf.classes, CHOROPLETH_COLORS.length));
+        try {
+          // index.html started both fetches in one tick before the bundle parsed.
+          const booted = manifestRef.current ? null : await boot();
+          mf = manifestRef.current ?? booted?.manifest ?? (await fetchManifest());
+          const buf =
+            booted && booted.metric === selectedMetric
+              ? booted.paint
+              : await fetchPaint(mf, selectedMetric);
+          table = build(buf, mf);
+        } catch (stale) {
+          // Each release deletes the previous paint files. A manifest cached for Pages'
+          // 10 minutes, or held by a tab left open across a release, names deleted files.
+          console.warn("[HousingDashboard] paint table failed, refetching the manifest:", stale);
+          mf = await fetchManifest(true);
+          table = build(await fetchPaint(mf, selectedMetric), mf);
+        }
       } catch (err) {
         console.error("[HousingDashboard] paint table failed:", err);
-        if (alive) {
-          setLoadError(
-            err instanceof Error && err.message
-              ? err.message
-              : "Could not load the map colours. Check your connection and try again.",
-          );
+        if (!alive) return;
+        const previous = paintedMetricRef.current;
+        if (previous && previous !== selectedMetric) {
+          // Keeping the old table under the new name painted one metric with another's legend.
+          toast({
+            title: `Could not load ${PAINTED_METRICS[selectedMetric]?.label ?? selectedMetric}`,
+            description: "The map is back on the previous metric. Try again in a moment.",
+          });
+          setSelectedMetric(previous);
+          setUrlState({ metric: previous });
+          return;
         }
+        setLoadError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Could not load the map colours. Check your connection and try again.",
+        );
+        return;
       }
+      if (!alive) return;
+      manifestRef.current = mf;
+      paintedMetricRef.current = selectedMetric;
+      setManifest(mf);
+      setPaint(table);
     })();
 
     return () => { alive = false; };
+    // setUrlState changes identity with the URL; only a metric change refetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMetric]);
 
   // --- The interaction path: the snapshot, off the critical path -------------
@@ -123,7 +154,8 @@ export function HousingDashboard() {
       try {
         const result = await processData(
           { type: "LOAD_SNAPSHOT", data: { url, prefetchedBuffer: early ?? undefined } },
-          { transfer: early ? [early] : [] },
+          // Without the prefetch the timer also covers a ~2.5 MB download, ~50 s on slow 3G.
+          { transfer: early ? [early] : [], timeout: early ? 30_000 : 120_000 },
         );
         if (!alive) return;
         setStore(ZipTable.from(result.header, result.buffers));
@@ -242,21 +274,27 @@ export function HousingDashboard() {
     loaded: () => readonly string[],
     bounds: maplibregl.LngLatBounds,
     view?: { lat: number; lng: number; zoom: number },
+    reset?: boolean,
   ) => {
     lastBoundsRef.current = bounds;
     lastLoadedRef.current = loaded;
     recomputeVisible(loaded, bounds);
 
-    if (!hasUserInteractedRef.current) return;
-    if (view) {
-      setUrlState({ lat: view.lat, lng: view.lng, zoom: view.zoom }, true);
+    // Through the same debounced writer, so a pending write cannot put the old view back.
+    // Before the interaction check: a shared link reset untouched kept its view in the URL.
+    if (reset) {
+      setUrlState({ lat: undefined, lng: undefined, zoom: undefined }, true);
       return;
     }
-    setUrlState({
+    if (!hasUserInteractedRef.current) return;
+    // 4 dp is ~11 m; full float precision made every shared link 60 characters longer.
+    const r = (x: number, dp: number) => Number(x.toFixed(dp));
+    const v = view ?? {
       lat: (bounds.getSouth() + bounds.getNorth()) / 2,
       lng: (bounds.getWest() + bounds.getEast()) / 2,
       zoom: Math.log2(360 / Math.abs(bounds.getEast() - bounds.getWest())),
-    }, true);
+    };
+    setUrlState({ lat: r(v.lat, 4), lng: r(v.lng, 4), zoom: r(v.zoom, 2) }, true);
   }, [recomputeVisible, setUrlState]);
 
   const handleUserInteraction = useCallback(() => {
@@ -326,7 +364,8 @@ export function HousingDashboard() {
         Skip to map
       </a>
 
-      {showSponsorBanner && <SponsorBanner onClose={() => setShowSponsorBanner(false)} />}
+      {/* Sponsor banner, off for now and kept on purpose: do not remove. See SponsorBanner.tsx. */}
+      {/* {showSponsorBanner && <SponsorBanner onClose={() => setShowSponsorBanner(false)} />} */}
       <TopBar
         selectedMetric={selectedMetric}
         onMetricChange={handleMetricChange}
@@ -338,6 +377,7 @@ export function HousingDashboard() {
           selectedMetric={selectedMetric}
           // Published national breaks, not the viewport cut, so exports are comparable.
           breaks={manifest?.classing?.[selectedMetric]?.breaks ?? null}
+          classing={manifest?.classing?.[selectedMetric] ?? null}
           onExportModeChange={setIsExportMode}
         />
       </TopBar>
@@ -358,19 +398,21 @@ export function HousingDashboard() {
           </MobileBottomSheet>
         )}
 
-        <div className="hidden md:flex absolute top-0 bottom-0 left-0 z-20 flex-col">
-          <Sidebar
-            isOpen={sidebarOpen}
-            onClose={handleSidebarClose}
-            zipData={selectedZip}
-            store={store}
-            selectedMetric={selectedMetric}
-            mode={mode}
-            onModeChange={handleModeChange}
-            compareZip={compareZip}
-            onCompareZipChange={setCompareZip}
-          />
-        </div>
+        {!isMobile && (
+          <div className="flex absolute top-0 bottom-0 left-0 z-20 flex-col">
+            <Sidebar
+              isOpen={sidebarOpen}
+              onClose={handleSidebarClose}
+              zipData={selectedZip}
+              store={store}
+              selectedMetric={selectedMetric}
+              mode={mode}
+              onModeChange={handleModeChange}
+              compareZip={compareZip}
+              onCompareZipChange={setCompareZip}
+            />
+          </div>
+        )}
         <div className="flex-1 relative">
           <div id="main-map" className="absolute inset-0 min-h-[400px]">
             <MapLibreMap

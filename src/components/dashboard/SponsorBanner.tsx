@@ -1,3 +1,5 @@
+// Unmounted for now, kept on purpose by the owner to switch back on later. Not dead code:
+// do not delete this file or the commented-out mount in HousingDashboard.tsx.
 import { useEffect } from "react";
 import { X, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";

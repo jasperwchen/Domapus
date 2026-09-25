@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 export interface UrlState {
   zip?: string;
@@ -12,6 +12,9 @@ export interface UrlState {
 export function useUrlState() {
   const [, setSearchParams] = useSearchParams();
   const debounceTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
+  }, []);
 
   // Update URL state (replaceState to avoid polluting browser history)
   const setUrlState = useCallback((updates: Partial<UrlState>, debounce = false) => {
