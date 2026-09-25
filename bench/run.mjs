@@ -26,6 +26,9 @@
 //   --cpu <rate>     CPU throttle multiplier      (default 4)
 //   --viewport <wxh> (default 1440x900)
 //   --no-pin         skip view pinning (for builds predating URL state)
+//   --channel <name> browser build, e.g. chrome (default: Playwright's headless shell,
+//                    which rasterises WebGL in software via SwiftShader)
+//   --headed         show the window
 //   --out <dir>      (default bench/results)
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -108,11 +111,25 @@ const pin = !flag("no-pin");
 const target = pin ? `${url}${url.includes("?") ? "&" : "?"}${PINNED_VIEW}` : url;
 
 const skipScenarios = flag("no-interaction");
+const channel = arg("channel");
+const headed = flag("headed");
 
 /** The commit under test, so a result can be traced back to a build. */
 function gitSha() {
   try { return execSync("git rev-parse --short HEAD", { encoding: "utf8" }).trim(); }
   catch { return null; }
+}
+
+/** The WebGL renderer string, to prove whether frames were drawn on a GPU. */
+async function webglRenderer(b) {
+  const page = await b.newPage();
+  const r = await page.evaluate(() => {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    const ext = gl && gl.getExtension("WEBGL_debug_renderer_info");
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "unknown";
+  });
+  await page.close();
+  return r;
 }
 
 /** Median and p95 of a numeric array. */
@@ -320,10 +337,12 @@ async function measureOnce(browser) {
   };
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ channel, headless: !headed });
+const renderer = channel || headed ? await webglRenderer(browser) : null;
 const samples = [];
 console.log(`\n${label}  ${target}`);
 console.log(`net=${netName} cpu=${cpuRate}x viewport=${vw}x${vh} runs=${runs} (+1 discarded warm-up)\n`);
+if (renderer) console.log(`renderer ${renderer}${headed ? " (headed)" : ""}\n`);
 
 for (let i = 0; i <= runs; i++) {
   const s = await measureOnce(browser);
@@ -381,7 +400,11 @@ const result = {
   invalidReason: valid ? null
     : !paintedAll ? "map never painted — build is broken or non-functional at this commit"
     : "no housing data loaded — this build fetched no zip-data/geojson, so its timings are not comparable",
-  conditions: { net: netName, cpu: cpuRate, viewport: `${vw}x${vh}`, runs, pinned: pin },
+  conditions: {
+    net: netName, cpu: cpuRate, viewport: `${vw}x${vh}`, runs, pinned: pin,
+    // Only when set, so default runs still compare against older results.
+    ...(renderer !== null && { channel: channel ?? null, headed, renderer }),
+  },
   warnings: [
     samples.some((s) => !s.painted) && "map did not paint in at least one run",
     dataBytes <= 100_000 && "no housing data was fetched — timings measure a shell, not the app",

@@ -187,10 +187,8 @@ export async function runScenarios(page, { onNote }) {
   } catch (e) { note(`click.sidebar: ${e.message}`); }
 
   // --- Metric switch, all eight -------------------------------------------
-  // The old harness switched once, to whichever option happened to sit third in
-  // the list. Cycling every painted metric means the number covers the paint
-  // tables that are slowest to fetch as well as the one that happened to be
-  // adjacent.
+  // Every painted metric, so the number covers the slowest paint tables to fetch
+  // and not just one neighbour in the list.
   try {
     const combo = page.locator("[role=combobox]").first();
     if (await combo.count()) {

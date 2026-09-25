@@ -1,0 +1,1365 @@
+{
+  "schemaVersion": 2,
+  "label": "uiux-14class",
+  "url": "http://localhost:4319/Domapus/?lat=39.5&lng=-98.35&zoom=4&metric=zhvi",
+  "gitSha": "242ce46",
+  "valid": true,
+  "invalidReason": null,
+  "conditions": {
+    "net": "slow4g",
+    "cpu": 4,
+    "viewport": "1440x900",
+    "runs": 5,
+    "pinned": true
+  },
+  "warnings": [],
+  "summary": {
+    "ttfb": {
+      "median": 2.7000000029802322,
+      "p95": 2.7999999970197678,
+      "min": 2.4000000059604645,
+      "max": 3,
+      "n": 5
+    },
+    "fcp": {
+      "median": 5580,
+      "p95": 5620,
+      "min": 5564,
+      "max": 5688,
+      "n": 5
+    },
+    "lcp": {
+      "median": 6668,
+      "p95": 6724,
+      "min": 6656,
+      "max": 6788,
+      "n": 5
+    },
+    "cls": {
+      "median": 0.002508510762281378,
+      "p95": 0.002508510762281378,
+      "min": 0.002508510762281378,
+      "max": 0.002508510762281378,
+      "n": 5
+    },
+    "domContentLoaded": {
+      "median": 5150.20000000298,
+      "p95": 5155.100000008941,
+      "min": 5122.79999999702,
+      "max": 5259.9000000059605,
+      "n": 5
+    },
+    "loadEvent": {
+      "median": 6138,
+      "p95": 6145.5,
+      "min": 6098,
+      "max": 6203.79999999702,
+      "n": 5
+    },
+    "wallMs": {
+      "median": 33036,
+      "p95": 33039,
+      "min": 32996,
+      "max": 33104,
+      "n": 5
+    },
+    "tbt": {
+      "median": 3562,
+      "p95": 3668,
+      "min": 3516,
+      "max": 3687,
+      "n": 5
+    },
+    "maxLongTask": {
+      "median": 1323,
+      "p95": 1326,
+      "min": 1294,
+      "max": 1358,
+      "n": 5
+    },
+    "longTaskCount": {
+      "median": 26,
+      "p95": 26,
+      "min": 23,
+      "max": 27,
+      "n": 5
+    },
+    "loafCount": {
+      "median": 16,
+      "p95": 16,
+      "min": 15,
+      "max": 16,
+      "n": 5
+    },
+    "loafBlockingMs": {
+      "median": 2377.9,
+      "p95": 2471.5,
+      "min": 2356.6,
+      "max": 2497.6,
+      "n": 5
+    },
+    "transferTotal": {
+      "median": 5632029,
+      "p95": 5632113,
+      "min": 5632007,
+      "max": 5632135,
+      "n": 5
+    },
+    "gatingBytes": {
+      "median": 32908,
+      "p95": 32908,
+      "min": 32908,
+      "max": 32908,
+      "n": 5
+    },
+    "gatingBytesLegacy": {
+      "median": 2671833,
+      "p95": 2671833,
+      "min": 2671833,
+      "max": 2671833,
+      "n": 5
+    },
+    "requestCount": {
+      "median": 42,
+      "p95": 42,
+      "min": 42,
+      "max": 42,
+      "n": 5
+    },
+    "worstInteractionMs": {
+      "median": 536,
+      "p95": 544,
+      "min": 512,
+      "max": 560,
+      "n": 5
+    },
+    "heapBytes": {
+      "median": 28773316,
+      "p95": 28795096,
+      "min": 28476016,
+      "max": 28795388,
+      "n": 5
+    },
+    "heapBytesAfterInteraction": {
+      "median": 36588208,
+      "p95": 62665688,
+      "min": 29958860,
+      "max": 84658564,
+      "n": 5
+    },
+    "sourceReloads": {
+      "median": 0,
+      "p95": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "featureStateWrites": {
+      "median": 0,
+      "p95": 0,
+      "min": 0,
+      "max": 0,
+      "n": 5
+    },
+    "featureStateSkipped": {
+      "median": 33771,
+      "p95": 33771,
+      "min": 33771,
+      "max": 33771,
+      "n": 5
+    },
+    "metricSwitchMs": {
+      "median": 22.19999998807907,
+      "p95": 22.299999997019768,
+      "min": 22,
+      "max": 22.399999991059303,
+      "n": 5
+    },
+    "scenarios": {
+      "pan.z4": {
+        "durationMs": {
+          "median": 16441,
+          "p95": 16731,
+          "min": 15836,
+          "max": 16831,
+          "n": 5
+        },
+        "dropped": {
+          "median": 60,
+          "p95": 60,
+          "min": 58,
+          "max": 61,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 350,
+          "p95": 350,
+          "min": 333.3999999999942,
+          "max": 366.70000000000437,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 300,
+          "p95": 300,
+          "min": 283.3000000000029,
+          "max": 333.29999999999563,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 12.1,
+          "p95": 12.600000000000001,
+          "min": 10.3,
+          "max": 14.8,
+          "n": 5
+        }
+      },
+      "pan.z7": {
+        "durationMs": {
+          "median": 4852,
+          "p95": 4895,
+          "min": 4640,
+          "max": 5049,
+          "n": 5
+        },
+        "dropped": {
+          "median": 48,
+          "p95": 49,
+          "min": 47,
+          "max": 50,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 200,
+          "p95": 233.29999999999563,
+          "min": 166.59999999999854,
+          "max": 250.09999999999854,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 150,
+          "p95": 150,
+          "min": 149.90000000000146,
+          "max": 166.59999999999854,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 41.800000000000004,
+          "p95": 49.1,
+          "min": 32.1,
+          "max": 78.30000000000001,
+          "n": 5
+        }
+      },
+      "pan.z10": {
+        "durationMs": {
+          "median": 3892,
+          "p95": 4000,
+          "min": 3790,
+          "max": 4024,
+          "n": 5
+        },
+        "dropped": {
+          "median": 73,
+          "p95": 77,
+          "min": 71,
+          "max": 78,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 166.6999999999971,
+          "p95": 183.1999999999971,
+          "min": 149.89999999999418,
+          "max": 183.3000000000029,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 66.70000000000437,
+          "p95": 66.79999999999563,
+          "min": 66.69999999999709,
+          "max": 83.30000000000291,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 0,
+          "n": 5
+        }
+      },
+      "zoom.in": {
+        "durationMs": {
+          "median": 1783,
+          "p95": 1801,
+          "min": 1730,
+          "max": 1850,
+          "n": 5
+        },
+        "dropped": {
+          "median": 17,
+          "p95": 17,
+          "min": 15,
+          "max": 17,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 400,
+          "p95": 450,
+          "min": 333.3000000000029,
+          "max": 450,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 116.69999999999709,
+          "p95": 133.39999999999418,
+          "min": 100,
+          "max": 150,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 286.5,
+          "p95": 315.6,
+          "min": 252.2,
+          "max": 335.40000000000003,
+          "n": 5
+        }
+      },
+      "zoom.out": {
+        "durationMs": {
+          "median": 1628,
+          "p95": 1641,
+          "min": 1625,
+          "max": 1644,
+          "n": 5
+        },
+        "dropped": {
+          "median": 7,
+          "p95": 8,
+          "min": 6,
+          "max": 8,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 233.39999999999418,
+          "p95": 250.09999999999854,
+          "min": 233.29999999999563,
+          "max": 266.59999999999854,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 149.89999999999418,
+          "p95": 150.09999999999854,
+          "min": 133.3000000000029,
+          "max": 166.70000000001164,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 215.89999999999998,
+          "p95": 250.7,
+          "min": 177.4,
+          "max": 290.5,
+          "n": 5
+        }
+      },
+      "hover.sweep": {
+        "durationMs": {
+          "median": 11849,
+          "p95": 11957,
+          "min": 11822,
+          "max": 12368,
+          "n": 5
+        },
+        "dropped": {
+          "median": 63,
+          "p95": 64,
+          "min": 62,
+          "max": 65,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 250.10000000000582,
+          "p95": 266.59999999999127,
+          "min": 250,
+          "max": 283.3000000000029,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 183.3000000000029,
+          "p95": 183.3000000000029,
+          "min": 183.29999999998836,
+          "max": 183.3000000000029,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 196,
+          "p95": 203.2,
+          "min": 189.10000000000002,
+          "max": 233.2,
+          "n": 5
+        }
+      },
+      "click.sidebar": {
+        "durationMs": {
+          "median": 2633,
+          "p95": 2634,
+          "min": 2619,
+          "max": 2641,
+          "n": 5
+        },
+        "dropped": {
+          "median": 2,
+          "p95": 2,
+          "min": 2,
+          "max": 2,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 283.3000000000029,
+          "p95": 283.40000000000873,
+          "min": 183.23799999999756,
+          "max": 299.8999999999942,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 16.79999999998836,
+          "p95": 16.80000000000291,
+          "min": 16.70000000001164,
+          "max": 16.80000000000291,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 88.8,
+          "p95": 90.2,
+          "min": 85.9,
+          "max": 99.1,
+          "n": 5
+        }
+      },
+      "metric.cycle": {
+        "durationMs": {
+          "median": 9889,
+          "p95": 10017,
+          "min": 9665,
+          "max": 10285,
+          "n": 5
+        },
+        "dropped": {
+          "median": 35,
+          "p95": 35,
+          "min": 31,
+          "max": 37,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 483.29999999998836,
+          "p95": 483.40000000000873,
+          "min": 466.70000000001164,
+          "max": 500,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 49.90000000000873,
+          "p95": 50,
+          "min": 33.40000000000873,
+          "max": 50,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 1707.8000000000004,
+          "p95": 1750.8999999999999,
+          "min": 1587.5000000000002,
+          "max": 1813.8999999999999,
+          "n": 5
+        }
+      },
+      "search.flyTo": {
+        "durationMs": {
+          "median": 2552,
+          "p95": 2560,
+          "min": 2546,
+          "max": 2562,
+          "n": 5
+        },
+        "dropped": {
+          "median": 15,
+          "p95": 16,
+          "min": 15,
+          "max": 16,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 1366.6000000000058,
+          "p95": 1383.2999999999884,
+          "min": 1366.5999999999913,
+          "max": 1383.300000000003,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 283.3999999999942,
+          "p95": 283.40000000000873,
+          "min": 266.6999999999971,
+          "max": 299.90000000000873,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 1188.6000000000001,
+          "p95": 1410.3,
+          "min": 1166,
+          "max": 1415.9,
+          "n": 5
+        }
+      },
+      "toggle.autoScale": {
+        "durationMs": {
+          "median": 6435,
+          "p95": 6773,
+          "min": 6307,
+          "max": 7086,
+          "n": 5
+        },
+        "dropped": {
+          "median": 82,
+          "p95": 85,
+          "min": 79,
+          "max": 87,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 250,
+          "p95": 250,
+          "min": 250,
+          "max": 266.6000000000058,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 100,
+          "p95": 100,
+          "min": 83.40000000000873,
+          "max": 100.10000000000582,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 226.60000000000002,
+          "p95": 237.89999999999998,
+          "min": 211.3,
+          "max": 249.6,
+          "n": 5
+        }
+      },
+      "toggle.outliers": {
+        "durationMs": {
+          "median": 6438,
+          "p95": 6442,
+          "min": 6273,
+          "max": 6443,
+          "n": 5
+        },
+        "dropped": {
+          "median": 75,
+          "p95": 76,
+          "min": 74,
+          "max": 76,
+          "n": 5
+        },
+        "longestFrameMs": {
+          "median": 133.3000000000029,
+          "p95": 133.3000000000029,
+          "min": 116.60000000000582,
+          "max": 133.40000000000873,
+          "n": 5
+        },
+        "p95FrameMs": {
+          "median": 83.39999999999418,
+          "p95": 83.39999999999418,
+          "min": 83.30000000000291,
+          "max": 83.40000000000873,
+          "n": 5
+        },
+        "loafBlockingMs": {
+          "median": 0,
+          "p95": 0,
+          "min": 0,
+          "max": 4.3,
+          "n": 5
+        }
+      }
+    },
+    "byKind": {
+      "other": {
+        "median": 343702,
+        "p95": 343711,
+        "min": 343702,
+        "max": 343711,
+        "n": 5
+      },
+      "js": {
+        "median": 416507,
+        "p95": 416507,
+        "min": 416507,
+        "max": 416507,
+        "n": 5
+      },
+      "css": {
+        "median": 18895,
+        "p95": 18895,
+        "min": 18895,
+        "max": 18895,
+        "n": 5
+      },
+      "data-json": {
+        "median": 2672090,
+        "p95": 2672090,
+        "min": 2672090,
+        "max": 2672090,
+        "n": 5
+      },
+      "basemap": {
+        "median": 754558,
+        "p95": 754651,
+        "min": 754545,
+        "max": 754664,
+        "n": 5
+      },
+      "pmtiles": {
+        "median": 1426268,
+        "p95": 1426268,
+        "min": 1426268,
+        "max": 1426268,
+        "n": 5
+      }
+    },
+    "marks": {
+      "map:applyChoropleth": {
+        "median": 87.70000000298023,
+        "p95": 88.90000000596046,
+        "min": 85.29999999701977,
+        "max": 90.5,
+        "n": 5
+      },
+      "store:construct": {
+        "median": 15.5,
+        "p95": 15.5,
+        "min": 14.300000011920929,
+        "max": 15.599999994039536,
+        "n": 5
+      }
+    }
+  },
+  "samples": [
+    {
+      "ttfb": 3,
+      "fcp": 5620,
+      "lcp": 6724,
+      "cls": 0.002508510762281378,
+      "tbt": 3687,
+      "maxLongTask": 1358,
+      "longTaskCount": 26,
+      "loafCount": 16,
+      "loafBlockingMs": 2471.5,
+      "domContentLoaded": 5155.100000008941,
+      "loadEvent": 6145.5,
+      "mainThreadResourceCount": 33,
+      "marks": {
+        "map:applyChoropleth": 88.90000000596046,
+        "store:construct": 15.5
+      },
+      "pinnedViewApplied": true,
+      "sourceReloads": 0,
+      "featureStateWrites": 0,
+      "featureStateSkipped": 33771,
+      "transferTotal": 5632029,
+      "gatingBytes": 32908,
+      "gatingBytesLegacy": 2671833,
+      "byKind": {
+        "other": 343711,
+        "js": 416507,
+        "css": 18895,
+        "data-json": 2672090,
+        "basemap": 754558,
+        "pmtiles": 1426268
+      },
+      "requestCount": 42,
+      "heapBytes": 28795096,
+      "heapBytesAfterInteraction": 84658564,
+      "worstInteractionMs": 536,
+      "metricSwitchMs": 22.100000008940697,
+      "wallMs": 33039,
+      "painted": true,
+      "scenarios": {
+        "pan.z4": {
+          "durationMs": 16831,
+          "frames": 74,
+          "dropped": 60,
+          "longestFrameMs": 333.3999999999942,
+          "p95FrameMs": 333.29999999999563,
+          "loafCount": 3,
+          "loafBlockingMs": 10.3
+        },
+        "pan.z7": {
+          "durationMs": 5049,
+          "frames": 50,
+          "dropped": 47,
+          "longestFrameMs": 250.09999999999854,
+          "p95FrameMs": 166.59999999999854,
+          "loafCount": 5,
+          "loafBlockingMs": 49.1
+        },
+        "pan.z10": {
+          "durationMs": 4024,
+          "frames": 75,
+          "dropped": 73,
+          "longestFrameMs": 166.5,
+          "p95FrameMs": 83.30000000000291,
+          "loafCount": 3,
+          "loafBlockingMs": 0
+        },
+        "zoom.in": {
+          "durationMs": 1850,
+          "frames": 21,
+          "dropped": 17,
+          "longestFrameMs": 450,
+          "p95FrameMs": 150,
+          "loafCount": 3,
+          "loafBlockingMs": 335.40000000000003
+        },
+        "zoom.out": {
+          "durationMs": 1625,
+          "frames": 40,
+          "dropped": 6,
+          "longestFrameMs": 266.59999999999854,
+          "p95FrameMs": 166.70000000001164,
+          "loafCount": 3,
+          "loafBlockingMs": 290.5
+        },
+        "hover.sweep": {
+          "durationMs": 12368,
+          "frames": 227,
+          "dropped": 63,
+          "longestFrameMs": 250.10000000000582,
+          "p95FrameMs": 183.3000000000029,
+          "loafCount": 7,
+          "loafBlockingMs": 189.10000000000002
+        },
+        "click.sidebar": {
+          "durationMs": 2623,
+          "frames": 140,
+          "dropped": 2,
+          "longestFrameMs": 283.3000000000029,
+          "p95FrameMs": 16.80000000000291,
+          "loafCount": 2,
+          "loafBlockingMs": 90.2
+        },
+        "metric.cycle": {
+          "durationMs": 10285,
+          "frames": 379,
+          "dropped": 31,
+          "longestFrameMs": 483.29999999998836,
+          "p95FrameMs": 33.40000000000873,
+          "loafCount": 20,
+          "loafBlockingMs": 1707.8000000000004,
+          "switches": 7
+        },
+        "search.flyTo": {
+          "durationMs": 2560,
+          "frames": 18,
+          "dropped": 16,
+          "longestFrameMs": 1383.2999999999884,
+          "p95FrameMs": 299.90000000000873,
+          "loafCount": 3,
+          "loafBlockingMs": 1188.6000000000001
+        },
+        "toggle.autoScale": {
+          "durationMs": 6392,
+          "frames": 115,
+          "dropped": 82,
+          "longestFrameMs": 250,
+          "p95FrameMs": 83.40000000000873,
+          "loafCount": 8,
+          "loafBlockingMs": 211.3
+        },
+        "toggle.outliers": {
+          "durationMs": 6442,
+          "frames": 132,
+          "dropped": 76,
+          "longestFrameMs": 133.3000000000029,
+          "p95FrameMs": 83.30000000000291,
+          "loafCount": 3,
+          "loafBlockingMs": 4.3
+        }
+      },
+      "notes": []
+    },
+    {
+      "ttfb": 2.7000000029802322,
+      "fcp": 5580,
+      "lcp": 6668,
+      "cls": 0.002508510762281378,
+      "tbt": 3562,
+      "maxLongTask": 1323,
+      "longTaskCount": 23,
+      "loafCount": 15,
+      "loafBlockingMs": 2377.9,
+      "domContentLoaded": 5150.20000000298,
+      "loadEvent": 6138,
+      "mainThreadResourceCount": 33,
+      "marks": {
+        "map:applyChoropleth": 86.8999999910593,
+        "store:construct": 15.400000005960464
+      },
+      "pinnedViewApplied": true,
+      "sourceReloads": 0,
+      "featureStateWrites": 0,
+      "featureStateSkipped": 33771,
+      "transferTotal": 5632135,
+      "gatingBytes": 32908,
+      "gatingBytesLegacy": 2671833,
+      "byKind": {
+        "other": 343711,
+        "js": 416507,
+        "css": 18895,
+        "data-json": 2672090,
+        "basemap": 754664,
+        "pmtiles": 1426268
+      },
+      "requestCount": 42,
+      "heapBytes": 28795388,
+      "heapBytesAfterInteraction": 36588208,
+      "worstInteractionMs": 544,
+      "metricSwitchMs": 22,
+      "wallMs": 32996,
+      "painted": true,
+      "scenarios": {
+        "pan.z4": {
+          "durationMs": 15836,
+          "frames": 75,
+          "dropped": 58,
+          "longestFrameMs": 349.90000000000146,
+          "p95FrameMs": 300,
+          "loafCount": 2,
+          "loafBlockingMs": 12.1
+        },
+        "pan.z7": {
+          "durationMs": 4640,
+          "frames": 55,
+          "dropped": 48,
+          "longestFrameMs": 166.6999999999971,
+          "p95FrameMs": 150,
+          "loafCount": 5,
+          "loafBlockingMs": 35.300000000000004
+        },
+        "pan.z10": {
+          "durationMs": 3790,
+          "frames": 80,
+          "dropped": 71,
+          "longestFrameMs": 149.89999999999418,
+          "p95FrameMs": 66.70000000000437,
+          "loafCount": 3,
+          "loafBlockingMs": 0
+        },
+        "zoom.in": {
+          "durationMs": 1783,
+          "frames": 29,
+          "dropped": 17,
+          "longestFrameMs": 400,
+          "p95FrameMs": 100,
+          "loafCount": 2,
+          "loafBlockingMs": 273.3
+        },
+        "zoom.out": {
+          "durationMs": 1628,
+          "frames": 39,
+          "dropped": 8,
+          "longestFrameMs": 233.29999999999563,
+          "p95FrameMs": 133.40000000000146,
+          "loafCount": 2,
+          "loafBlockingMs": 177.4
+        },
+        "hover.sweep": {
+          "durationMs": 11822,
+          "frames": 227,
+          "dropped": 62,
+          "longestFrameMs": 250.10000000000582,
+          "p95FrameMs": 183.3000000000029,
+          "loafCount": 7,
+          "loafBlockingMs": 203.2
+        },
+        "click.sidebar": {
+          "durationMs": 2634,
+          "frames": 140,
+          "dropped": 2,
+          "longestFrameMs": 183.23799999999756,
+          "p95FrameMs": 16.80000000000291,
+          "loafCount": 2,
+          "loafBlockingMs": 88.3
+        },
+        "metric.cycle": {
+          "durationMs": 9833,
+          "frames": 350,
+          "dropped": 35,
+          "longestFrameMs": 483.40000000000873,
+          "p95FrameMs": 49.90000000000873,
+          "loafCount": 23,
+          "loafBlockingMs": 1750.8999999999999,
+          "switches": 7
+        },
+        "search.flyTo": {
+          "durationMs": 2548,
+          "frames": 17,
+          "dropped": 15,
+          "longestFrameMs": 1366.6000000000058,
+          "p95FrameMs": 283.29999999998836,
+          "loafCount": 4,
+          "loafBlockingMs": 1166
+        },
+        "toggle.autoScale": {
+          "durationMs": 6773,
+          "frames": 118,
+          "dropped": 85,
+          "longestFrameMs": 250,
+          "p95FrameMs": 100,
+          "loafCount": 8,
+          "loafBlockingMs": 249.6
+        },
+        "toggle.outliers": {
+          "durationMs": 6273,
+          "frames": 129,
+          "dropped": 74,
+          "longestFrameMs": 133.40000000000873,
+          "p95FrameMs": 83.39999999999418,
+          "loafCount": 1,
+          "loafBlockingMs": 0
+        }
+      },
+      "notes": []
+    },
+    {
+      "ttfb": 2.699999988079071,
+      "fcp": 5568,
+      "lcp": 6656,
+      "cls": 0.002508510762281378,
+      "tbt": 3668,
+      "maxLongTask": 1313,
+      "longTaskCount": 27,
+      "loafCount": 16,
+      "loafBlockingMs": 2497.6,
+      "domContentLoaded": 5122.79999999702,
+      "loadEvent": 6098,
+      "mainThreadResourceCount": 33,
+      "marks": {
+        "map:applyChoropleth": 87.70000000298023,
+        "store:construct": 15.5
+      },
+      "pinnedViewApplied": true,
+      "sourceReloads": 0,
+      "featureStateWrites": 0,
+      "featureStateSkipped": 33771,
+      "transferTotal": 5632113,
+      "gatingBytes": 32908,
+      "gatingBytesLegacy": 2671833,
+      "byKind": {
+        "other": 343702,
+        "js": 416507,
+        "css": 18895,
+        "data-json": 2672090,
+        "basemap": 754651,
+        "pmtiles": 1426268
+      },
+      "requestCount": 42,
+      "heapBytes": 28481320,
+      "heapBytesAfterInteraction": 29958860,
+      "worstInteractionMs": 560,
+      "metricSwitchMs": 22.19999998807907,
+      "wallMs": 33104,
+      "painted": true,
+      "scenarios": {
+        "pan.z4": {
+          "durationMs": 16731,
+          "frames": 73,
+          "dropped": 60,
+          "longestFrameMs": 366.70000000000437,
+          "p95FrameMs": 300,
+          "loafCount": 3,
+          "loafBlockingMs": 14.8
+        },
+        "pan.z7": {
+          "durationMs": 4895,
+          "frames": 55,
+          "dropped": 50,
+          "longestFrameMs": 166.59999999999854,
+          "p95FrameMs": 150,
+          "loafCount": 4,
+          "loafBlockingMs": 41.800000000000004
+        },
+        "pan.z10": {
+          "durationMs": 3800,
+          "frames": 79,
+          "dropped": 73,
+          "longestFrameMs": 166.6999999999971,
+          "p95FrameMs": 66.69999999999709,
+          "loafCount": 3,
+          "loafBlockingMs": 0
+        },
+        "zoom.in": {
+          "durationMs": 1801,
+          "frames": 33,
+          "dropped": 16,
+          "longestFrameMs": 400,
+          "p95FrameMs": 116.59999999999854,
+          "loafCount": 2,
+          "loafBlockingMs": 286.5
+        },
+        "zoom.out": {
+          "durationMs": 1641,
+          "frames": 43,
+          "dropped": 7,
+          "longestFrameMs": 233.3000000000029,
+          "p95FrameMs": 149.89999999999418,
+          "loafCount": 3,
+          "loafBlockingMs": 215.89999999999998
+        },
+        "hover.sweep": {
+          "durationMs": 11846,
+          "frames": 228,
+          "dropped": 65,
+          "longestFrameMs": 250,
+          "p95FrameMs": 183.29999999998836,
+          "loafCount": 7,
+          "loafBlockingMs": 192.4
+        },
+        "click.sidebar": {
+          "durationMs": 2641,
+          "frames": 140,
+          "dropped": 2,
+          "longestFrameMs": 299.8999999999942,
+          "p95FrameMs": 16.79999999998836,
+          "loafCount": 1,
+          "loafBlockingMs": 99.1
+        },
+        "metric.cycle": {
+          "durationMs": 9889,
+          "frames": 355,
+          "dropped": 35,
+          "longestFrameMs": 466.70000000001164,
+          "p95FrameMs": 50,
+          "loafCount": 22,
+          "loafBlockingMs": 1697,
+          "switches": 7
+        },
+        "search.flyTo": {
+          "durationMs": 2552,
+          "frames": 18,
+          "dropped": 16,
+          "longestFrameMs": 1366.6000000000058,
+          "p95FrameMs": 283.3999999999942,
+          "loafCount": 4,
+          "loafBlockingMs": 1415.9
+        },
+        "toggle.autoScale": {
+          "durationMs": 7086,
+          "frames": 118,
+          "dropped": 87,
+          "longestFrameMs": 266.6000000000058,
+          "p95FrameMs": 100,
+          "loafCount": 9,
+          "loafBlockingMs": 226.60000000000002
+        },
+        "toggle.outliers": {
+          "durationMs": 6443,
+          "frames": 131,
+          "dropped": 75,
+          "longestFrameMs": 116.60000000000582,
+          "p95FrameMs": 83.39999999999418,
+          "loafCount": 3,
+          "loafBlockingMs": 0
+        }
+      },
+      "notes": []
+    },
+    {
+      "ttfb": 2.7999999970197678,
+      "fcp": 5688,
+      "lcp": 6788,
+      "cls": 0.002508510762281378,
+      "tbt": 3557,
+      "maxLongTask": 1326,
+      "longTaskCount": 26,
+      "loafCount": 16,
+      "loafBlockingMs": 2368.1,
+      "domContentLoaded": 5259.9000000059605,
+      "loadEvent": 6203.79999999702,
+      "mainThreadResourceCount": 33,
+      "marks": {
+        "map:applyChoropleth": 90.5,
+        "store:construct": 15.599999994039536
+      },
+      "pinnedViewApplied": true,
+      "sourceReloads": 0,
+      "featureStateWrites": 0,
+      "featureStateSkipped": 33771,
+      "transferTotal": 5632007,
+      "gatingBytes": 32908,
+      "gatingBytesLegacy": 2671833,
+      "byKind": {
+        "other": 343702,
+        "data-json": 2672090,
+        "js": 416507,
+        "css": 18895,
+        "basemap": 754545,
+        "pmtiles": 1426268
+      },
+      "requestCount": 42,
+      "heapBytes": 28773316,
+      "heapBytesAfterInteraction": 30058392,
+      "worstInteractionMs": 512,
+      "metricSwitchMs": 22.299999997019768,
+      "wallMs": 33036,
+      "painted": true,
+      "scenarios": {
+        "pan.z4": {
+          "durationMs": 16441,
+          "frames": 67,
+          "dropped": 61,
+          "longestFrameMs": 350,
+          "p95FrameMs": 283.3000000000029,
+          "loafCount": 3,
+          "loafBlockingMs": 12.600000000000001
+        },
+        "pan.z7": {
+          "durationMs": 4852,
+          "frames": 55,
+          "dropped": 49,
+          "longestFrameMs": 233.29999999999563,
+          "p95FrameMs": 149.90000000000146,
+          "loafCount": 5,
+          "loafBlockingMs": 32.1
+        },
+        "pan.z10": {
+          "durationMs": 3892,
+          "frames": 77,
+          "dropped": 77,
+          "longestFrameMs": 183.1999999999971,
+          "p95FrameMs": 66.70000000000437,
+          "loafCount": 1,
+          "loafBlockingMs": 0
+        },
+        "zoom.in": {
+          "durationMs": 1730,
+          "frames": 29,
+          "dropped": 17,
+          "longestFrameMs": 333.3000000000029,
+          "p95FrameMs": 116.69999999999709,
+          "loafCount": 3,
+          "loafBlockingMs": 252.2
+        },
+        "zoom.out": {
+          "durationMs": 1628,
+          "frames": 36,
+          "dropped": 8,
+          "longestFrameMs": 250.09999999999854,
+          "p95FrameMs": 150.09999999999854,
+          "loafCount": 3,
+          "loafBlockingMs": 250.7
+        },
+        "hover.sweep": {
+          "durationMs": 11957,
+          "frames": 228,
+          "dropped": 64,
+          "longestFrameMs": 266.59999999999127,
+          "p95FrameMs": 183.3000000000029,
+          "loafCount": 7,
+          "loafBlockingMs": 196
+        },
+        "click.sidebar": {
+          "durationMs": 2619,
+          "frames": 140,
+          "dropped": 2,
+          "longestFrameMs": 283.40000000000873,
+          "p95FrameMs": 16.70000000001164,
+          "loafCount": 1,
+          "loafBlockingMs": 85.9
+        },
+        "metric.cycle": {
+          "durationMs": 9665,
+          "frames": 347,
+          "dropped": 35,
+          "longestFrameMs": 466.70000000001164,
+          "p95FrameMs": 33.40000000000873,
+          "loafCount": 22,
+          "loafBlockingMs": 1587.5000000000002,
+          "switches": 7
+        },
+        "search.flyTo": {
+          "durationMs": 2546,
+          "frames": 17,
+          "dropped": 15,
+          "longestFrameMs": 1383.300000000003,
+          "p95FrameMs": 266.6999999999971,
+          "loafCount": 4,
+          "loafBlockingMs": 1410.3
+        },
+        "toggle.autoScale": {
+          "durationMs": 6307,
+          "frames": 114,
+          "dropped": 79,
+          "longestFrameMs": 250,
+          "p95FrameMs": 100,
+          "loafCount": 6,
+          "loafBlockingMs": 215.7
+        },
+        "toggle.outliers": {
+          "durationMs": 6410,
+          "frames": 132,
+          "dropped": 75,
+          "longestFrameMs": 116.70000000001164,
+          "p95FrameMs": 83.39999999999418,
+          "loafCount": 2,
+          "loafBlockingMs": 0
+        }
+      },
+      "notes": []
+    },
+    {
+      "ttfb": 2.4000000059604645,
+      "fcp": 5564,
+      "lcp": 6660,
+      "cls": 0.002508510762281378,
+      "tbt": 3516,
+      "maxLongTask": 1294,
+      "longTaskCount": 24,
+      "loafCount": 15,
+      "loafBlockingMs": 2356.6,
+      "domContentLoaded": 5133.5,
+      "loadEvent": 6126.29999999702,
+      "mainThreadResourceCount": 33,
+      "marks": {
+        "map:applyChoropleth": 85.29999999701977,
+        "store:construct": 14.300000011920929
+      },
+      "pinnedViewApplied": true,
+      "sourceReloads": 0,
+      "featureStateWrites": 0,
+      "featureStateSkipped": 33771,
+      "transferTotal": 5632007,
+      "gatingBytes": 32908,
+      "gatingBytesLegacy": 2671833,
+      "byKind": {
+        "other": 343702,
+        "css": 18895,
+        "js": 416507,
+        "data-json": 2672090,
+        "basemap": 754545,
+        "pmtiles": 1426268
+      },
+      "requestCount": 42,
+      "heapBytes": 28476016,
+      "heapBytesAfterInteraction": 62665688,
+      "worstInteractionMs": 528,
+      "metricSwitchMs": 22.399999991059303,
+      "wallMs": 33026,
+      "painted": true,
+      "scenarios": {
+        "pan.z4": {
+          "durationMs": 16271,
+          "frames": 66,
+          "dropped": 60,
+          "longestFrameMs": 350,
+          "p95FrameMs": 300,
+          "loafCount": 3,
+          "loafBlockingMs": 12
+        },
+        "pan.z7": {
+          "durationMs": 4737,
+          "frames": 51,
+          "dropped": 48,
+          "longestFrameMs": 200,
+          "p95FrameMs": 149.90000000000146,
+          "loafCount": 4,
+          "loafBlockingMs": 78.30000000000001
+        },
+        "pan.z10": {
+          "durationMs": 4000,
+          "frames": 78,
+          "dropped": 78,
+          "longestFrameMs": 183.3000000000029,
+          "p95FrameMs": 66.79999999999563,
+          "loafCount": 2,
+          "loafBlockingMs": 0
+        },
+        "zoom.in": {
+          "durationMs": 1733,
+          "frames": 21,
+          "dropped": 15,
+          "longestFrameMs": 450,
+          "p95FrameMs": 133.39999999999418,
+          "loafCount": 4,
+          "loafBlockingMs": 315.6
+        },
+        "zoom.out": {
+          "durationMs": 1644,
+          "frames": 43,
+          "dropped": 7,
+          "longestFrameMs": 233.39999999999418,
+          "p95FrameMs": 133.3000000000029,
+          "loafCount": 2,
+          "loafBlockingMs": 178.3
+        },
+        "hover.sweep": {
+          "durationMs": 11849,
+          "frames": 227,
+          "dropped": 62,
+          "longestFrameMs": 283.3000000000029,
+          "p95FrameMs": 183.29999999998836,
+          "loafCount": 7,
+          "loafBlockingMs": 233.2
+        },
+        "click.sidebar": {
+          "durationMs": 2633,
+          "frames": 141,
+          "dropped": 2,
+          "longestFrameMs": 283.3000000000029,
+          "p95FrameMs": 16.79999999998836,
+          "loafCount": 1,
+          "loafBlockingMs": 88.8
+        },
+        "metric.cycle": {
+          "durationMs": 10017,
+          "frames": 351,
+          "dropped": 37,
+          "longestFrameMs": 500,
+          "p95FrameMs": 50,
+          "loafCount": 25,
+          "loafBlockingMs": 1813.8999999999999,
+          "switches": 7
+        },
+        "search.flyTo": {
+          "durationMs": 2562,
+          "frames": 17,
+          "dropped": 15,
+          "longestFrameMs": 1366.5999999999913,
+          "p95FrameMs": 283.40000000000873,
+          "loafCount": 4,
+          "loafBlockingMs": 1168.6000000000001
+        },
+        "toggle.autoScale": {
+          "durationMs": 6435,
+          "frames": 114,
+          "dropped": 82,
+          "longestFrameMs": 250,
+          "p95FrameMs": 100.10000000000582,
+          "loafCount": 8,
+          "loafBlockingMs": 237.89999999999998
+        },
+        "toggle.outliers": {
+          "durationMs": 6438,
+          "frames": 130,
+          "dropped": 76,
+          "longestFrameMs": 133.3000000000029,
+          "p95FrameMs": 83.40000000000873,
+          "loafCount": 2,
+          "loafBlockingMs": 0
+        }
+      },
+      "notes": []
+    }
+  ]
+}

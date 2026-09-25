@@ -101,6 +101,12 @@ not present in a clone; `docs/CHANGES.md` carries the decisions that came out of
 
 ## Caveats to state alongside any number
 
+- The default launch is Playwright's headless shell, which draws WebGL in software
+  (SwiftShader). Frame and TBT numbers from it describe a machine with no GPU. Pass
+  `--channel chrome` to use the installed Chrome, which uses the real GPU even headless.
+  On 2026-09-24, same build and conditions: `pan.z4` dropped 60 frames in software and 1 on
+  an integrated AMD Radeon. The two are not comparable, and `compare.mjs` says so.
+
 - A local server is not GitHub Pages: no Fastly CDN, no real RTT variance. Fine
   for **relative** comparison when the harness is identical on both sides; the
   headline before/after should come from prod vs a PR preview, which share a CDN.
