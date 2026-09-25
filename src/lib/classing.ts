@@ -2,6 +2,7 @@
 // comes from the manifest; given the pipeline's own sample this reproduces its breaks
 // exactly (classing.test.ts). The only place allowed to cut classes on the client.
 
+import type { ZipData } from "@/components/dashboard/map/types";
 import { CLASSES } from "./choropleth";
 
 /** Linear-interpolated percentile on an ASCENDING array, matching numpy's default. */
@@ -34,19 +35,9 @@ function equalInterval0100Breaks(): number[] {
   return Array.from({ length: CLASSES - 1 }, (_, i) => (100 * (i + 1)) / CLASSES);
 }
 
-/** Equal width from the p1..p99 span, pinned at 100 (sale-to-list ratio). */
-function equalAnchored100Breaks(sorted: number[]): number[] | null {
-  const width = (percentile(sorted, 0.99) - percentile(sorted, 0.01)) / CLASSES;
-  if (!(width > 0)) return null;
-  const out: number[] = [];
-  for (let k = CLASSES - 1; k >= 1; k--) out.push(100 - width * k);
-  return out;
-}
-
 /**
  * `CLASSES - 1` boundaries for `sample` under `scheme`, or null meaning "use the shipped
- * breaks": for `diverging` (fixed by design), too small or degenerate a sample, or an
- * unknown scheme from a newer pipeline.
+ * breaks": too small or degenerate a sample, or an unknown scheme from a newer pipeline.
  */
 export function fitBreaks(scheme: string | undefined, sample: number[]): number[] | null {
   if (!scheme || sample.length < CLASSES) return null;
@@ -56,7 +47,6 @@ export function fitBreaks(scheme: string | undefined, sample: number[]): number[
   switch (scheme) {
     case "quantile": edges = quantileBreaks(sorted); break;
     case "log_equal_p1_p99": edges = logEqualBreaks(sorted); break;
-    case "equal_anchored_100": edges = equalAnchored100Breaks(sorted); break;
     case "equal_interval_0_100": edges = equalInterval0100Breaks(); break;
     default: return null;
   }
@@ -64,8 +54,33 @@ export function fitBreaks(scheme: string | undefined, sample: number[]): number[
 
   // Match the pipeline's 4 dp rounding so identical samples compare equal.
   edges = edges.map((e) => Math.round(e * 1e4) / 1e4);
+  // Quantile edges may tie (an empty class, as in the pipeline); other schemes stay strict.
+  const tiesOk = scheme === "quantile";
   for (let i = 1; i < edges.length; i++) {
-    if (edges[i] <= edges[i - 1]) return null;
+    if (edges[i] < edges[i - 1] || (!tiesOk && edges[i] === edges[i - 1])) return null;
   }
+  if (edges[0] === edges[edges.length - 1]) return null;
   return edges;
+}
+
+/**
+ * Breaks cut on one exported area's ZIPs under the pipeline's own scheme and break gate, or
+ * null when the area is too small to cut or the scheme ignores the sample (equal intervals
+ * over 0-100 would be the national scale under another name).
+ */
+export function areaBreaks(
+  rows: readonly ZipData[],
+  metric: string,
+  spec: { scheme?: string; break_gate?: string | null },
+): number[] | null {
+  if (spec.scheme === "equal_interval_0_100") return null;
+  const gated = spec.break_gate !== "all_reporting";
+  const sample: number[] = [];
+  for (const row of rows) {
+    const v = row[metric as keyof ZipData];
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    if (gated && (row.rel ?? 0) < 1) continue;
+    sample.push(v);
+  }
+  return fitBreaks(spec.scheme, sample);
 }

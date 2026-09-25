@@ -10,8 +10,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fitBreaks } from "../classing";
+import { areaBreaks, fitBreaks } from "../classing";
+import type { ZipData } from "@/components/dashboard/map/types";
 import { CLASSES } from "../choropleth";
+import { PAINTED_METRICS } from "../metrics";
 import { WIRE_OF } from "../zip-table";
 
 const dataDir = resolve(__dirname, "../../../public/data");
@@ -60,7 +62,7 @@ describe("the published data and this build are the same generation", () => {
 describe.skipIf(!generationsAgree)("fitBreaks reproduces the pipeline", () => {
   const recomputable = Object.entries(manifest.classing as Record<string, {
     scheme: string; breaks: number[]; break_gate?: string | null;
-  }>).filter(([metric, c]) => c.scheme !== "diverging"
+  }>).filter(([metric]) => metric in PAINTED_METRICS
       && snapshot.f.includes(WIRE_OF[metric] ?? metric));
 
   it("covers every recomputable painted metric", () => {
@@ -80,10 +82,6 @@ describe.skipIf(!generationsAgree)("fitBreaks reproduces the pipeline", () => {
 describe("fitBreaks refuses rather than guesses", () => {
   const sample = Array.from({ length: 500 }, (_, i) => i + 1);
 
-  it("does not recompute a diverging scale", () => {
-    expect(fitBreaks("diverging", sample)).toBeNull();
-  });
-
   it("does not guess at a scheme it does not know", () => {
     expect(fitBreaks("headroom_v3", sample)).toBeNull();
   });
@@ -97,9 +95,43 @@ describe("fitBreaks refuses rather than guesses", () => {
     expect(fitBreaks("log_equal_p1_p99", Array(50).fill(7))).toBeNull();
   });
 
+  it("keeps tied quantile edges, as the pipeline does, instead of falling back", () => {
+    const counts = [...Array(160).fill(1), ...Array.from({ length: 840 }, (_, i) => 2 + i)];
+    const edges = fitBreaks("quantile", counts)!;
+    expect(edges).toHaveLength(CLASSES - 1);
+    expect(edges[0]).toBe(edges[1]);
+    for (let i = 1; i < edges.length; i++) expect(edges[i]).toBeGreaterThanOrEqual(edges[i - 1]);
+  });
+
   it("emits CLASSES - 1 strictly increasing edges when it does cut", () => {
     const edges = fitBreaks("log_equal_p1_p99", sample)!;
     expect(edges).toHaveLength(CLASSES - 1);
     for (let i = 1; i < edges.length; i++) expect(edges[i]).toBeGreaterThan(edges[i - 1]);
+  });
+});
+
+describe("areaBreaks (the export's state or metro scale)", () => {
+  // 30 ZIPs with enough sales to rank, and 10 thin ones at 5M that would own the top of any
+  // cut they were allowed to vote in.
+  const rows = [
+    ...Array.from({ length: 30 }, (_, i) => ({ zhvi: 200_000 + i * 10_000, rel: 2 })),
+    ...Array.from({ length: 10 }, () => ({ zhvi: 5_000_000, rel: 0 })),
+  ] as unknown as ZipData[];
+
+  it("lets only rankable ZIPs vote on an estimated metric, as the pipeline does", () => {
+    const ranked = rows.filter((r) => (r.rel ?? 0) >= 1).map((r) => r.zhvi as number);
+    expect(areaBreaks(rows, "zhvi", { scheme: "quantile", break_gate: "rankable" }))
+      .toEqual(fitBreaks("quantile", ranked));
+  });
+
+  it("lets every reporting ZIP vote on an exact count", () => {
+    const all = rows.map((r) => r.zhvi as number);
+    expect(areaBreaks(rows, "zhvi", { scheme: "quantile", break_gate: "all_reporting" }))
+      .toEqual(fitBreaks("quantile", all));
+  });
+
+  it("gives up on an area too small to cut, and on a scale that ignores the area", () => {
+    expect(areaBreaks(rows.slice(0, 5), "zhvi", { scheme: "quantile", break_gate: "rankable" })).toBeNull();
+    expect(areaBreaks(rows, "zhvi", { scheme: "equal_interval_0_100" })).toBeNull();
   });
 });

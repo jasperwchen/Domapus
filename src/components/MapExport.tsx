@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ZipTable } from "@/lib/zip-table";
+import type { ClassingSpec } from "@/lib/class-source";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const ExportSidebar = lazy(() => import("./dashboard/export/ExportSidebar").then(m => ({ default: m.ExportSidebar })));
@@ -13,10 +14,12 @@ interface MapExportProps {
    *  through so the exported map is coloured by the same authority as the live
    *  one instead of re-deriving a scale of its own. */
   breaks: readonly number[] | null;
+  /** The metric's scheme and break gate, so the export can cut a state or metro scale. */
+  classing?: ClassingSpec | null;
   onExportModeChange: (isExportMode: boolean) => void;
 }
 
-export function MapExport({ store, selectedMetric, breaks, onExportModeChange }: MapExportProps) {
+export function MapExport({ store, selectedMetric, breaks, classing = null, onExportModeChange }: MapExportProps) {
   const [isExportMode, setIsExportMode] = useState(false);
   const isMobile = useIsMobile();
 
@@ -45,6 +48,7 @@ export function MapExport({ store, selectedMetric, breaks, onExportModeChange }:
           allZipData={store ? store.toRecord() : {}}
           selectedMetric={selectedMetric}
           breaks={breaks}
+          classing={classing}
           onClose={handleClose}
         />
       </Suspense>

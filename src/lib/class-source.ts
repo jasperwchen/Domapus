@@ -63,7 +63,7 @@ export class PaintTableSource implements ClassSource {
 
 /** One metric's classing, from the manifest. The frontend never picks a scheme itself. */
 export interface ClassingSpec {
-  /** `quantile`, `log_equal_p1_p99`, `equal_anchored_100` or `diverging`. */
+  /** `quantile`, `log_equal_p1_p99` or `equal_interval_0_100`. */
   scheme?: string;
   /** `rankable` for an estimated statistic, `all_reporting` for an exact count. */
   break_gate?: string | null;

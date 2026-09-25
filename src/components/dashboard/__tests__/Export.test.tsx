@@ -173,7 +173,6 @@ function makeZip(overrides: Partial<ZipData> = {}): ZipData {
     msp_rse: null,
     dom_rse: null,
     rel: null,
-    msp_yoy_se: null,
     f_h12: null,
     f_sigma: null,
     f_tier: null,
@@ -309,7 +308,7 @@ describe("ExportSidebar", () => {
 
   it("defaults to national scope and PNG format", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
-    expect(screen.getByRole("radio", { name: /national/i })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /^national$/i })).toBeChecked();
     expect(screen.getByRole("radio", { name: /png/i })).toBeChecked();
   });
 
@@ -343,6 +342,81 @@ describe("ExportSidebar", () => {
     expect(trigger).toBeInTheDocument();
   });
 
+  describe("colour scale", () => {
+    // 20 Austin ZIPs with enough sales to rank: enough to cut a scale of their own.
+    const AUSTIN: Record<string, ZipData> = Object.fromEntries(
+      Array.from({ length: 20 }, (_, i) => {
+        const zipCode = String(78701 + i);
+        return [zipCode, makeZip({
+          zipCode, city: "Austin", state: "TX", metro: "Austin, TX",
+          zhvi: 300_000 + i * 25_000, rel: 2,
+        })];
+      }),
+    );
+    const DATA = { ...SAMPLE_ZIP_DATA, ...AUSTIN };
+    const CLASSING = { scheme: "quantile", break_gate: "rankable" };
+
+    const pickMetro = (name: string) => {
+      fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
+      const input = screen.getByPlaceholderText(/type to search metros/i);
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: name } });
+      act(() => { vi.advanceTimersByTime(200); });
+      fireEvent.keyDown(input, { key: "Enter" });
+    };
+
+    it("stays disabled until a state or metro is in scope", () => {
+      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      expect(screen.getByRole("radio", { name: /local scale/i })).toBeDisabled();
+      pickMetro("Austin");
+      expect(screen.getByRole("radio", { name: /metro scale/i })).toBeEnabled();
+    });
+
+    it("explains itself on demand, and Escape closes the note before the dialog", () => {
+      const onClose = vi.fn();
+      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={onClose} />);
+      fireEvent.click(screen.getByRole("button", { name: /about the color scale/i }));
+      expect(screen.getByRole("note")).toHaveTextContent(/same value in every export/i);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("note")).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it("repaints the preview in place when switched, without rebuilding or waiting", async () => {
+      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      pickMetro("Austin");
+      await advanceToMapReady();
+      const built = mapMock.__getMaps().length;
+      const classOf = (zip: string) =>
+        mapMock.__getMaps().at(-1)!.stateWrites.filter(w => w.id === zip).at(-1)?.state.k;
+      // On the national breaks the cheapest and dearest Austin ZIPs are classes 5 and 9.
+      expect([classOf("78701"), classOf("78720")]).toEqual([5, 9]);
+
+      fireEvent.click(screen.getByRole("radio", { name: /metro scale/i }));
+      await act(async () => { vi.runAllTimers(); });
+
+      expect(mapMock.__getMaps()).toHaveLength(built);
+      expect([classOf("78701"), classOf("78720")]).toEqual([0, 13]);
+      expect(screen.getByRole("button", { name: /export png/i })).toBeEnabled();
+    }, 10_000);
+
+    it("cuts the colours on the exported metro and names it in the key", () => {
+      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      pickMetro("Austin");
+      expect(screen.queryByText(/\(Austin, TX scale\)$/)).toBeNull();
+      fireEvent.click(screen.getByRole("radio", { name: /metro scale/i }));
+      expect(screen.getByText(/\(Austin, TX scale\)$/)).toBeInTheDocument();
+    });
+
+    it("keeps the national scale for an area too small to cut, and says why", () => {
+      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      pickMetro("Anchorage");
+      fireEvent.click(screen.getByRole("radio", { name: /metro scale/i }));
+      expect(screen.getByText(/too few ZIP codes here/i)).toBeInTheDocument();
+      expect(screen.queryByText(/scale\)$/)).toBeNull();
+    });
+  });
+
   it("switches to metro scope and shows metro search input", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
@@ -368,6 +442,28 @@ describe("ExportSidebar", () => {
     expect(screen.getByDisplayValue("Honolulu")).toBeInTheDocument();
   });
 
+  it("lists bigger markets first, after how well they match", () => {
+    // Homes sold per metro: Los Angeles 50, San Jose 40, San Diego 10, the rest none.
+    const DATA = {
+      ...SAMPLE_ZIP_DATA,
+      "90001": makeZip({ zipCode: "90001", homes_sold: 50 }),
+      "92101": makeZip({ zipCode: "92101", metro: "San Diego", homes_sold: 10 }),
+      "95110": makeZip({ zipCode: "95110", metro: "San Jose", homes_sold: 25 }),
+      "95111": makeZip({ zipCode: "95111", metro: "San Jose", homes_sold: 15 }),
+    };
+    render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
+    const input = screen.getByPlaceholderText(/type to search metros/i);
+    fireEvent.focus(input);
+    const listed = () => screen.getAllByRole("option").map(o => o.textContent);
+    expect(listed()).toEqual(["Los Angeles", "San Jose", "San Diego", "Anchorage", "Honolulu"]);
+
+    // "san" starts both San metros and sits mid-word in none of the others.
+    fireEvent.change(input, { target: { value: "san" } });
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(listed()).toEqual(["San Jose", "San Diego"]);
+  });
+
   it("wraps the metro highlight to the last suggestion on ArrowUp", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
@@ -378,17 +474,17 @@ describe("ExportSidebar", () => {
     expect(screen.getByDisplayValue("Los Angeles")).toBeInTheDocument();
   });
 
-  it("toggles the Include Legend checkbox", () => {
+  it("toggles the Legend checkbox", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
-    const checkbox = screen.getByRole("checkbox", { name: /include legend/i });
+    const checkbox = screen.getByRole("checkbox", { name: /^legend$/i });
     expect(checkbox).toBeChecked();
     fireEvent.click(checkbox);
     expect(checkbox).not.toBeChecked();
   });
 
-  it("toggles the Include Title checkbox", () => {
+  it("toggles the Title checkbox", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
-    const checkbox = screen.getByRole("checkbox", { name: /include title/i });
+    const checkbox = screen.getByRole("checkbox", { name: /^title$/i });
     expect(checkbox).toBeChecked();
     fireEvent.click(checkbox);
     expect(checkbox).not.toBeChecked();
@@ -659,13 +755,13 @@ describe("PrintStage colour", () => {
 describe("city labels", () => {
   it("are unavailable at national scale", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
-    expect(screen.getByRole("checkbox", { name: /show cities/i })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /^cities$/i })).toBeDisabled();
   });
 
   it("become available once a metro is in scope", () => {
     render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
-    expect(screen.getByRole("checkbox", { name: /show cities/i })).not.toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /^cities$/i })).not.toBeDisabled();
   });
 
   it("toggle as a visibility change, without rebuilding the maps", async () => {

@@ -176,9 +176,11 @@ function scaleSuffix(ratio: number | undefined): string {
 export interface PrintStageProps {
   filteredData: ZipData[];
   selectedMetric: string;
-  /** The boundaries the live map is painting, straight from the manifest. The
-   *  export does not derive its own — see `classesByZip`. */
+  /** The boundaries the live map is painting. The export does not derive its own: see
+   *  `classesByZip`. */
   breaks: readonly number[] | null;
+  /** The state or metro those boundaries were cut on, named in the key; null is national. */
+  scaleLabel?: string | null;
   regionScope: "national" | "state" | "metro";
   regionName: string;
   includeLegend: boolean;
@@ -246,7 +248,7 @@ function captureMapCanvas(map: maplibregl.Map): Promise<HTMLCanvasElement> {
 }
 
 export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
-  filteredData, selectedMetric, breaks, regionScope, regionName,
+  filteredData, selectedMetric, breaks, scaleLabel = null, regionScope, regionName,
   includeLegend, includeTitle, showCities = false, onReady,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -262,6 +264,9 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   /** What the main map was fitted to, so a layout change can re-fit it instead
    *  of leaving the old zoom in a frame that is no longer that shape. */
   const mainFitRef = useRef<{ bounds: Bounds; reserveBottom: number } | null>(null);
+  /** The ZIPs each map colours and the classes it last painted them with, so a scale
+   *  switch can repaint in place. */
+  const paintedRef = useRef<Record<string, { zips: Set<string>; classes: Map<string, number> }>>({});
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [scale, setScale] = useState(1);
   const [zhviPeriod, setZhviPeriod] = useState<string | null>(null);
@@ -276,6 +281,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   const geom = layout(includeTitle, includeLegend);
   const scaleOk = !!breaks && breaks.length === CHOROPLETH_COLORS.length - 1;
   const metricLabel = getMetricLabel(selectedMetric);
+  // A region scale changes what every colour means, so the key says which one.
+  const keyLabel = scaleLabel ? `${metricLabel} (${scaleLabel} scale)` : metricLabel;
   const alaskaLabel = `ALASKA${scaleSuffix(insetScales.alaska)}`;
   const hawaiiLabel = `HAWAII${scaleSuffix(insetScales.hawaii)}`;
 
@@ -326,10 +333,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       : `Data through ${formatPeriodDay(dataPeriod)}`;
   }, [dataPeriod, selectedMetric]);
 
-  /**
-   * Each ZIP's class from the published breaks the live map paints. The export used to cut
-   * its own quantiles and 73% of ZIPs exported a different colour than on screen.
-   */
+  /** Each ZIP's class from the breaks the live map paints; an export that cut its own
+   *  coloured 73% of ZIPs differently from the screen. */
   const classesByZip = useMemo(() => {
     const out = new Map<string, number>();
     if (!scaleOk) return out;
@@ -420,6 +425,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   cityLabelsOnRef.current = cityLabelsOn;
   const metricLabelRef = useRef(metricLabel);
   metricLabelRef.current = metricLabel;
+  const keyLabelRef = useRef(keyLabel);
+  keyLabelRef.current = keyLabel;
   const insetLabelsRef = useRef({ alaska: alaskaLabel, hawaii: hawaiiLabel });
   insetLabelsRef.current = { alaska: alaskaLabel, hawaii: hawaiiLabel };
 
@@ -517,12 +524,12 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     const ticks = legendTicksRef.current;
     if (includeLegendRef.current && ticks) {
       const lg = L.legend;
-      const lx = legendGeom(label);
+      const lx = legendGeom(keyLabelRef.current);
 
       ctx.textAlign = "left";
       ctx.fillStyle = INK;
       ctx.font = font(p(lg.titleSize), "600");
-      text(label, L.pad, g.bandTop, g.rowH);
+      text(keyLabelRef.current, L.pad, g.bandTop, g.rowH);
 
       // One rectangle per class, not a gradient. The map paints CLASSES discrete
       // colours; interpolating between them would put colours in the key that no
@@ -537,10 +544,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       hair();
       ctx.strokeRect(p(lx.barX), p(g.bandTop), p(lg.barW), p(lg.barH));
 
-      // Labels sit under the boundary they name — break i is the edge between
-      // class i and i+1 — not spread evenly and hoped for. This used to print the
-      // 5th, 50th and 95th percentiles of the values at the two ends and the
-      // middle of the strip, which describes a scale the map is not painting.
+      // Labels sit under the boundary they name: break i is the edge between class i
+      // and i+1.
       ctx.fillStyle = MUTED;
       ctx.font = font(p(lg.labelSize), "600");
       ctx.textAlign = "center";
@@ -590,6 +595,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   // `showCities`, `includeTitle` and `includeLegend` are deliberately absent:
   // labels are a visibility change and the two layout toggles only move the
   // frame, neither of which is a reason to tear down and re-download three maps.
+  // So is the colour scale: it only changes classes, which are repainted in place below.
   const mapCreationKey = useMemo(
     () => `${regionScope}|${regionName}|${selectedMetric}|${filteredData.length}|${scaleOk}`,
     [regionScope, regionName, selectedMetric, filteredData.length, scaleOk],
@@ -600,6 +606,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     setMapsLoaded(false);
     setInsetScales({});
     cityLayersRef.current = {};
+    paintedRef.current = {};
     mainFitRef.current = null;
 
     (["main", "alaska", "hawaii"] as const).forEach(k => {
@@ -612,7 +619,6 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       return;
     }
 
-    const currentClasses = classesRef.current;
     const pmtilesUrl = dataUrl("us_zip_codes.pmtiles");
     const frame = layout(includeTitleRef.current, includeLegendRef.current);
     const insetsDrawn = regionScope === "national" && (alaskaZips.size > 0 || hawaiiZips.size > 0);
@@ -767,14 +773,16 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
             paint: { "line-color": "rgba(0,0,0,0.1)", "line-width": 0.5 },
           }, firstCityLayerId);
 
-          const zipsToColor = validZips ?? new Set(currentClasses.keys());
+          const zipsToColor = validZips ?? new Set(classesRef.current.keys());
           let featureStatesApplied = false;
 
           const applyFeatureStates = () => {
             if (featureStatesApplied || isCleanedUp) return;
             featureStatesApplied = true;
+            const classes = classesRef.current;
+            paintedRef.current[key] = { zips: zipsToColor, classes };
             zipsToColor.forEach(zipCode => {
-              const k = currentClasses.get(zipCode);
+              const k = classes.get(zipCode);
               // A ZIP with no value is left unset. `coalesce` in the expression
               // resolves that to -1, which the match answers with NO_DATA_COLOR.
               if (k !== undefined) {
@@ -871,6 +879,25 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     });
   }, [includeTitle, includeLegend, mapsLoaded]);
 
+  // A new colour scale re-sets each ZIP's class on the maps already built, the way the
+  // live map repaints, instead of rebuilding them and waiting on tiles again.
+  useEffect(() => {
+    if (!mapsLoaded) return;
+    (["main", "alaska", "hawaii"] as const).forEach(key => {
+      const map = mapsRef.current[key];
+      const painted = paintedRef.current[key];
+      if (!map || !painted || painted.classes === classesByZip) return;
+      painted.zips.forEach(zipCode => {
+        const k = classesByZip.get(zipCode);
+        if (k !== undefined) {
+          map.setFeatureState({ source: "zips", sourceLayer: "us_zip_codes", id: zipCode }, { k });
+        }
+      });
+      painted.classes = classesByZip;
+      map.triggerRepaint();
+    });
+  }, [classesByZip, mapsLoaded]);
+
   // City labels: a layout property on layers already found at load, so the
   // toggle costs a repaint rather than three rebuilds and a tile re-download.
   useEffect(() => {
@@ -910,7 +937,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     </div>
   );
 
-  const lx = useMemo(() => legendGeom(metricLabel), [metricLabel]);
+  const lx = useMemo(() => legendGeom(keyLabel), [keyLabel]);
 
   return (
     <div className="w-full h-full flex items-center justify-center overflow-hidden bg-muted/10 select-none">
@@ -1004,7 +1031,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
                 whiteSpace: "pre", overflow: "hidden",
               }}
             >
-              {metricLabel}
+              {keyLabel}
             </div>
             <div
               style={{
