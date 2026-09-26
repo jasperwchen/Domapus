@@ -1,7 +1,7 @@
 {
-  "generated_utc": "2026-09-20T02:35:22.160691+00:00",
-  "content_digest": "7b93f23dc2244d1d7988b426d7d657c98d51a05511d34f6e6e8d33d1f76cfc2c",
-  "previous_content_digest": "e9bdd7ac6a563208f0cedfe05f17abadfacec7dff8bb5ccbd1cc78ed24cb8230",
+  "generated_utc": "2026-09-26T01:43:37.341632+00:00",
+  "content_digest": "59202f30b92b1b2906ca00b200df46f29b9f04e9c2b86ad4c16f1a0fb04fbdca",
+  "previous_content_digest": "7b93f23dc2244d1d7988b426d7d657c98d51a05511d34f6e6e8d33d1f76cfc2c",
   "content_changed": true,
   "redfin": {
     "period_end": "2026-08-31",
@@ -24,12 +24,12 @@
     }
   },
   "fingerprints": {
-    "redfin": "8fa7ae85b761abda",
+    "redfin": "114e069dd7b7ea40",
     "zhvi": "fc6de50786ebf868"
   },
   "upstream": {
     "redfin": {
-      "last_modified": "Sat, 12 Sep 2026 11:50:45 GMT",
+      "last_modified": "Mon, 21 Sep 2026 18:23:22 GMT",
       "content_length": 1332087509
     },
     "zhvi": {
@@ -50,64 +50,27 @@
   },
   "orphans": 821,
   "changed": {
-    "status": "compared",
+    "status": "format_change",
     "zips": {
       "total": 33771,
       "added": 0,
       "removed": 0,
-      "changed": 29509
+      "changed": 33771
     },
-    "data_points": 839333,
-    "by_column": {
-      "mlp": 27597,
-      "lppsf": 27554,
-      "msp": 26431,
-      "dom_rse": 26405,
-      "ppsf": 26306,
-      "zhvi": 26259,
-      "f_h12": 26258,
-      "msp_rse": 26156,
-      "zhvi_yoy": 26088,
-      "mlp_yoy": 25975,
-      "lppsf_yoy": 25948,
-      "zhvi_mom": 25846,
-      "al_yoy": 25491,
-      "nl_yoy": 24814,
-      "msp_yoy": 24506,
-      "inv_yoy": 24468,
-      "ppsf_yoy": 24458,
-      "s2l": 24310,
-      "om2_yoy": 23941,
-      "ps_yoy": 23788,
-      "om2": 23598,
-      "s2l_yoy": 23263,
-      "hs_yoy": 23211,
-      "nl": 23118,
-      "mos": 22931,
-      "al": 22909,
-      "dom_yoy_d": 22909,
-      "inv": 22643,
-      "mos_yoy_m": 22580,
-      "ps": 22080,
-      "hs": 21624,
-      "dom": 21596,
-      "abv_yoy": 21509,
-      "abv": 20463,
-      "f_sigma": 9623,
-      "rel": 1257,
-      "lisa": 843,
-      "cov": 575,
-      "f_tier": 2
-    },
-    "compared_against_built_utc": "2026-09-12T02:23:26.596873+00:00"
+    "data_points": null,
+    "by_column": {},
+    "live_version": 3,
+    "live_columns": 50,
+    "note": "the wire format changed; every ZIP reads as changed for a structural reason, so a movement count would be a lie",
+    "compared_against_built_utc": "2026-09-20T02:35:22.160691+00:00"
   },
   "validation": {
     "period_age_days": {
-      "redfin": 20,
-      "zhvi": 20
+      "redfin": 26,
+      "zhvi": 26
     },
     "period_gap_months": 0,
-    "columns": 50,
+    "columns": 49,
     "zips": 33771
   },
   "changes": {
@@ -215,33 +178,33 @@
     "failures": [],
     "observed": {
       "median_sale_price": {
-        "moved_gt_25pct": 0.1218,
-        "comparable": 24770,
-        "national_median_shift": 0.00133
+        "moved_gt_25pct": 0.0,
+        "comparable": 25600,
+        "national_median_shift": 0.0
       },
       "median_list_price": {
-        "moved_gt_25pct": 0.12513,
-        "comparable": 26044,
-        "national_median_shift": -0.02612
+        "moved_gt_25pct": 0.0,
+        "comparable": 26783,
+        "national_median_shift": 0.0
       },
       "median_ppsf": {
-        "moved_gt_25pct": 0.08584,
-        "comparable": 24719,
-        "national_median_shift": 0.00137
+        "moved_gt_25pct": 0.0,
+        "comparable": 25550,
+        "national_median_shift": 0.0
       },
       "zhvi": {
-        "moved_gt_25pct": 0.0005,
+        "moved_gt_25pct": 0.0,
         "comparable": 26261,
-        "national_median_shift": -0.00411
+        "national_median_shift": 0.0
       },
       "homes_sold": {
-        "national_total_shift": -0.0071
+        "national_total_shift": 0.0
       },
       "coverage": {
-        "both": 0.00043,
-        "redfin_only": 0.00211,
-        "zhvi_only": -0.01824,
-        "no_data": -0.00143
+        "both": 0.0,
+        "redfin_only": 0.0,
+        "zhvi_only": 0.0,
+        "no_data": 0.0
       }
     },
     "overridden": false,
@@ -249,9 +212,9 @@
   },
   "snapshot": {
     "zips": 33771,
-    "columns": 50,
-    "bytes": 10904990,
-    "payload_digest": "cc95c3d96030c7eccfe1eb81be1bcead610cacf459047c7d675ac20377b10764"
+    "columns": 49,
+    "bytes": 10499576,
+    "payload_digest": "2ecff4a3b1c127159f877778a61959fc71258a22b1420f405a031bbe5ee898b6"
   },
   "noise": {
     "K": 0.5594,
@@ -508,40 +471,35 @@
     "permutations": 999,
     "fdr_q": 0.05,
     "moran_I_by_k": {
-      "4": 0.7672,
-      "8": 0.731,
-      "16": 0.6831,
-      "32": 0.6332
+      "4": 0.7679,
+      "8": 0.7314,
+      "16": 0.6829,
+      "32": 0.6325
     },
     "class_counts": {
-      "ns": 6708,
-      "HH": 1448,
-      "LL": 1361,
-      "LH": 21,
-      "HL": 32
+      "ns": 6886,
+      "HH": 1381,
+      "LL": 1249,
+      "LH": 14,
+      "HL": 40
     },
     "lisa_median_n_by_class": {
-      "ns": 87,
+      "ns": 86,
       "HH": 73,
       "LL": 69,
-      "LH": 83,
-      "HL": 80
+      "LH": 84,
+      "HL": 77
     },
-    "bh_significant": 2862,
-    "raw_p_below_05": 3811,
-    "hysteresis_held": 172,
-    "median_8th_neighbour_km": 15.52,
+    "bh_significant": 2684,
+    "raw_p_below_05": 3800,
+    "hysteresis_held": 0,
+    "held": [],
+    "median_8th_neighbour_km": 15.53,
     "bonferroni_threshold": 5.22466039707419e-06,
     "bonferroni_attainable": false,
     "permutations_for_bonferroni": 191399
   },
   "classes": 14,
-  "diverging": {
-    "bound": 20.0,
-    "p95": 18.83,
-    "cells": 6163907,
-    "share_clamped": 0.0405
-  },
   "classing": {
     "zhvi": {
       "scheme": "log_equal_p1_p99",
@@ -876,47 +834,6 @@
       "bottom_class_share": 0.0606,
       "clamped_low": 1470,
       "clamped_high": 5506
-    },
-    "zhvi_yoy": {
-      "scheme": "diverging",
-      "classes": 14,
-      "breaks": [
-        -20.0,
-        -16.6667,
-        -13.3333,
-        -10.0,
-        -6.6667,
-        -3.3333,
-        0.0,
-        3.3333,
-        6.6667,
-        10.0,
-        13.3333,
-        16.6667,
-        20.0
-      ],
-      "class_counts": [
-        50,
-        33,
-        80,
-        142,
-        332,
-        1139,
-        4294,
-        8386,
-        7213,
-        3169,
-        992,
-        287,
-        110,
-        32
-      ],
-      "non_null": 26259,
-      "break_population": null,
-      "break_gate": null,
-      "bottom_class_share": 0.0019,
-      "clamped_low": 50,
-      "clamped_high": 32
     }
   },
   "history": {
@@ -1001,14 +918,6 @@
         "sha256": "fd94a4088fdb483fc6fd51df9d119971c6673529f06ddfcc912d07eadfcba9ab",
         "zips_set": 24261,
         "max_byte": 62,
-        "fade_exempt": false
-      },
-      "zhvi_yoy": {
-        "file": "paint/zhvi_yoy-6c57fd29.u8",
-        "bytes": 100000,
-        "sha256": "6c57fd29eabdcc73cd9d1dd95368955f6b8a9e32f22152ac6afcba202df516fe",
-        "zips_set": 26259,
-        "max_byte": 59,
         "fade_exempt": false
       }
     },
