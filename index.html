@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+
+  <!-- public/404.html stashes the requested SPA path and bounces here. Restore it
+       in static HTML, before anything reads the URL: React Router reads location
+       once on mount and does not observe history.replaceState. -->
+  <script>
+    (function () {
+      var stored;
+      try {
+        stored = sessionStorage.getItem('spaPath');
+        if (stored) sessionStorage.removeItem('spaPath');
+      } catch (err) { return; }
+      // Stored base-relative; a leading slash is not ours, so ignore it.
+      if (!stored || stored.charAt(0) === '/') return;
+      var dir = window.location.pathname.replace(/[^/]*$/, '');
+      window.history.replaceState(null, '', dir + stored);
+    })();
+  </script>
+
+  <!-- Google Tag Manager -->
+  <script>
+    (function (w, d, s, l, i) {
+      w[l] = w[l] || [];
+      w[l].push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+      var f = d.getElementsByTagName(s)[0],
+        j = d.createElement(s),
+        dl = l != "dataLayer" ? "&l=" + l : "";
+      j.async = true;
+      j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
+      f.parentNode.insertBefore(j, f);
+    })(window, document, "script", "dataLayer", "GTM-PNP9L5ZD");
+  </script>
+  <!-- End Google Tag Manager -->
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Domapus: ZIP Code Housing Data Map</title>
+  <meta name="description"
+    content="Interactive map showing ZIP-level housing data. Compare median prices, price per sqft, and days on market across 33,000+ U.S. ZIP codes.">
+  <meta name="author" content="Jasper Chen" />
+
+  <!-- SEO: Canonical Link -->
+  <link rel="canonical" href="https://jasperwchen.github.io/Domapus/" />
+  <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin />
+  <link rel="preconnect" href="https://www.google-analytics.com" crossorigin />
+  <link rel="preconnect" href="https://basemaps.cartocdn.com" crossorigin />
+  <link rel="preconnect" href="https://tiles.basemaps.cartocdn.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Manifest and paint table start in the same tick; the paint filename map is
+       inlined at build time so the two fetches are not chained.
+       `crossorigin` is required on this as="fetch" preload even same-origin, or it
+       lands in a different cache entry from fetch() and downloads twice (measured:
+       bytes to first colour 27,780 -> 55,560 without it). The paint table is not
+       preloaded because its filename depends on ?metric=. -->
+  <link rel="preload" href="/Domapus/data/manifest.json" as="fetch" crossorigin />
+  <script>
+    (function () {
+      var base = new URL('/Domapus/data/', document.baseURI).href;
+      var paint = JSON.parse('{"zhvi":"paint/zhvi-e8c36534.u8","median_sale_price":"paint/median_sale_price-51d098c6.u8","median_ppsf":"paint/median_ppsf-a1c693d0.u8","homes_sold":"paint/homes_sold-b420ad28.u8","active_listings":"paint/active_listings-2106908e.u8","median_dom":"paint/median_dom-7ebf0a48.u8","sold_above_list":"paint/sold_above_list-ba4c189e.u8","months_of_supply":"paint/months_of_supply-fd94a408.u8"}');
+      var metric = new URLSearchParams(location.search).get('metric') || 'zhvi';
+      // Own keys only: ?metric=__proto__ must not resolve to a prototype. Report the metric
+      // actually fetched, so a fallback is never labelled with the requested name.
+      if (!Object.prototype.hasOwnProperty.call(paint, metric)) metric = 'zhvi';
+      var file = paint[metric];
+      var ok = function (r) { if (!r.ok) throw new Error(r.status); return r; };
+
+      // The methodology page draws no map, so skip the paint table and snapshot.
+      // Consumers treat a null boot as "fetch it yourself".
+      var mapless = /\/methodology\/?$/.test(location.pathname);
+
+      // No inlined map (a build before the first pipeline run): resolve null.
+      window.__domapusBoot = file && !mapless
+        ? Promise.all([
+            fetch(base + 'manifest.json').then(function (r) { return ok(r).json(); }),
+            fetch(base + file).then(function (r) { return ok(r).arrayBuffer(); })
+          ]).then(function (v) {
+            return { manifest: v[0], paint: v[1], metric: metric };
+          }).catch(function () { return null; })
+        : Promise.resolve(null);
+
+      window.__zipDataPromise = mapless
+        ? Promise.resolve(null)
+        : fetch(base + 'zip-data.json')
+            .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+            .catch(function () { return null; });
+    })();
+  </script>
+
+  <!-- Favicon and Manifest links -->
+  <link rel="icon" href="/Domapus/Logo.svg" type="image/svg+xml" />
+  <link rel="icon" href="/Domapus/favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/Domapus/apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/Domapus/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/Domapus/favicon-16x16.png" />
+  <link rel="manifest" href="/Domapus/site.webmanifest" />
+
+  <!-- Structured Data (JSON-LD) -->
+  <script
+    type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Dataset","name":"Interactive U.S. Housing Data Analysis","description":"Aggregated Redfin and Zillow real estate data for 33,000+ US ZIP codes.","url":"https://jasperwchen.github.io/Domapus/","isAccessibleForFree":true,"license":"https://github.com/jasperwchen/Domapus/blob/main/LICENSE.md","creator":{"@type":"Person","name":"Jasper Chen"},"spatialCoverage":{"@type":"Place","name":"United States"},"distribution":{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":"https://jasperwchen.github.io/Domapus/data/zip-data.json"}},{"@type":"WebApplication","name":"Domapus","url":"https://jasperwchen.github.io/Domapus/","applicationCategory":"VisualizationTool","operatingSystem":"Web Browser","description":"Monthly ZIP-code-level housing data visualization tool exploring prices and inventory trends."}]}</script>
+
+  <!-- Open Graph / Social Media -->
+  <meta property="og:image" content="https://jasperwchen.github.io/Domapus/preview.png" />
+  <meta property="og:url" content="https://jasperwchen.github.io/Domapus/" />
+  <meta property="og:type" content="website" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://jasperwchen.github.io/Domapus/preview.png" />
+  <meta name="twitter:creator" content="@Jasperwchen" />
+  <meta property="og:title" content="Domapus: ZIP Code Housing Data Map">
+  <meta name="twitter:title" content="Domapus: ZIP Code Housing Data Map">
+  <meta property="og:description"
+    content="Interactive map showing ZIP-level housing data. Compare median prices, price per sqft, and days on market across 33,000+ U.S. ZIP codes.">
+  <meta name="twitter:description"
+    content="Interactive map showing ZIP-level housing data. Compare median prices, price per sqft, and days on market across 33,000+ U.S. ZIP codes.">
+  <script type="module" crossorigin src="/Domapus/assets/index-D9kWURFu.js"></script>
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/rolldown-runtime-CbXtAM7H.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/jsx-runtime-BkYz1wMz.js">
+  <link rel="modulepreload" crossorigin href="/Domapus/assets/maplibre-B-1l30OB.js">
+  <link rel="stylesheet" crossorigin href="/Domapus/assets/maplibre-B8-mEBLf.css">
+  <link rel="stylesheet" crossorigin href="/Domapus/assets/index-BzTD9U1-.css">
+</head>
+
+<body>
+  <!-- Google Tag Manager (noscript) -->
+  <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PNP9L5ZD" height="0" width="0"
+      style="display: none; visibility: hidden"></iframe></noscript>
+
+  <div id="root"></div>
+</body>
+
+</html>
