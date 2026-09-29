@@ -150,7 +150,7 @@ def write(panel_path: Path, zhvi_panel_path: Path, records: dict, out_dir: Path,
     index_path.write_text(json.dumps(index, separators=(",", ":")), encoding="utf-8")
     total_bytes += index_path.stat().st_size
 
-    _assert_contracts(out_dir, periods, months, written, zips_written)
+    _assert_contracts(out_dir, periods, months, written)
 
     report = {
         "buckets": written,
@@ -180,7 +180,7 @@ def _median_size(out_dir: Path) -> int:
     return sizes[len(sizes) // 2] if sizes else 0
 
 
-def _assert_contracts(out_dir: Path, periods, months, written, zips_written) -> None:
+def _assert_contracts(out_dir: Path, periods, months, written) -> None:
     """CONTRACT tier. Each has a matching frontend assumption."""
     if written == 0:
         raise PipelineError("history: no buckets written")

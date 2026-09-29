@@ -3,14 +3,6 @@
 Open items only. Finished work goes to `docs/CHANGES.md`; standing rules live in `CLAUDE.md`.
 Delete an item here when it is done and record it there.
 
-## Current objective (2026-09-25, later)
-
-Export panel requests and the full review are done and recorded in `docs/CHANGES.md`
-("2026-09-25 (later)"). Nothing from 2026-09-23 on is committed yet; before a commit, ask about
-temp files (the scratchpad is outside the repo).
-
-What is left: 1c is deferred, 3i stays parked on it, 3l is ongoing, and section 2 needs you.
-
 The list is split by what it needs from you:
 
 1. **Decide.** There is more than one reasonable answer and it is your call.
@@ -34,16 +26,8 @@ the map already reads as busy, and stripes add texture on top. 3i waits on this.
 
 ## 2. Things only you can do
 
-### 2a. Test the monthly data run by hand once
-
-The monthly GitHub Action (`update_data.yml`) has a few steps that ordinary CI cannot
-exercise, because they only run inside a real data run. Go to GitHub, Actions, "Update data",
-"Run workflow" on `main` with default inputs. Since nothing new has been published upstream,
-it should finish in seconds with "no change" and download nothing. That proves the early exit
-works. Costs nothing and changes nothing.
-
-The rest (checking that stale colour files get deleted and that an override reason reaches the
-manifest word for word) can only be checked on the next real monthly run, 2026-10-18. That run
+The rest of the data-run checks (stale colour files deleted, an override reason reaching the
+manifest word for word) can only be seen on the next real monthly run, 2026-10-18. That run
 will also delete `zhvi_yoy-*.u8`, a real test of the stale-file path. I will check that run's
 log if you ask.
 

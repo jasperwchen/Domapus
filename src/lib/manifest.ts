@@ -13,11 +13,12 @@ export interface PaintAsset {
 }
 
 export interface Manifest {
+  release_id?: string;
   generated_utc: string;
   classes: number;
   redfin: { period_end: string | null; period_begin: string | null; vintage: string };
   zhvi: { period_end: string | null };
-  assets: { paint: Record<string, PaintAsset>; snapshot: string };
+  assets: { paint: Record<string, PaintAsset>; snapshot: string; history?: string };
   /** `break_gate`: `rankable` for estimates, `all_reporting` for exact counts. */
   classing: Record<string, {
     scheme: string; breaks: number[]; class_counts: number[];
@@ -68,16 +69,23 @@ export function boot(): Promise<BootPayload | null> {
 /** The prefetched snapshot, handed over exactly once. The buffer is transferred to the
  *  worker and detached, and the dashboard remounts on Back from /methodology; a second reader
  *  would post a detached buffer and hang. Returns null so the caller fetches the URL. */
-export function takeSnapshotPrefetch(): Promise<ArrayBuffer | null> {
+export async function takeSnapshotPrefetch(): Promise<ArrayBuffer | null> {
   const w = window as unknown as Record<string, unknown>;
   const p = w.__zipDataPromise as Promise<ArrayBuffer | null> | undefined;
   w.__zipDataPromise = undefined;
-  return p ? p.then((buf) => (buf && buf.byteLength > 0 ? buf : null)) : Promise.resolve(null);
+  if (!p) return null;
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    return await Promise.race([
+      p.then(buf => buf && buf.byteLength > 0 ? buf : null).catch(() => null),
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 120_000); }),
+    ]);
+  } finally { clearTimeout(timer!); }
 }
 
 /** `fresh` revalidates past the HTTP cache: Pages serves JSON with max-age=600. */
 export function fetchManifest(fresh = false): Promise<Manifest> {
-  return fetch(dataUrl("manifest.json"), fresh ? { cache: "no-cache" } : undefined).then((r) => {
+  return fetch(dataUrl("manifest.json"), { cache: fresh ? "no-cache" : "default", signal: AbortSignal.timeout(30_000) }).then((r) => {
     if (!r.ok) throw new Error(`manifest.json returned ${r.status}`);
     return r.json() as Promise<Manifest>;
   });
@@ -87,7 +95,7 @@ export function fetchManifest(fresh = false): Promise<Manifest> {
 export function fetchPaint(manifest: Manifest, metric: string): Promise<ArrayBuffer> {
   const asset = manifest.assets?.paint?.[metric];
   if (!asset) throw new Error(`manifest declares no paint table for ${metric}`);
-  return fetch(dataUrl(asset.file)).then((r) => {
+  return fetch(dataUrl(asset.file), { signal: AbortSignal.timeout(30_000) }).then((r) => {
     if (!r.ok) throw new Error(`${asset.file} returned ${r.status}`);
     return r.arrayBuffer();
   });

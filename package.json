@@ -12,8 +12,6 @@
     "tree": "node scripts/generate-tree.mjs",
     "license:year": "node scripts/update_license_year.mjs",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist",
     "test": "vitest",
     "geometry": "bash scripts/geometry/build_geometry.sh",
     "geometry:verify": "node scripts/geometry/verify_coverage.mjs"

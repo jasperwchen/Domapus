@@ -149,6 +149,7 @@ function IconLink({ label, className, external = false, children, ...dest }: Ico
 }
 
 interface TopBarProps {
+  dates?: DataDates;
   selectedMetric: MetricType;
   onMetricChange: (metric: MetricType) => void;
   onSearch: (zipCode: string, trigger: number) => void;
@@ -162,11 +163,14 @@ export function TopBar({
   onSearch,
   hideMobileControls = false,
   children,
+  dates,
 }: TopBarProps) {
   const isMobile = useIsMobile();
-  const [dataDates, setDataDates] = useState<DataDates>(EMPTY_DATA_DATES);
+  const [fetchedDates, setDataDates] = useState<DataDates>(EMPTY_DATA_DATES);
+  const dataDates = dates ?? fetchedDates;
 
   useEffect(() => {
+    if (dates) return;
     let isMounted = true;
     fetchDataDates()
       .then((dates) => { if (isMounted) setDataDates(dates); })
@@ -175,7 +179,7 @@ export function TopBar({
         trackError("last_updated_fetch_failed", err instanceof Error ? err.message : "Failed to fetch last updated");
       });
     return () => { isMounted = false; };
-  }, []);
+  }, [dates]);
 
   const isZillowMetric = selectedMetric.startsWith("zhvi");
   const activePeriod = isZillowMetric

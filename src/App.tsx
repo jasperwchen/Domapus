@@ -2,13 +2,13 @@ import { useEffect, lazy, Suspense } from 'react';
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { trackError } from './lib/analytics';
 
 // Lazy: the methodology page is a reference document, not part of the map's
 // critical path, and it should not sit in the bundle every visitor downloads.
 const Methodology = lazy(() => import("./pages/Methodology"));
+const Index = lazy(() => import("./pages/Index"));
 
 // "/Domapus" in production, "/Domapus/pr-preview/pr-N" in a preview, "/" in dev.
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';

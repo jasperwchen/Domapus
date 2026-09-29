@@ -12,8 +12,6 @@ from .contracts import PipelineError, assert_zip_format
 
 log = logging.getLogger(__name__)
 
-COLUMNS = ["city", "county", "state", "metro", "lat", "lng"]
-
 # Untrusted strings reach the DOM: strip control characters and cap length.
 MAX_STRING = 128
 

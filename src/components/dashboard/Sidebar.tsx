@@ -24,9 +24,7 @@ interface SidebarProps {
   /** What the map is currently painting. The panel leads with it, because it is
    *  the number the reader just clicked on. */
   selectedMetric: string;
-  /** Owned by `HousingDashboard`, not by this component. See the note there: the
-   *  local version of this state caused a map click to replace the ZIP being
-   *  compared against, and survived the panel being closed. */
+  /** Dashboard-owned so map clicks update the intended comparison side. */
   mode: "detail" | "compare";
   onModeChange: (mode: "detail" | "compare") => void;
   compareZip: ZipData | null;

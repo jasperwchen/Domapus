@@ -75,16 +75,17 @@
       // No inlined map (a build before the first pipeline run): resolve null.
       window.__domapusBoot = file && !mapless
         ? Promise.all([
-            fetch(base + 'manifest.json').then(function (r) { return ok(r).json(); }),
-            fetch(base + file).then(function (r) { return ok(r).arrayBuffer(); })
+            fetch(base + 'manifest.json', { signal: AbortSignal.timeout(30000) }).then(function (r) { return ok(r).json(); }),
+            fetch(base + file, { signal: AbortSignal.timeout(30000) }).then(function (r) { return ok(r).arrayBuffer(); })
           ]).then(function (v) {
+            if (v[0].assets.paint[metric].file !== file) throw new Error('Release changed');
             return { manifest: v[0], paint: v[1], metric: metric };
           }).catch(function () { return null; })
         : Promise.resolve(null);
 
       window.__zipDataPromise = mapless
         ? Promise.resolve(null)
-        : fetch(base + 'zip-data.json')
+        : fetch(base + '%VITE_SNAPSHOT_FILE%', { signal: AbortSignal.timeout(120000) })
             .then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
             .catch(function () { return null; });
     })();

@@ -71,6 +71,8 @@ export class ChoroplethPainter {
   private src: ClassSource | null = null;
   private writes = 0;
   private skipped = 0;
+  private onPainted: (() => void) | undefined;
+  private afterRender: (() => void) | null = null;
   /**
    * Last (k, rel) written per ZIP, so an unchanged ZIP costs nothing. Keyed on both fields:
    * keying on k alone left the fade on when switching to a fade-exempt metric. Assumes
@@ -85,9 +87,13 @@ export class ChoroplethPainter {
 
   constructor(private readonly map: maplibregl.Map) {}
 
-  schedule(src: ClassSource): void {
+  schedule(src: ClassSource, onPainted?: () => void): void {
+    if (this.afterRender) this.map.off("render", this.afterRender);
+    this.afterRender = null;
+    this.onPainted = onPainted;
     // Already fully applied, and nothing has changed.
     if (this.src === src && src.epoch === this.epochApplied && this.cursor >= src.zips.length) {
+      this.awaitRender(src);
       return;
     }
     this.src = src;
@@ -102,10 +108,25 @@ export class ChoroplethPainter {
   }
 
   dispose(): void {
+    if (this.afterRender) this.map.off("render", this.afterRender);
+    this.afterRender = null;
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;
     this.src = null;
     this.lastWritten.clear();
+  }
+
+  private awaitRender(src: ClassSource): void {
+    if (!this.onPainted) return;
+    const callback = this.onPainted;
+    const done = () => {
+      this.map.off("render", done);
+      if (this.afterRender === done) this.afterRender = null;
+      if (this.src === src) callback();
+    };
+    this.afterRender = done;
+    this.map.on("render", done);
+    this.map.triggerRepaint();
   }
 
   private pump(): void {
@@ -146,6 +167,7 @@ export class ChoroplethPainter {
       skipped: this.skipped,
       epoch: this.epochApplied,
     });
+    this.awaitRender(src);
   }
 }
 

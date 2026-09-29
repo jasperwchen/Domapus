@@ -1,16 +1,6 @@
 name: Deploy
 
-# `workflow_call` is the fix for the deploy bug. `update_data.yml` pushes its data
-# commit with the default GITHUB_TOKEN, and GitHub's documented loop prevention
-# means a push made with GITHUB_TOKEN does NOT trigger workflows — so this file's
-# `on: push` never fired for the data commit and new data sat on main unpublished
-# until an unrelated human push happened to redeploy it.
-#
-# Calling this workflow from inside the same run graph sidesteps the loop
-# prevention entirely. The failure symptom of a MISWIRED workflow_call is
-# identical to the original bug (a data commit that never deploys), so verify
-# that a Deploy job actually appears in the run graph — not merely that the YAML
-# parses.
+# GITHUB_TOKEN pushes do not trigger workflows; data updates call Deploy directly.
 on:
   workflow_call:
     inputs:
@@ -39,11 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          # LOAD-BEARING under workflow_call. This job inherits the CALLER's
-          # event, so actions/checkout would otherwise default to github.sha —
-          # the SHA as of when the cron fired, which is BEFORE the data commit.
-          # Deploying that SHA republishes LAST month's data and looks exactly
-          # like the bug this whole wiring exists to fix.
+          # The caller's event SHA predates its data commit. Deploy the supplied SHA.
           ref: ${{ inputs.ref || github.sha }}
 
       - name: Report what is being deployed
@@ -63,40 +49,28 @@ jobs:
 
       - run: npm ci
 
-      - name: Unpack the history buckets from the data release
-        # S8's ~6,100 buckets are gitignored (121 MB, regenerated monthly), so a fresh
-        # checkout has no public/data/history and the build would publish a site whose
-        # sidebar chart 404s for every ZIP.
-        #
-        # This warns rather than fails, unlike the geometry asset. The history chart is
-        # deliberate progressive enhancement — Sparkline.tsx renders "History is
-        # unavailable" and the other 15 metric cards are untouched — so a missing bundle
-        # costs one panel, not the map. Failing the deploy over it would be worse than
-        # shipping without it.
+      - name: Restore and verify the release history
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -d public/data/history ]; then
-            echo "history/ is already in the tree; not fetching."
-            exit 0
-          fi
-          PERIOD=$(jq -r '.redfin.period_end // empty' public/data/manifest.json)
-          if [ -z "$PERIOD" ]; then
-            echo "::warning::manifest.json has no redfin.period_end; skipping history."
-            exit 0
-          fi
+          PERIOD=$(jq -er '.redfin.period_end' public/data/manifest.json)
           TAG="data-${PERIOD%-*}"
-          ASSET="history-$PERIOD.tar.gz"
-          if gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP" 2>/dev/null; then
-            mkdir -p public/data/history
-            tar -xzf "$RUNNER_TEMP/$ASSET" -C public/data/history
-            rm -f "$RUNNER_TEMP/$ASSET"
-            echo "Unpacked $(ls public/data/history | wc -l) history files from $TAG/$ASSET."
+          ASSET=$(jq -r '.assets.archives.history.file // empty' public/data/manifest.json)
+          SHA=$(jq -r '.assets.archives.history.sha256 // empty' public/data/manifest.json)
+          if [ -z "$ASSET" ]; then
+            # Compatibility with releases published before immutable archives.
+            ASSET="history-$PERIOD.tar.gz"
+            if ! gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP"; then
+              echo "::warning::Legacy history archive unavailable."
+              exit 0
+            fi
           else
-            echo "::warning::$TAG has no $ASSET. The sidebar history chart will show its"
-            echo "::warning::unavailable state. Everything else deploys normally."
+            gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP"
+            echo "$SHA  $RUNNER_TEMP/$ASSET" | sha256sum -c -
           fi
+          mkdir -p public/data/history
+          tar -xzf "$RUNNER_TEMP/$ASSET" -C public/data/history
 
       # CI runs beside this job and nothing waits on it; the frontend tests are what stop a
       # class-count mismatch with the published data (a grey map) from shipping.

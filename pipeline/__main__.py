@@ -90,15 +90,14 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
             fingerprints[label] = sources.fingerprint(probes[label])
 
         previous = _live_fingerprints()
-        if previous and previous == fingerprints and not force:
+        if (previous and previous == fingerprints and not force
+                and redfin_csv is None and zhvi_csv is None):
             log.info("Upstream unchanged (fingerprint %s) — nothing to do", fingerprints)
             _report("s0_probe", "ok", probes=probes, fingerprints=fingerprints,
                     unchanged=True)
             return 0
 
-        # Bind the Redfin header HERE, off the 1 MB probe, not after the 1.33 GB download.
-        # The 2026-09-18 run spent the whole download before failing on a renamed column it
-        # had already seen in this probe. Same check, same message, 25 s and 1.33 GB earlier.
+        # Validate the probe header before downloading the 1.33 GB feed.
         binding = units.resolve(sources.probe_header(probes["redfin"]), PipelineError)
         if binding.aliased or binding.missing_yoy:
             log.warning(
@@ -267,15 +266,11 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
 
     # The publish decision: a content digest, not a count. A missing live digest means
     # publish; a redundant deploy is cheap, a skipped one is the original bug.
-    digest = serialize.release_digest(written["payload_digest"], paint_assets)
     live_digest = live_manifest.get("content_digest")
-    content_changed = live_digest is None or digest != live_digest
 
     manifest = {
         "generated_utc": now,
-        "content_digest": digest,
         "previous_content_digest": live_digest,
-        "content_changed": content_changed,
         "redfin": {
             "period_end": redfin_period,
             "period_begin": period_begin,
@@ -307,6 +302,10 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         "assets": {"paint": paint_assets, "snapshot": "zip-data.json",
                    "history": "history/<zip4>.json"},
     }
+    from .release import finalize
+    digest = finalize(BUILD, manifest)
+    content_changed = live_digest is None or digest != live_digest
+    manifest.update(content_digest=digest, content_changed=content_changed)
     (BUILD / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     (BUILD / "orphans.json").write_text(
         json.dumps({"count": coverage["orphans"], "zips": coverage["orphan_zips"]}, indent=2),

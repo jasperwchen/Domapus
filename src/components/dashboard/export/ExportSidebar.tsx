@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { ZipData } from "../map/types";
 import { Download, FileImage, Search, X, Settings2, Microscope, Palette, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,6 +33,7 @@ function starAlreadyClicked(): boolean {
 }
 
 interface ExportSidebarProps {
+  zhviPeriod?: string | null;
   allZipData: Record<string, ZipData>;
   selectedMetric: string;
   /** The class boundaries the live map is painting. Without them there is no honest
@@ -43,7 +45,7 @@ interface ExportSidebarProps {
   onClose: () => void;
 }
 
-export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = null, onClose }: ExportSidebarProps) {
+export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = null, onClose, zhviPeriod }: ExportSidebarProps) {
   const [regionScope, setRegionScope] = useState<"national" | "state" | "metro">("national");
   // National keeps exports comparable with each other; "region" cuts the colours on the
   // exported state or metro alone, for contrast inside it.
@@ -70,6 +72,8 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
 
   const [isExporting, setIsExporting] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
+  const [mapAttempt, setMapAttempt] = useState(0);
 
   const printStageRef = useRef<PrintStageRef>(null);
 
@@ -112,6 +116,8 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape" || isExportingRef.current) return;
+      if (e.defaultPrevented) return;
+      e.preventDefault();
       if (isMetroListOpen) { setIsMetroListOpen(false); return; }
       if (scaleInfoOpen) { setScaleInfoOpen(false); return; }
       onClose();
@@ -222,6 +228,7 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
       : "Too few ZIP codes here with enough sales to set a scale, so the national scale is used.";
 
   const isExportDisabled = () => {
+    if (mapError) return true;
     if (isExporting) return true;
     if (!isMapReady) return true;
     if (!hasValidSelection) return true;
@@ -231,6 +238,7 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
   };
 
   const getButtonText = () => {
+    if (mapError) return "Map unavailable";
     if (isExporting) return "Exporting...";
     if (!scaleAvailable) return "Colour scale unavailable";
     if (!hasValidSelection) {
@@ -282,6 +290,8 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
     });
 
     setIsExporting(true);
+    setIsMetroListOpen(false);
+    setScaleInfoOpen(false);
 
     try {
       const { canvas, links, period } = await printStageRef.current.exportToCanvas();
@@ -392,11 +402,8 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
   };
 
   return (
-    <div
+    <Modal label="Export map" busy={isExporting} onClose={onClose}
       className="fixed inset-0 bg-muted z-50 flex flex-col overflow-y-auto md:flex-row md:overflow-hidden md:bg-background"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Export map"
     >
       {/* Preview Area (top on mobile).
           On a phone the whole dialog scrolls as one column from the top, and the
@@ -407,9 +414,11 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
         <div className="flex-1 flex items-center justify-center min-h-0 w-full">
           {hasValidSelection ? (
             <PrintStage
+              key={mapAttempt}
               ref={printStageRef}
               filteredData={filteredData}
               selectedMetric={selectedMetric}
+              zhviPeriod={zhviPeriod}
               breaks={areaCut ?? breaks}
               scaleLabel={areaCut ? regionName : null}
               regionScope={regionScope}
@@ -418,6 +427,8 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
               includeTitle={includeTitle}
               showCities={showCities}
               onReady={() => setIsMapReady(true)}
+              onLoading={() => { setIsMapReady(false); setMapError(null); }}
+              onError={message => { setIsMapReady(false); setMapError(message); }}
             />
           ) : (
             <div className="bg-white/50 border border-dashed rounded-lg w-full h-full flex items-center justify-center text-muted-foreground text-sm">
@@ -432,7 +443,7 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
           Cancel, and a shadow there reads as a floating card. The page below is
           darker instead, with the panel's own border closing it off. */}
       <div className="order-2 md:order-1 w-full md:w-80 bg-background border-y md:border-y-0 md:border-r h-auto md:h-full md:shadow-xl flex flex-col md:max-h-full">
-        <div className="p-3 md:p-4 space-y-3 md:space-y-4 md:flex-1 md:overflow-y-auto">
+        <fieldset disabled={isExporting} className="p-3 md:p-4 space-y-3 md:space-y-4 md:flex-1 md:overflow-y-auto min-w-0">
           <div className="flex items-center gap-2">
             <Download className="h-4 w-4 text-primary" />
             <h2 className="text-base font-semibold">Export Settings</h2>
@@ -459,7 +470,7 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
                 <div className="order-5 col-span-4 md:order-none md:col-span-1 md:-mt-1 space-y-2 md:space-y-3">
                   {regionScope === 'state' && (
                     <Select value={selectedState} onValueChange={setSelectedState}>
-                      <SelectTrigger className="h-8 md:h-9"><SelectValue placeholder="Select a state" /></SelectTrigger>
+                      <SelectTrigger aria-label="Select a state" className="h-8 md:h-9"><SelectValue placeholder="Select a state" /></SelectTrigger>
                       <SelectContent>{availableStates.map(state => (<SelectItem key={state.code} value={state.code}>{state.name}</SelectItem>))}</SelectContent>
                     </Select>
                   )}
@@ -634,12 +645,15 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
               </div>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         <div
           className="p-3 md:p-4 space-y-2 border-t bg-background"
           style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
         >
+          {mapError && <p role="alert" className="text-sm text-destructive">
+            {mapError} <button className="underline" onClick={() => setMapAttempt(n => n + 1)}>Retry maps</button>
+          </p>}
           <Button id="btn-map-export" onClick={handleExport} disabled={isExportDisabled()} className="w-full" size="default">
             {(isExporting || (!isMapReady && hasValidSelection && scaleAvailable && filteredData.length > 0)) && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
@@ -652,6 +666,6 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
           <Button onClick={onClose} variant="outline" className="w-full" disabled={isExporting}>Cancel</Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -21,9 +21,12 @@ import { MapLibreMap } from "./MapLibreMap";
 import { Legend } from "./Legend";
 import { Sidebar } from "./Sidebar";
 import { MetricType } from "./MetricSelector";
-import { useUrlState } from "@/hooks/useUrlState";
+import { useUrlState, parseView } from "@/hooks/useUrlState";
+import { setHistoryRelease } from "@/lib/history";
+import { formatPeriod, formatRedfinWindow } from "@/lib/data-dates";
 import { PAINTED_METRICS } from "@/lib/metrics";
 import { MobileBottomSheet } from "./MobileBottomSheet";
+import { beginMetricSwitch } from "@/lib/perf";
 
 function getInitialUrlParams() {
   const params = new URLSearchParams(window.location.search);
@@ -33,9 +36,7 @@ function getInitialUrlParams() {
     metric: Object.prototype.hasOwnProperty.call(PAINTED_METRICS, params.get('metric') ?? '')
       ? params.get('metric')!
       : undefined,
-    lat: params.get('lat') ? parseFloat(params.get('lat')!) : undefined,
-    lng: params.get('lng') ? parseFloat(params.get('lng')!) : undefined,
-    zoom: params.get('zoom') ? parseFloat(params.get('zoom')!) : undefined,
+    ...parseView(params),
   };
 }
 
@@ -57,6 +58,8 @@ export function HousingDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [detailsError, setDetailsError] = useState(false);
+  const [detailsAttempt, setDetailsAttempt] = useState(0);
   const [autoScale, setAutoScale] = useState(false);
   const [showLisa, setShowLisa] = useState(false);
 
@@ -143,21 +146,34 @@ export function HousingDashboard() {
 
   // --- The interaction path: the snapshot, off the critical path -------------
   useEffect(() => {
+    if (!manifest) return;
     let alive = true;
+    setStore(null);
+    setSelectedZip(null);
+    setCompareZip(null);
+    setDetailsError(false);
 
     (async () => {
-      const url = dataUrl("zip-data.json");
+      const url = dataUrl(manifest.assets.snapshot);
       // Once only: the buffer is transferred below and this component remounts
       // on browser Back out of the methodology route. See takeSnapshotPrefetch.
-      const early: ArrayBuffer | null = await takeSnapshotPrefetch();
+      const early: ArrayBuffer | null = detailsAttempt === 0 ? await takeSnapshotPrefetch() : null;
 
       try {
-        const result = await processData(
+        let result = await processData(
           { type: "LOAD_SNAPSHOT", data: { url, prefetchedBuffer: early ?? undefined } },
           // Without the prefetch the timer also covers a ~2.5 MB download, ~50 s on slow 3G.
           { transfer: early ? [early] : [], timeout: early ? 30_000 : 120_000 },
         );
+        const matches = () => manifest.release_id
+          ? result.header.release_id === manifest.release_id
+          : result.header.built_utc === manifest.generated_utc;
+        if (!matches() && early) {
+          result = await processData({ type: "LOAD_SNAPSHOT", data: { url } }, { timeout: 120_000 });
+        }
+        if (!matches()) throw new Error("Data release changed. Reload to use the latest release.");
         if (!alive) return;
+        setHistoryRelease(manifest);
         setStore(ZipTable.from(result.header, result.buffers));
       } catch (error: unknown) {
         console.error("[HousingDashboard] Failed to load housing data:", error);
@@ -165,18 +181,14 @@ export function HousingDashboard() {
         // because the paint table is what colours it. Only surface a full-page
         // error if the paint path also failed.
         if (alive) {
-          setLoadError((prev) => prev ?? (
-            error instanceof Error && error.message
-              ? error.message
-              : "Could not load ZIP details. The map still works; try refreshing."
-          ));
+          setDetailsError(true);
         }
       }
     })();
 
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [manifest?.release_id, manifest?.generated_utc, detailsAttempt]);
 
   // A map click in compare mode means "compare against this one", not "switch to
   // this one". The URL keeps naming the primary ZIP: it is what the panel is
@@ -235,10 +247,11 @@ export function HousingDashboard() {
   }, []);
 
   const handleMetricChange = useCallback((metric: MetricType) => {
+    if (metric !== selectedMetric) beginMetricSwitch(metric);
     setSelectedMetric(metric);
     hasUserInteractedRef.current = true;
     setUrlState({ metric, zip: selectedZip?.zipCode });
-  }, [selectedZip, setUrlState]);
+  }, [selectedZip, selectedMetric, setUrlState]);
 
   const autoScaleRef = useRef(autoScale);
   useEffect(() => { autoScaleRef.current = autoScale; }, [autoScale]);
@@ -316,10 +329,7 @@ export function HousingDashboard() {
   // its epoch; the painter sees a new epoch and rewrites the full ZIP set, so the
   // two modes can never overlap or leave stale colours behind.
   const classSource: ClassSource | null = useMemo(() => {
-    // `selectedMetric` changes a tick before the new table lands, so `paint` still holds the
-    // previous metric's bytes for one ~27 KB fetch. Building a source here would label the
-    // new metric's breaks over the old metric's colours. Null instead: the painter keeps the
-    // colours already on the map and the legend drops its numbers until the two agree.
+    // Keep existing colors and hide legend values until the requested table arrives.
     if (!paint || paint.metric !== selectedMetric) return null;
     const spec = manifest?.classing?.[selectedMetric];
     const breaks = spec?.breaks;
@@ -367,6 +377,9 @@ export function HousingDashboard() {
       {/* Sponsor banner, off for now and kept on purpose: do not remove. See SponsorBanner.tsx. */}
       {/* {showSponsorBanner && <SponsorBanner onClose={() => setShowSponsorBanner(false)} />} */}
       <TopBar
+        dates={{ last_updated_utc: manifest?.generated_utc ?? null,
+          period_end: manifest?.redfin.period_end ?? null,
+          zhvi_period_end: manifest?.zhvi.period_end ?? null }}
         selectedMetric={selectedMetric}
         onMetricChange={handleMetricChange}
         onSearch={handleSearch}
@@ -381,6 +394,23 @@ export function HousingDashboard() {
           onExportModeChange={setIsExportMode}
         />
       </TopBar>
+      {manifest && (
+        <details className="xl:hidden bg-dashboard-panel px-3 py-1 text-xs border-b">
+          <summary className="cursor-pointer">
+            {selectedMetric.startsWith("zhvi") ? "Zillow" : "Redfin"}: {formatPeriod(
+              selectedMetric.startsWith("zhvi") ? manifest.zhvi.period_end : manifest.redfin.period_end)}
+          </summary>
+          <p>Zillow monthly index: {formatPeriod(manifest.zhvi.period_end)}.</p>
+          <p>Redfin window: {formatRedfinWindow(manifest.redfin.period_end)}.</p>
+        </details>
+      )}
+      {detailsError && (
+        <div role="alert" className="bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          ZIP details could not load. Search and export are unavailable.
+          <button className="ml-2 underline" onClick={() => setDetailsAttempt(n => n + 1)}>Retry details</button>
+          <button className="ml-2 underline" onClick={() => window.location.reload()}>Reload release</button>
+        </div>
+      )}
       <div className="flex flex-1 relative min-h-[400px] overflow-hidden">
         {isMobile && (
           <MobileBottomSheet isOpen={sidebarOpen} onClose={handleSidebarClose}>

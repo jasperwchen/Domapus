@@ -25,6 +25,25 @@ afterEach(() => vi.unstubAllGlobals());
 const urls = () => fetchMock.mock.calls.map((c) => String(c[0]));
 
 describe("loadHistory", () => {
+  it("refuses a history index from a different release", async () => {
+    history.setHistoryRelease({ release_id: "new", generated_utc: "new",
+      assets: { history: "releases/new/history/<zip4>.json" },
+      redfin: { period_end: "2026-07-31" }, zhvi: { period_end: "2026-07-31" },
+    } as never);
+    expect(await history.loadHistory("01001")).toBeNull();
+    expect(urls()[0]).toContain("releases/new/history/index.json");
+    expect(urls()).toHaveLength(1);
+  });
+
+  it("does not join an old index to a new release's bucket", async () => {
+    let resolveIndex!: (value: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise(resolve => { resolveIndex = resolve; }));
+    const old = history.loadHistory("01001");
+    history.setHistoryRelease({ release_id: "new", generated_utc: "new", assets: {} } as never);
+    resolveIndex(await json(INDEX));
+    expect(await old).toBeNull();
+    expect(urls()).toHaveLength(1);
+  });
   it("keeps the leading zero when picking the bucket", async () => {
     const r = await history.loadHistory("01001");
     expect(r?.series.msp).toEqual([300000]);

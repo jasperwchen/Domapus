@@ -1,24 +1,8 @@
-"""Redfin header -> our key, the accepted spellings of each header, and each column's
-wire precision.
+"""Accepted Redfin headers and wire precision, with newest spellings first.
 
-The feed already ships percent (101.34, not 1.0134): nothing is multiplied by 100.
-
-Headers are matched through a list of accepted spellings, newest first, because Redfin
-renames columns without warning and did so between the 2026-07 and 2026-08 releases:
-`MEDIAN DAYS ON MARKET YOY` was "(%)" holding (now - before) * 100, and became "(DAYS)"
-holding a plain whole-day difference. The 2026-09-18 run died on the missing "(%)" header
-alone — a column whose value `changes.recompute` throws away before anything is published.
-
-So criticality is declared per column and enforced by `resolve`:
-
-    REQUIRED  the 8 identifiers and the 14 levels. The levels ARE the wire.
-    OPTIONAL  the 14 YoY columns. Every one is overwritten by `changes.recompute`; they
-              survive only as evidence for `changes._reconcile`, which is a check on our
-              own arithmetic. Losing one costs a check, not a release, so a missing YoY
-              column becomes an all-null panel column and is reported.
-
-Keeping the panel's schema fixed across releases is the point of that null column: a
-column that vanishes is a crash three stages downstream, where nothing remembers why.
+Identifiers and levels are required. YoY columns support reconciliation but are
+recomputed before publication; missing ones stay null to preserve the panel schema.
+The feed already uses percentages (101.34, not 1.0134).
 """
 
 import difflib

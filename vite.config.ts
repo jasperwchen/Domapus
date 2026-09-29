@@ -2,16 +2,9 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync } from "fs";
 import path from "path";
+import { stagePublic } from "./scripts/stage-public.mjs";
 
-// The metric -> hashed-paint-filename map, resolved at BUILD time so index.html
-// can start the paint fetch without first reading the manifest at runtime. The
-// filenames carry a content hash, so they cannot be preloaded from static HTML
-// any other way.
-//
-// Three things already force the inline and the deployed release to agree: the
-// build reads the same committed manifest the deploy verifies with `sha256sum
-// -c`, `PaintTable.from()` rejects a wrong byteLength, and the manifest changes
-// exactly once a month in the run that rebuilds the site.
+// Inline hashed paint filenames so paint and manifest requests start together.
 function paintMap(): string {
   try {
     const mf = JSON.parse(readFileSync("public/data/manifest.json", "utf8"));
@@ -21,24 +14,27 @@ function paintMap(): string {
     if (!entries.length) throw new Error("manifest declares no paint assets");
     return JSON.stringify(Object.fromEntries(entries));
   } catch (err) {
-    // A build before the first pipeline run has no manifest yet. Fail soft with
-    // an empty map: the app falls back to fetching the manifest at runtime, one
-    // round trip slower, rather than failing the build.
+    // Before the first data run, let the app resolve filenames from the manifest.
     console.warn("[vite] no paint map inlined:", (err as Error).message);
     return "{}";
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const base = mode === "production" ? "/Domapus/" : "/";
 
   // Derived from `base` rather than set in a .env file so the path is not duplicated.
   process.env.VITE_DATA_BASE = process.env.VITE_DATA_BASE || `${base}data/`;
 
   process.env.VITE_PAINT_MAP = paintMap();
+  try {
+    const mf = JSON.parse(readFileSync("public/data/manifest.json", "utf8"));
+    process.env.VITE_SNAPSHOT_FILE = mf.assets?.snapshot ?? "zip-data.json";
+  } catch { process.env.VITE_SNAPSHOT_FILE = "zip-data.json"; }
 
   return {
     base,
+    publicDir: command === "build" ? false : "public",
     server: {
       host: "::",
       port: 3677,
@@ -52,7 +48,22 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
-    plugins: [react()],
+    plugins: [react(), {
+      name: "stage-public",
+      async writeBundle(options) {
+        await stagePublic(options.dir ?? "dist", /^https?:/.test(process.env.VITE_DATA_BASE ?? ""));
+      },
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          const match = req.url?.match(/^\/data\/releases\/([a-f0-9]{64})\/(.*)$/);
+          if (match) {
+            const mf = JSON.parse(readFileSync("public/data/manifest.json", "utf8"));
+            if (match[1] === mf.release_id) req.url = `/data/${match[2]}`;
+          }
+          next();
+        });
+      },
+    }],
     resolve: {
       alias: {
         "@": path.resolve(process.cwd(), "./src"),

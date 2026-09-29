@@ -11,7 +11,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .contracts import PipelineError
+from .contracts import PipelineError, assert_monthly_axis
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ def read(content: bytes) -> tuple[pd.DataFrame, list[str]]:
     date_cols = sorted(c for c in df.columns if DATE_COL.match(c))
     if not date_cols:
         raise PipelineError("Zillow CSV has no date columns — schema drift")
+    assert_monthly_axis(date_cols, "Zillow CSV")
 
     zips = df["RegionName"].astype(str).str.zfill(5)
     if zips.duplicated().any():
@@ -78,6 +79,7 @@ def write_panel(frame: pd.DataFrame, date_cols: list[str], panel_path: Path) -> 
 
 def process(frame: pd.DataFrame, date_cols: list[str]) -> tuple[dict, str]:
     """Returns ({zip: {zhvi, zhvi_mom, zhvi_yoy}}, newest month)."""
+    assert_monthly_axis(date_cols, "Zillow CSV")
     if len(date_cols) < 13:
         raise PipelineError(
             f"Zillow CSV has only {len(date_cols)} date columns; need >= 13 for MoM/YoY"

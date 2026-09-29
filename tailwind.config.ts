@@ -60,28 +60,6 @@ export default {
 					'text-primary': 'hsl(var(--dashboard-text-primary))',
 					'text-secondary': 'hsl(var(--dashboard-text-secondary))'
 				},
-				data: {
-					low: 'hsl(var(--data-low))',
-					'medium-low': 'hsl(var(--data-medium-low))',
-					medium: 'hsl(var(--data-medium))',
-					'medium-high': 'hsl(var(--data-medium-high))',
-					high: 'hsl(var(--data-high))'
-				},
-				map: {
-					hover: 'hsl(var(--map-hover))',
-					selected: 'hsl(var(--map-selected))',
-					border: 'hsl(var(--map-border))'
-				},
-				sidebar: {
-					DEFAULT: 'hsl(var(--sidebar-background))',
-					foreground: 'hsl(var(--sidebar-foreground))',
-					primary: 'hsl(var(--sidebar-primary))',
-					'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
-					accent: 'hsl(var(--sidebar-accent))',
-					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
-					border: 'hsl(var(--sidebar-border))',
-					ring: 'hsl(var(--sidebar-ring))'
-				}
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
@@ -91,28 +69,6 @@ export default {
 			fontFamily: {
 				logo: ['Inter', 'sans-serif'],
 			},
-			keyframes: {
-				'accordion-down': {
-					from: {
-						height: '0'
-					},
-					to: {
-						height: 'var(--radix-accordion-content-height)'
-					}
-				},
-				'accordion-up': {
-					from: {
-						height: 'var(--radix-accordion-content-height)'
-					},
-					to: {
-						height: '0'
-					}
-				}
-			},
-			animation: {
-				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
-			}
 		}
 	},
 	plugins: [tailwindcssAnimate],

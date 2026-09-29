@@ -9,6 +9,19 @@ export interface UrlState {
   zoom?: number;
 }
 
+export function parseView(params: URLSearchParams): Pick<UrlState, "lat" | "lng" | "zoom"> {
+  const read = (key: string, min: number, max: number) => {
+    const raw = params.get(key);
+    const n = raw?.trim() ? Number(raw) : NaN;
+    return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+  };
+  const lat = read("lat", -85.051129, 85.051129);
+  const lng = read("lng", -180, 180);
+  return { lat: lat !== undefined && lng !== undefined ? lat : undefined,
+    lng: lat !== undefined && lng !== undefined ? lng : undefined,
+    zoom: read("zoom", 2, 18) };
+}
+
 export function useUrlState() {
   const [, setSearchParams] = useSearchParams();
   const debounceTimerRef = useRef<number | null>(null);

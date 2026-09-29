@@ -28,12 +28,26 @@ Nothing here touches `public/data/`.
 | S6 classify | `classify.py` | class breaks | `classes`, `classing` |
 | S7 paint | `paint.py` | `paint/*.u8` | `assets.paint` |
 | S8 history | `history.py` | `history/*.json` | `history` |
+| Finalize | `release.py` | shared release ID, immutable archives | `release_id`, `content_digest`, `assets.archives` |
 
 Supporting: `units.py` maps Redfin headers to our keys, declares the accepted spellings
 of each header and which of them a release cannot survive losing; `contracts.py` holds
 the declared invariants and raises `PipelineError`.
 
 ---
+
+The release ID covers snapshot content, paint hashes, history files and index, and
+published statistical metadata. Timestamp-only changes do not create a new release.
+Archive names contain the ID and deploy verifies their SHA256 before extraction.
+The build stages versioned snapshot/history paths; browser readers check the shared ID.
+
+Both source calendars must contain consecutive month ends before positional lag
+calculations. Explicit local CSVs bypass the unchanged-probe early exit.
+
+Forecast backtests fit each origin using its observed history and production tier
+thresholds (24 and 60 observations). Evaluation starts at least 12 months after the
+last calibration origin, so calibration outcomes precede evaluation. The manifest
+reports measured coverage overall and by tier; the slider describes nominal targets.
 
 ## 2. Constants: fitted, derived, or chosen
 
@@ -181,7 +195,7 @@ is the property that made opacity unusable. Deferred, not cancelled.
 | Paint table agrees with the snapshot | `paint.py` assertion before publish | The colour and the number disagree for the same ZIP. |
 | `manifest.classes` == ramp length | `PaintTable.from` throws | The legend and the map disagree about what a colour means. |
 | Publish decision is a digest, never a count | `manifest.content_digest`, `update_data.yml` | The old gate compared a key with no wire column, so it could never say "unchanged". A missing digest means CHANGED. |
-| `map:sourceReload` == 0 | `setPaintPropertyCounted`, and the bench asserts it | Rewriting a data-driven paint value reloads every tile: 3375 ms per metric switch. |
+| `map:sourceReload` == 0 | `countZipPaintRewrites`, and the bench asserts it | Rewriting a data-driven paint value reloads every tile: 3375 ms per metric switch. |
 | Bbox decodes to a sane span | `geom.assert_bbox_scale` (pipeline), `ZipTable.checkBounds` (client) | See below. |
 | Metric keys match `KEY_ORDER` | positional wire format; golden fixtures on both sides | A wrong name silently reads the neighbouring column. |
 | A LISA hold lasts one release | `spatial._apply_hysteresis` reads `manifest.spatial.held`; `spatial.hysteresis_inputs` keeps a same-period rebuild from treating the live release as last month; three-release and same-month tests | The published `lisa` column cannot tell a held class from a real one, so the hold comes back as `previous` next month and holds itself again. A ZIP that stopped being an outlier is drawn as one forever. |

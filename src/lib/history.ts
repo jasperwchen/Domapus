@@ -2,6 +2,7 @@
 // Every failure returns null, so a dead network costs only the chart.
 
 import { dataUrl } from "./data-url";
+import type { Manifest } from "./manifest";
 
 export interface SeriesNote {
   /** First period of a genuine in-panel discontinuity, or null for a restatement. */
@@ -10,6 +11,7 @@ export interface SeriesNote {
 }
 
 export interface HistoryIndex {
+  release_id?: string;
   bucket_depth: number;
   /** Redfin period ends, ascending. Measured per release — never assume a length. */
   periods: string[];
@@ -40,10 +42,22 @@ export interface HistoryResult {
 
 let indexPromise: Promise<HistoryIndex | null> | null = null;
 const buckets = new Map<string, Promise<Record<string, ZipHistory> | null>>();
+let release: Manifest | null = null;
+
+export function setHistoryRelease(manifest: Manifest): void {
+  if (release?.generated_utc === manifest.generated_utc && release?.release_id === manifest.release_id) return;
+  release = manifest;
+  indexPromise = null;
+  buckets.clear();
+}
+
+function historyFile(name: string): string {
+  return (release?.assets.history ?? "history/<zip4>.json").replace("<zip4>", name);
+}
 
 async function getJson<T>(file: string): Promise<T | null> {
   try {
-    const res = await fetch(dataUrl(file));
+    const res = await fetch(dataUrl(file), { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -53,11 +67,15 @@ async function getJson<T>(file: string): Promise<T | null> {
 
 function loadIndex(): Promise<HistoryIndex | null> {
   if (!indexPromise) {
-    indexPromise = getJson<HistoryIndex>("history/index.json").then((idx) => {
+    const expected = release;
+    indexPromise = getJson<HistoryIndex>(historyFile("index")).then((idx) => {
       // A bad index is worse than no index: it would produce a chart with the wrong x-axis.
-      if (!idx || !Array.isArray(idx.periods) || !Array.isArray(idx.zhvi_months)) {
+      if (!idx || !Array.isArray(idx.periods) || !Array.isArray(idx.zhvi_months)
+          || (expected?.release_id && idx.release_id !== expected.release_id)
+          || (expected && (idx.periods.at(-1) !== expected.redfin.period_end
+            || idx.zhvi_months.at(-1) !== expected.zhvi.period_end))) {
         // Not cached: one dropped request used to disable every chart until reload.
-        indexPromise = null;
+        if (expected === release) indexPromise = null;
         return null;
       }
       return idx;
@@ -69,9 +87,10 @@ function loadIndex(): Promise<HistoryIndex | null> {
 function loadBucket(name: string): Promise<Record<string, ZipHistory> | null> {
   let p = buckets.get(name);
   if (!p) {
-    p = getJson<{ zips: Record<string, ZipHistory> }>(`history/${name}.json`)
+    const expected = release;
+    p = getJson<{ zips: Record<string, ZipHistory> }>(historyFile(name))
       .then((b) => {
-        if (!b?.zips) buckets.delete(name);
+        if (!b?.zips && expected === release) buckets.delete(name);
         return b?.zips ?? null;
       });
     buckets.set(name, p);
@@ -80,13 +99,14 @@ function loadBucket(name: string): Promise<Record<string, ZipHistory> | null> {
 }
 
 export async function loadHistory(zip: string): Promise<HistoryResult | null> {
+  const expected = release;
   const index = await loadIndex();
-  if (!index) return null;
+  if (!index || expected !== release) return null;
   // Slice from the zero-padded string. A numeric ZIP would drop the leading zero and send
   // every New England and Puerto Rico lookup to a 404.
   const zips = await loadBucket(zip.slice(0, index.bucket_depth));
   const series = zips?.[zip];
-  if (!series) return null;
+  if (!series || expected !== release) return null;
   return { index, series };
 }
 

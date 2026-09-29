@@ -433,9 +433,7 @@ def encode_columns(records: dict) -> tuple[list[str], dict[str, list[str]], list
     return zips, dicts, columns
 
 
-# --- Release identity -------------------------------------------------------------------
-# The publish decision: identity of the bytes served. Timestamps are excluded so a rebuild
-# over unchanged input reproduces it.
+# Snapshot content identity; release.py combines it with history, paint, and metadata.
 DIGEST_KEYS = (
     "version", "null_sentinel", "f", "z", "d", "dicts", "scales",
     "classes", "breaks", "classing",
@@ -449,13 +447,6 @@ def payload_digest(payload: dict) -> str:
                       sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
-
-def release_digest(snapshot_digest: str, paint_assets: dict) -> str:
-    """Snapshot digest plus every paint table hash; colours can move with the snapshot unchanged."""
-    h = hashlib.sha256(snapshot_digest.encode("utf-8"))
-    for metric in sorted(paint_assets):
-        h.update(f"|{metric}={paint_assets[metric]['sha256']}".encode("utf-8"))
-    return h.hexdigest()
 
 
 def write_snapshot(records: dict, out_path: Path, envelope: dict, encoded=None) -> dict:
@@ -474,7 +465,7 @@ def write_snapshot(records: dict, out_path: Path, envelope: dict, encoded=None) 
         "d": columns,
     }
 
-    _assert_encoder_contracts(payload, records, zips)
+    _assert_encoder_contracts(payload, zips)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # allow_nan=False refuses the only value JSON would not round-trip, so the file equals
@@ -488,7 +479,7 @@ def write_snapshot(records: dict, out_path: Path, envelope: dict, encoded=None) 
             "payload_digest": payload_digest(payload)}
 
 
-def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> None:
+def _assert_encoder_contracts(payload: dict, zips: list[str]) -> None:
     """CONTRACT tier. Each of these has a matching frontend assumption."""
     f, d = payload["f"], payload["d"]
 
@@ -548,14 +539,9 @@ def _assert_encoder_contracts(payload: dict, records: dict, zips: list[str]) -> 
 
 
 def _assert_payload_matches_records(payload: dict, records: dict, sample: int = 200) -> None:
-    """Compare the encoded payload against the in-memory records, on encoded ints. The file
-    is `json.dumps(payload)` with allow_nan=False, so it equals the payload; this checks the
-    encoder (scales, sentinel, dictionaries), not the write.
+    """Check scales, sentinel, and dictionaries using exact encoded integers.
 
-    Integer comparison, not a float tolerance: any tolerance loose enough for legitimate
-    quantisation hides real errors. The sample is padded with ZIPs holding a real 0 and a
-    null in the same column (found by scan, since `homes_sold` is never 0), because that
-    is the pair a broken sentinel conflates.
+    Include real zeros and nulls so sentinel errors cannot hide in the sample.
     """
     f, z, d = payload["f"], payload["z"], payload["d"]
     sentinel = payload["null_sentinel"]

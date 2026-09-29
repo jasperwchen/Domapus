@@ -1,7 +1,7 @@
 // @vitest-environment node
 // Node's User Timing is complete; jsdom's is not.
 import { afterEach, describe, expect, it } from "vitest";
-import { mark, measure } from "../perf";
+import { mark, measure, beginMetricSwitch, finishMetricSwitch, metricSwitchTicket } from "../perf";
 
 afterEach(() => {
   performance.clearMarks();
@@ -9,6 +9,15 @@ afterEach(() => {
 });
 
 describe("measure", () => {
+  it("does not finish a newer switch with an old paint completion", () => {
+    beginMetricSwitch("zhvi");
+    const old = metricSwitchTicket("zhvi");
+    beginMetricSwitch("median_sale_price");
+    finishMetricSwitch(old);
+    expect(performance.getEntriesByName("map:metricSwitch")).toHaveLength(0);
+    finishMetricSwitch(metricSwitchTicket("median_sale_price"));
+    expect(performance.getEntriesByName("map:metricSwitch")).toHaveLength(1);
+  });
   it("drops its start mark", () => {
     mark("t:start");
     measure("t", "t:start");

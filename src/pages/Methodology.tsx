@@ -12,6 +12,8 @@ import { fetchManifest, type Manifest } from "@/lib/manifest";
 import { TopBarShell } from "@/components/dashboard/TopBar";
 
 interface Backtest {
+  eligibility_at_origin?: boolean;
+  minimum_observations?: number;
   origins: { total: number; calibration: number; evaluation: number;
              effective_independent: number };
   coverage: {
@@ -551,13 +553,19 @@ function Body({ mf }: { mf: Manifest }) {
             </p>
             <p>
               The headline runs over the{" "}
-              {backtest.eligible_zips.toLocaleString()} ZIPs with at least five
-              years of history rather than the{" "}
+              {backtest.eligible_zips.toLocaleString()} ZIPs with at least{" "}
+              {backtest.eligibility_at_origin ? `${backtest.minimum_observations} months available at each forecast origin` : "five years of history"}
+              {" rather than the "}
               {backtest.complete_history_zips.toLocaleString()} with complete
               history. Complete history is a survivorship filter that selects
               large, established, continuously transacting markets, so reporting
               it as the headline would flatter the model.
             </p>
+            {backtest.eligibility_at_origin && <p>
+              Each historical fit uses the same observation-count tiers as production.
+              Calibration outcomes finish before evaluation begins; a twelve-month
+              gap between the two sets of origins prevents future outcomes entering calibration.
+            </p>}
             <p>
               Zillow revises the index retroactively across its whole history
               between releases, so what the backtest observes at each origin is not

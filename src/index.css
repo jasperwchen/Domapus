@@ -5,28 +5,15 @@ html, body {
   padding: 0;
 }
 
-/* Scroll locking is the MAP's requirement, not the site's.
-   This used to be `overflow: hidden` on html/body unconditionally. The dashboard
-   needs it — it manages its own full-height layout and a scrollable body would
-   let the page rubber-band under a fixed map — but the rule applied to every
-   route, so the methodology page rendered its full length inside a body that
-   could not scroll and the reader could only ever see the first screen.
-   `Index` adds this class on mount and removes it on unmount. */
+/* Index locks scrolling while mounted; other routes scroll normally. */
 body.app-scroll-locked,
 html:has(body.app-scroll-locked) {
   overflow: hidden;
 }
 
-/* Font loaded in index.html with display=swap for better CLS */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Map container safety and CLS prevention */
-[data-testid="map-container"] {
-  min-height: 400px;
-  will-change: contents;
-}
 
 @layer base {
   :root {
@@ -59,37 +46,6 @@ html:has(body.app-scroll-locked) {
     --dashboard-text-primary: 222.2 84% 4.9%;
     --dashboard-text-secondary: 215.4 16.3% 46.9%;
 
-    /* Data visualization colors (choropleth stops) */
-    --choropleth-1: 57 100% 84%;
-    --choropleth-2: 48 100% 76%;
-    --choropleth-3: 39 100% 70%;
-    --choropleth-4: 22 100% 67%;
-    --choropleth-5: 350 76% 60%;
-    --choropleth-6: 323 58% 48%;
-    --choropleth-7: 289 50% 37%;
-    --choropleth-8: 263 78% 20%;
-
-    /* Data visualization semantic shortcuts */
-    --data-low: var(--choropleth-1);
-    --data-medium-low: 19 100% 71%;
-    --data-medium: var(--choropleth-5);
-    --data-medium-high: var(--choropleth-7);
-    --data-high: var(--choropleth-8);
-
-    /* Map colors */
-    --map-hover: 221.2 83.2% 53.3%;
-    --map-selected: 221.2 83.2% 43.3%;
-    --map-border: 214.3 31.8% 81.4%;
-
-    /* Sidebar colors */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
   .dark {
@@ -120,37 +76,6 @@ html:has(body.app-scroll-locked) {
     --dashboard-text-primary: 210 40% 98%;
     --dashboard-text-secondary: 215 20.2% 65.1%;
 
-    /* Data visualization dark colors (choropleth stops) */
-    --choropleth-1: 57 70% 74%;
-    --choropleth-2: 48 70% 66%;
-    --choropleth-3: 39 70% 60%;
-    --choropleth-4: 22 70% 58%;
-    --choropleth-5: 350 60% 50%;
-    --choropleth-6: 323 50% 40%;
-    --choropleth-7: 289 40% 30%;
-    --choropleth-8: 263 70% 16%;
-
-    /* Data visualization semantic shortcuts */
-    --data-low: var(--choropleth-1);
-    --data-medium-low: 19 80% 61%;
-    --data-medium: var(--choropleth-5);
-    --data-medium-high: var(--choropleth-7);
-    --data-high: var(--choropleth-8);
-
-    /* Map dark colors */
-    --map-hover: 217.2 91.2% 59.8%;
-    --map-selected: 217.2 91.2% 69.8%;
-    --map-border: 217.2 32.6% 27.5%;
-
-    /* Sidebar dark colors */
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 94.1%;
-    --sidebar-primary-foreground: 240 5.9% 10%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
 
@@ -162,18 +87,6 @@ html:has(body.app-scroll-locked) {
     @apply bg-background text-foreground;
     font-family: 'Inter', sans-serif;
   }
-  
-  /* Prevent layout shift from font loading */
-  body {
-    font-display: swap;
-  }
-}
-
-/* Custom focus styles for better accessibility */
-@layer base {
-  .focus-visible {
-    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
-  }
 }
 
 /* MapLibre GL JS map improvements */
@@ -181,11 +94,6 @@ html:has(body.app-scroll-locked) {
   background: hsl(var(--dashboard-bg)) !important;
   contain: layout style paint;
 }
-
-/* The previous image-rendering: crisp-edges/optimize-contrast block was
-   appropriate for raster tiles, but our basemap and ZIP layers are vector —
-   crisp-edges aliases vector text and stroke lines into a jagged mess at
-   non-integer zoom. Default rendering is correct for WebGL/vector. */
 
 /* MapLibre popup styles */
 .maplibregl-popup-content {
@@ -213,7 +121,22 @@ html:has(body.app-scroll-locked) {
 }
 
 /* Mobile optimizations */
+.map-reset-control {
+  top: 101px;
+  width: 29px;
+  height: 29px;
+}
+
 @media (max-width: 768px) {
+  .map-reset-control {
+    top: 134px;
+    width: 40px;
+    height: 40px;
+  }
+  .maplibregl-ctrl-group button {
+    width: 40px;
+    height: 40px;
+  }
   .maplibregl-ctrl-group {
     pointer-events: auto;
   }
@@ -228,32 +151,15 @@ html:has(body.app-scroll-locked) {
   }
 }
 
-/* 767, not 768, because this has to track `useIsMobile` exactly: the bar it
-   clears is rendered at `innerWidth < 768` and does not exist at 768 itself.
-   The metric and ZIP-search bar is fixed over the bottom of the map at
-   z-index 1001 and was covering the basemap attribution outright, which is a
-   condition of using CARTO and OpenStreetMap rather than a decoration. The bar
-   is ~7rem tall and sits 1rem above the safe area. */
+/* Match the <768px controls and keep attribution above them and the safe area. */
 @media (max-width: 767px) {
   .maplibregl-ctrl-bottom-left {
     bottom: calc(8.5rem + env(safe-area-inset-bottom));
   }
 }
 
-/* Animation utilities */
 @layer utilities {
-  .animate-fade-in {
-    animation: fade-in 0.3s ease-in-out;
-  }
-
-  .animate-slide-up {
-    animation: slide-up 0.3s ease-out;
-  }
-
-  /* Mobile-safe viewport height. Plain 100vh on iOS Safari includes the
-     URL bar's collapsed area, leaving the bottom of the map clipped when
-     the toolbar appears. Dynamic viewport height (dvh) tracks the visible
-     viewport; we layer it after vh so older browsers fall through. */
+  /* Follow mobile browser toolbars; older browsers fall back to vh. */
   .h-screen-safe {
     height: 100vh;
     height: 100dvh;
@@ -262,57 +168,6 @@ html:has(body.app-scroll-locked) {
   .min-h-screen-safe {
     min-height: 100vh;
     min-height: 100dvh;
-  }
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Performance and CLS optimizations */
-@layer utilities {
-  /* Prevent layout shifts with containment */
-  .contain-layout {
-    contain: layout;
-  }
-  
-  .contain-paint {
-    contain: paint;
-  }
-  
-  .contain-strict {
-    contain: strict;
-  }
-  
-  /* Optimize animations to prevent repaints */
-  .will-change-transform {
-    will-change: transform;
-  }
-  
-  .will-change-opacity {
-    will-change: opacity;
-  }
-  
-  /* Force GPU acceleration */
-  .gpu-accelerated {
-    transform: translateZ(0);
-    backface-visibility: hidden;
   }
 }
 

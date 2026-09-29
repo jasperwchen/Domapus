@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   fetchManifest: vi.fn(),
   fetchPaint: vi.fn(),
   toast: vi.fn(),
+  processData: vi.fn(),
 }));
 
 vi.mock("@/lib/manifest", () => ({
@@ -27,7 +28,7 @@ vi.mock("@/lib/class-source", () => ({
   visibleZipRows: () => [],
 }));
 vi.mock("@/hooks/useDataWorker", () => ({
-  useDataWorker: () => ({ processData: () => new Promise(() => {}), isLoading: false, progress: null }),
+  useDataWorker: () => ({ processData: m.processData, isLoading: false, progress: null }),
 }));
 vi.mock("@/hooks/use-toast", () => ({ toast: m.toast }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => false }));
@@ -58,6 +59,8 @@ vi.mock("@/components/MapExport", () => ({ MapExport: () => null }));
 
 const manifest = (tag: string) => ({
   tag, classes: 14, noise: { rankable_zips: 1, reporting_zips: 1, rankable_n_implied: 1 },
+  generated_utc: tag, redfin: { period_end: "2026-08-31", period_begin: "2026-06-01" },
+  zhvi: { period_end: "2026-08-31" }, assets: { snapshot: "zip-data.json" },
 });
 const buffer = (tag: string) => Object.assign(new ArrayBuffer(1), { tag });
 
@@ -74,11 +77,28 @@ async function mount(search = "") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  m.processData.mockImplementation(() => new Promise(() => {}));
   m.boot.mockResolvedValue({ manifest: manifest("live"), paint: buffer("zhvi"), metric: "zhvi" });
 });
 afterEach(() => window.history.replaceState(null, "", "/"));
 
 describe("HousingDashboard", () => {
+  it("keeps colors visible and offers retry when ZIP details fail", async () => {
+    m.processData.mockRejectedValue(new Error("503"));
+    await mount();
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("ZIP details could not load"));
+    expect(screen.getByTestId("map").dataset.painted).toBe("yes");
+    const calls = m.processData.mock.calls.length;
+    fireEvent.click(screen.getByText("Retry details"));
+    await waitFor(() => expect(m.processData.mock.calls.length).toBeGreaterThan(calls));
+  });
+
+  it("refuses a snapshot from another release", async () => {
+    m.processData.mockResolvedValue({ header: { built_utc: "older" }, buffers: {} });
+    await mount();
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByTestId("map").dataset.painted).toBe("yes");
+  });
   it("ignores a ?metric= that is not a painted metric", async () => {
     await mount("?metric=__proto__");
     expect(screen.getByTestId("metric").textContent).toBe("zhvi");

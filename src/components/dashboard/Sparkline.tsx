@@ -1,8 +1,5 @@
-// Per-ZIP history chart with a labelled forecast ribbon and a pointer readout. Each series
-// keeps its own units and clock (ZHVI monthly, Redfin rolling three months), and the range
-// readout excludes the forecast band.
-//
-// Progressive enhancement: `loadHistory` returns null on failure and this shows a short line.
+// Zillow uses monthly observations; Redfin uses rolling three-month windows.
+// Historical ranges exclude the forecast band.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -116,6 +113,8 @@ function Chart({
   onLevel: (i: number) => void;
 }) {
   const { index, series: hist } = data;
+  const available = SERIES.filter(s => hist[s.key]?.some(v => v != null));
+  series = available.some(s => s.key === series) ? series : available[0]?.key ?? series;
   const meta = SERIES.find((s) => s.key === series)!;
   const levels = useMemo(
     () => levelsOf(index).filter((l) => OFFERED_LEVELS.has(l)),
@@ -125,7 +124,6 @@ function Chart({
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<number | null>(null);
 
-  const available = SERIES.filter((s) => Array.isArray(hist[s.key]));
   const geom = useMemo(
     () => buildGeometry(index, hist, series, level),
     [index, hist, series, level],
@@ -179,9 +177,7 @@ function Chart({
         ))}
       </div>
 
-      {/* The readout. Fixed height so the chart does not jump when the pointer
-          enters, and it carries the cadence when idle — which is the one thing
-          the old tab strip never said out loud. */}
+      {/* Reserve readout height so pointer movement does not shift the chart. */}
       <div className="flex h-8 items-baseline justify-between gap-2">
         {hover ? (
           <>
@@ -227,9 +223,7 @@ function Chart({
           geom.band ? `, with a ${Math.round(Number(level) * 100)}% forecast band` : ""
         }`}
       >
-        {/* Horizontal gridlines with their values. The chart had no y-axis at
-            all, so a line could rise across the box on a 2% move or a 200% one
-            and look identical. */}
+        {/* Label the y-axis so the size of a change is visible. */}
         {geom.yTicks.map((t) => (
           <g key={t.v}>
             <line
@@ -245,8 +239,7 @@ function Chart({
           </g>
         ))}
 
-        {/* The forecast region, shaded and separated. A dashed line alone reads
-            as more data; a boundary and a caption make it read as a projection. */}
+        {/* Separate projections from observed values. */}
         {geom.forecastX != null && (
           <>
             <rect
@@ -321,14 +314,10 @@ function Chart({
 
       {geom.band && levels.length > 1 && (
         <div className="flex items-center justify-between gap-2">
-          {/* The caption has to say what the percentage MEANS, because the
-              selector alone reads as a display option. It is not: it is the
-              share of backtest origins whose actual value landed inside the
-              shaded band, so a higher level draws a wider band for the same
-              forecast, not a better one. */}
+          {/* Explain the band percentage beside its selector. */}
           <p className="text-[10px] leading-snug text-muted-foreground">
             12-month forecast of the Zillow index, not of the sale price. The band is
-            where the value landed this often in backtesting.
+            calibrated to the selected target coverage; measured coverage can differ.
           </p>
           <label className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
             <span className="sr-only">Forecast confidence level</span>

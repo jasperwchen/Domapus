@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback, useState, type ReactNode } from "react";
+import { Modal } from "@/components/ui/modal";
 
 interface MobileBottomSheetProps {
   isOpen: boolean;
@@ -13,15 +14,15 @@ const VELOCITY_THRESHOLD = 0.5;
 const DRAG_THRESHOLD = 10;
 
 export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomSheetProps) {
-  const sheetRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef({
     isDragging: false,
     startY: 0,
     startHeight: 0,
     currentHeight: 0,
-    startTime: 0,
     lastY: 0,
     lastTime: 0,
+    previousY: 0,
+    previousTime: 0,
     hasMoved: false,
   });
   const [sheetHeight, setSheetHeight] = useState(SNAP_CLOSED);
@@ -130,9 +131,10 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
       startY: e.clientY,
       startHeight: sheetHeight,
       currentHeight: sheetHeight,
-      startTime: now,
       lastY: e.clientY,
       lastTime: now,
+      previousY: e.clientY,
+      previousTime: now,
       hasMoved: false,
     };
     setIsDragging(true);
@@ -149,6 +151,8 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
       dragRef.current.hasMoved = true;
     }
 
+    dragRef.current.previousY = dragRef.current.lastY;
+    dragRef.current.previousTime = dragRef.current.lastTime;
     dragRef.current.lastY = e.clientY;
     dragRef.current.lastTime = now;
 
@@ -168,9 +172,9 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
     }
 
     const now = Date.now();
-    const dt = now - dragRef.current.lastTime || 1;
-    const dy = dragRef.current.lastY - dragRef.current.startY;
-    const velocity = dy / dt;
+    const dt = now - dragRef.current.previousTime || 1;
+    const dy = e.clientY - dragRef.current.previousY;
+    const velocity = now - dragRef.current.lastTime > 100 || e.type === "pointercancel" ? 0 : dy / dt;
 
     dragRef.current.isDragging = false;
     setIsDragging(false);
@@ -181,7 +185,6 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
     snapTo(closest);
   }, [getClosestSnap, snapTo]);
 
-  // Handle overlay click
   const handleOverlayClick = useCallback(() => {
     snapTo(SNAP_CLOSED);
   }, [snapTo]);
@@ -197,16 +200,13 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
     if (!isVisible || sheetHeight <= 5) return;
 
     const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyTouchAction = document.body.style.touchAction;
     const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
 
     document.body.style.overflow = 'hidden';
-    document.body.style.touchAction = 'none';
     document.body.style.overscrollBehavior = 'none';
 
     return () => {
       document.body.style.overflow = previousBodyOverflow;
-      document.body.style.touchAction = previousBodyTouchAction;
       document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
     };
   }, [isVisible, sheetHeight]);
@@ -217,7 +217,7 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
   const sheetHeightPx = (sheetHeight / 100) * maxSheetHeightPx;
 
   return (
-    <>
+    <Modal label="ZIP details" onClose={onClose} className="bg-transparent overflow-hidden">
       {/* Backdrop overlay */}
       <div
         className="fixed inset-0 z-40 bg-black"
@@ -231,7 +231,6 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
 
       {/* Bottom sheet */}
       <div
-        ref={sheetRef}
         className="fixed left-0 right-0 z-50 bg-dashboard-panel rounded-t-[14px] flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.15)]"
         style={{
           bottom: `${bottomOffset}px`,
@@ -253,6 +252,11 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
           <div className="py-2">
             <div className="mx-auto w-12 h-1 rounded-full bg-gray-300" />
           </div>
+          <button className="relative z-20 mx-auto block min-h-10 px-4 text-xs underline"
+            aria-expanded={sheetHeight > SNAP_PEEK}
+            onClick={() => snapTo(sheetHeight > SNAP_PEEK ? SNAP_PEEK : SNAP_FULL)}>
+            {sheetHeight > SNAP_PEEK ? "Collapse details" : "Expand details"}
+          </button>
         </div>
 
         {/* Content */}
@@ -260,6 +264,6 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
           {children}
         </div>
       </div>
-    </>
+    </Modal>
   );
 }

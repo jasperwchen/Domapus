@@ -137,6 +137,28 @@ beforeEach(() => {
 });
 
 describe("the paint expression is constant", () => {
+  it("reports completion after rendering and cancels a superseded completion", () => {
+    const callbacks = new Set<() => void>();
+    const map = { ...fakeMap(),
+      on: (_event: string, fn: () => void) => callbacks.add(fn),
+      off: (_event: string, fn: () => void) => callbacks.delete(fn),
+      triggerRepaint: vi.fn(),
+    };
+    const painter = new ChoroplethPainter(map as never);
+    const first = vi.fn();
+    const second = vi.fn();
+    const data = makeData(2, () => ({ zhvi: 100, median_sale_price: 120 }));
+    painter.schedule(sourceFor(data, "zhvi"), first);
+    drain();
+    expect(first).not.toHaveBeenCalled();
+    painter.schedule(sourceFor(data, "median_sale_price"), second);
+    drain();
+    [...callbacks].forEach(fn => fn());
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledOnce();
+    painter.dispose();
+    expect(callbacks.size).toBe(0);
+  });
   it("has one branch per class plus a no-data fallback", () => {
     const expr = classPaintExpression();
     expect(expr[0]).toBe("match");

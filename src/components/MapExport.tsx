@@ -35,8 +35,14 @@ export function MapExport({ store, selectedMetric, breaks, classing = null, onEx
     setIsExportMode(true);
   };
 
-  if (isExportMode) {
-    return (
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={handleExportClick} disabled={!store}
+        aria-label="Export map" title={!store ? "ZIP details must load before export" : "Export map"}>
+        <Download className="h-4 w-4" />
+        {!isMobile && <span>Export</span>}
+      </Button>
+      {isExportMode && (
       <Suspense fallback={
         <div className="absolute right-0 top-0 h-full w-80 bg-dashboard-panel border-l border-dashboard-border flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -46,19 +52,14 @@ export function MapExport({ store, selectedMetric, breaks, classing = null, onEx
           // toRecord() is memoised and only runs here, on an explicit user
           // action — the ~173 ms object build no longer happens on page load.
           allZipData={store ? store.toRecord() : {}}
+          zhviPeriod={store?.header.zhvi_month ?? null}
           selectedMetric={selectedMetric}
           breaks={breaks}
           classing={classing}
           onClose={handleClose}
         />
       </Suspense>
-    );
-  }
-
-  return (
-    <Button variant="outline" size="sm" onClick={handleExportClick}>
-      <Download className="h-4 w-4" />
-      {!isMobile && <span>Export</span>}
-    </Button>
+      )}
+    </>
   );
 }

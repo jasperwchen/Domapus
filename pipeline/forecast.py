@@ -57,8 +57,7 @@ MIN_TRAIN = 60
 def fit(LZ: np.ndarray, counts: np.ndarray | None = None) -> dict:
     """AR(1) on log growth per column. LZ: [T x Z] log level, NaN where missing.
 
-    With `counts`, ZIPs below `TIER_FULL` take the cross-sectional median rho. `None` fits
-    every column alike, as the backtest wants.
+    With `counts`, ZIPs below `TIER_FULL` take the cross-sectional median rho.
     """
     g = np.diff(LZ, axis=0)[-W:]
     with _all_nan_columns_ok():
@@ -68,7 +67,8 @@ def fit(LZ: np.ndarray, counts: np.ndarray | None = None) -> dict:
         den = np.maximum(np.nansum(gc[:-1] ** 2, axis=0), 1e-12)
         rho = np.clip(num / den, 0.0, RHO_MAX)
 
-    median_rho = float(np.nanmedian(rho))
+    usable = np.isfinite(g).sum(axis=0) >= TIER_SHORT - 1
+    median_rho = float(np.median(rho[usable])) if usable.any() else 0.0
     rho = RHO_SHRINK * rho + (1.0 - RHO_SHRINK) * median_rho
     if counts is not None:
         rho = np.where(counts >= TIER_FULL, rho, median_rho)
@@ -116,31 +116,48 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
     if len(origins) < 4:
         raise PipelineError(f"forecast: only {len(origins)} backtest origins; need at least 4")
     half = len(origins) // 2
-    calib, evaluate = origins[:half], origins[half:]
+    calib = origins[:half]
+    evaluate = [o for o in origins[half:] if o >= calib[-1] + max(HORIZONS)]
+    if not evaluate:
+        raise PipelineError("forecast: not enough origins for a purged evaluation")
+
+    evaluated = np.zeros(LZ.shape[1], dtype=bool)
+    tier_errors = {t: {h: [] for h in HORIZONS} for t in (2, 3)}
 
     def errors(where, keep_abs):
         """Standardised log errors per horizon, plus absolute errors if asked."""
         out = {h: [] for h in HORIZONS}
         raw = {h: [] for h in HORIZONS}
+        naive = {h: [] for h in HORIZONS}
         for o in where:
-            m = fit(LZ[:o])
+            counts = np.isfinite(LZ[:o]).sum(axis=0)
+            m = fit(LZ[:o], counts)
             sig = np.where(np.isfinite(m["sigma"]) & (m["sigma"] > 0), m["sigma"], np.nan)
             for hi, h in enumerate(HORIZONS):
                 actual = LZ[o + h - 1]
                 err = actual - m["f"][hi]
-                ok = np.isfinite(err) & np.isfinite(sig) & eligible
+                ok = np.isfinite(err) & np.isfinite(sig) & eligible & (counts >= TIER_SHORT)
                 out[h].append(err[ok] / sig[ok])
                 if keep_abs:
                     raw[h].append(np.abs(err[ok]))
+                    naive[h].append(np.abs(actual[ok] - LZ[o - 1, ok]))
+                    evaluated[:] |= ok
+                    tiers = _tier(counts)
+                    for tier in (2, 3):
+                        mask = ok & (tiers == tier)
+                        tier_errors[tier][h].append(err[mask] / sig[mask])
         return ({h: np.concatenate(v) for h, v in out.items()},
-                {h: np.concatenate(v) for h, v in raw.items()} if keep_abs else None)
+                {h: np.concatenate(v) for h, v in raw.items()} if keep_abs else None,
+                {h: np.concatenate(v) for h, v in naive.items()} if keep_abs else None)
 
-    std_c, _ = errors(calib, keep_abs=False)
-    std_e, abs_e = errors(evaluate, keep_abs=True)
+    std_c, _, _ = errors(calib, keep_abs=False)
+    std_e, abs_e, naive_e = errors(evaluate, keep_abs=True)
 
     q = {}
     for h in HORIZONS:
         s = std_c[h]
+        if not s.size or not std_e[h].size:
+            raise PipelineError(f"forecast: no eligible calibration/evaluation data at h={h}")
         q[h] = {}
         for p in LEVELS:
             lo, hi = (1.0 - p) / 2.0, 1.0 - (1.0 - p) / 2.0
@@ -149,7 +166,7 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
     hi_n = 1.0 - (1.0 - NOMINAL) / 2.0
     z = float(np.quantile(std_c[1], hi_n))  # a normal-ish 1-step multiplier
     # Diagnostic scale for the closed-form row; independent of h.
-    full = fit(LZ)
+    full = fit(LZ[:evaluate[0]], np.isfinite(LZ[:evaluate[0]]).sum(axis=0))
     coverage = {"nominal": NOMINAL, "random_walk_sqrt_h": {}, "ar1_closed_form": {},
                 "empirical_quantiles": {}}
     for h in HORIZONS:
@@ -166,7 +183,7 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
         coverage["empirical_quantiles"][h] = round(float(np.mean((s >= ql) & (s <= qh))), 4)
 
     mae = {h: round(float(np.mean(abs_e[h])) * 100, 3) for h in HORIZONS}
-    naive = _naive_mae(LZ, evaluate, eligible)
+    naive = {h: round(float(np.mean(naive_e[h])) * 100, 3) for h in HORIZONS}
     mase = {h: round(mae[h] / naive[h], 3) if naive[h] else None for h in HORIZONS}
 
     # Drift, not contract: failing to beat naive warns and is recorded, never blocks.
@@ -177,12 +194,25 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
             "AR(1) anyway; the MASE is recorded in the manifest.", mase,
         )
 
+    by_tier = {}
+    for tier, horizons in tier_errors.items():
+        by_tier[tier] = {}
+        for h, samples in horizons.items():
+            values = np.concatenate(samples)
+            lo, hi = q[h][NOMINAL]
+            by_tier[tier][h] = {"observations": int(values.size),
+                "coverage": round(float(np.mean((values >= lo) & (values <= hi))), 4) if values.size else None}
+
     return {
-        "origins": {"total": len(origins), "calibration": len(calib), "evaluation": len(evaluate),
+        "eligibility_at_origin": True, "minimum_observations": TIER_SHORT,
+        "coverage_by_tier": by_tier,
+        "origins": {"total": len(calib) + len(evaluate), "calibration": len(calib), "evaluation": len(evaluate),
                     "stride_months": ORIGIN_STRIDE,
+                    "last_calibration": calib[-1], "first_evaluation": evaluate[0],
+                    "purged": len(origins) - len(calib) - len(evaluate),
                     # h=12 windows overlap 9 months at a 3-month stride.
-                    "effective_independent": max(1, len(origins) // (max(HORIZONS) // ORIGIN_STRIDE))},
-        "eligible_zips": int(eligible.sum()),
+                    "effective_independent": max(1, (len(calib) + len(evaluate)) // (max(HORIZONS) // ORIGIN_STRIDE))},
+        "eligible_zips": int(evaluated.sum()),
         "q": {str(h): {str(p): v for p, v in q[h].items()} for h in HORIZONS},
         "coverage": coverage,
         "mae_log_x100": mae,
@@ -191,18 +221,6 @@ def backtest(LZ: np.ndarray, eligible: np.ndarray) -> dict:
         "beats_naive": beats,
     }
 
-
-def _naive_mae(LZ: np.ndarray, origins, eligible) -> dict:
-    """Last-value-carried-forward, the benchmark MASE is defined against."""
-    out = {}
-    for h in HORIZONS:
-        acc = []
-        for o in origins:
-            err = LZ[o + h - 1] - LZ[o - 1]
-            ok = np.isfinite(err) & eligible
-            acc.append(np.abs(err[ok]))
-        out[h] = round(float(np.mean(np.concatenate(acc))) * 100, 3)
-    return out
 
 
 def run(panel_path, records: dict) -> dict:
@@ -219,8 +237,8 @@ def run(panel_path, records: dict) -> dict:
     tiers = _tier(counts)
     model = fit(LZ, counts)
 
-    # Headline backtest on >= 60 obs, not complete history (a survivorship filter).
-    eligible = counts >= TIER_FULL
+    # Eligibility and shrinkage are evaluated using only observations at each origin.
+    eligible = np.ones(len(zips), dtype=bool)
     bt = backtest(LZ, eligible)
     bt["complete_history_zips"] = int((counts == len(months)).sum())
 

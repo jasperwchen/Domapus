@@ -232,6 +232,8 @@ const CONUS_ZIP_DATA: Record<string, ZipData> = {
 };
 
 interface RecordedMap {
+  _loaded: boolean;
+  emit: (event: string, payload?: unknown) => void;
   options: Record<string, unknown>;
   addedLayers: Array<Record<string, unknown>>;
   stateWrites: Array<{ id: unknown; state: Record<string, number> }>;
@@ -523,6 +525,34 @@ const defaultProps = {
 };
 
 describe("PrintStage", () => {
+  it("reports a style failure before load and never marks it ready", async () => {
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    render(<PrintStage {...defaultProps} onReady={onReady} onError={onError} />);
+    act(() => mapMock.__getMaps()[0].emit("error", { error: { message: "style 503" } }));
+    await act(async () => { vi.runAllTimers(); });
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it("fails a map that never becomes ready instead of treating timeout as success", async () => {
+    const onReady = vi.fn();
+    const onError = vi.fn();
+    render(<PrintStage {...defaultProps} onReady={onReady} onError={onError} />);
+    mapMock.__getMaps()[0]._loaded = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_100); });
+    expect(onError).toHaveBeenCalled();
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it("rejects a national export when a requested inset fails during capture", async () => {
+    const ref = createRef<PrintStageRef>();
+    render(<PrintStage {...defaultProps} filteredData={Object.values(CONUS_ZIP_DATA)} ref={ref} />);
+    await advanceToMapReady();
+    const assertion = expect(ref.current!.exportToCanvas()).rejects.toThrow("failed during capture");
+    act(() => mapMock.__getMaps()[1].emit("error", { error: { message: "tile failed" } }));
+    await act(async () => { vi.runAllTimers(); await assertion; });
+  });
   it("renders without crashing", () => {
     render(<PrintStage {...defaultProps} />);
     expect(screen.getByText(/rendering map/i)).toBeInTheDocument();
@@ -622,13 +652,6 @@ describe("PrintStage", () => {
     );
     expect(screen.queryByText("ALASKA")).toBeNull();
     expect(screen.queryByText("HAWAII")).toBeNull();
-  });
-
-  it("getElement returns the container div", async () => {
-    const ref = createRef<PrintStageRef>();
-    render(<PrintStage {...defaultProps} ref={ref} />);
-    await act(async () => { vi.runAllTimers(); });
-    expect(ref.current?.getElement()).toBeInstanceOf(HTMLDivElement);
   });
 
   it("calls onReady after maps load", async () => {

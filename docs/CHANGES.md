@@ -3980,3 +3980,53 @@ byte for byte. Browser: basemap and choropleth load, hover popup, click opens th
 "2134" opens 02134, metric switch repaints and updates the legend and URL, Adjust Contrast
 re-cuts on the view, outliers toggle with their key, reset clears the URL view, phone header
 fits 375 px.
+
+---
+
+## 2026-09-26: manual data runs
+
+- **First dispatch (defaults) rebuilt and published, correctly.** Redfin re-uploaded the
+  2026-08 file on 09-21: same size, same period, new ETag, and the download's MD5 matched the
+  new ETag, so the bytes really changed. The Redfin fingerprint moved (8fa7ae85 to 114e069d),
+  S0 did not exit, and the run published `a353e0e` (digest 59202f30) with Deploy. This also
+  shipped the three pipeline commits made after the 09-20 release, so no `force_rebuild` run
+  was needed.
+- **Second dispatch (defaults) took the early exit.** "Upstream unchanged", nothing downloaded,
+  Deploy skipped, 38 s end to end. Closes the old TODO 2a.
+- The dispatch input descriptions in `update_data.yml` were cut to one line each; the
+  rationale moved to YAML comments.
+
+## 2026-09-27: end-to-end review and dead-code cleanup
+
+- Recorded prioritized findings and reproductions in `REVIEW-2026-09-27.md`, covering
+  release consistency, ingestion and calendar arithmetic, forecasting, browser loading,
+  charts, accessibility, mobile gestures, export failures, and performance measurement.
+  Behavioral fixes remain in `TODOS.md`; the static architecture should be retained.
+- Removed unused CSS/Tailwind tokens and utilities, an obsolete palette, an ineffective
+  body font descriptor, a dead dimension constant, unused validator arguments, write-only
+  sheet fields, and the unused export `getElement` method and its test. Shortened historical
+  comments while preserving wire-format contracts and performance rationale.
+- Kept the intentionally unused sponsor component, deferred reliability plumbing,
+  generated files, and committed geometry. Preserved pre-existing workflow/doc changes.
+- Verified after cleanup: 79 pytest, 162 vitest, TypeScript and build pass; lint 0 errors,
+  4 existing warnings. Python ran on installed 3.13.5, not CI's 3.14. No dependencies changed.
+- Browser checks covered desktop/mobile, PNG/PDF, regional scale, keyboard focus,
+  snapshot failure, invalid latitude, missing Zillow history, delayed color loading,
+  and export style failure. The switch timer reported 22.6 ms for a 2,216 ms request.
+- Local diagnostics and screenshots remain under ignored `build/review-2026-09-27/`.
+  No data was published and no commit was created.
+
+## 2026-09-28: review findings fixed and verified
+
+- Completed the 15 review fixes, preserving the static architecture and independent paint loading.
+- Added complete release identity, deterministic immutable archives, deploy hash verification, and versioned snapshot/history paths with browser consistency checks. Probe-only changes now persist.
+- Corrected local-input handling, monthly calendar checks, forecast origin-specific tiers, and calibration/evaluation separation. Existing-panel backtest: 80 origins, 25,819 ZIPs, 87.03% measured 12-month coverage for an 80% target; model error below no-change at all horizons.
+- Added visible detail/export failures and retries, capture deadlines, required inset checks, and fixed capture configuration. Corrected coordinates, missing chart-series fallback, mobile dates/gestures, and native dialog focus handling.
+- Metric timing now ends after rendering. A 1.8-second injected request measured 1.934 seconds. Methodology loads no map assets; build stages only deployable files. Removed unsupported local deploy scripts.
+- Visual checks caught and fixed a lazy-CSS ordering regression that collapsed the export map container. National and California previews now have valid dimensions; regenerated national PNG was visually checked.
+- Verified: 83 pytest, 185 vitest, Node staging test, TypeScript/build, six workflow checks, lint with zero errors and four existing warnings. Python used installed 3.13.5. Final Vite build: 5.6 seconds (2.7 seconds staging), a local disk timing rather than a controlled benchmark.
+- Chrome passed PNG/PDF downloads, capture control locking, state selection, focus containment/restoration, export/detail retries, invalid coordinates, mobile date/sheet controls, and canvas dimension checks.
+- Updated project instructions, methodology reference, local walkthrough, and review status. Removed completed work from TODOS. Diagnostics remain in ignored build/review-2026-09-28/. No commit, production data rebuild, or deployment was performed.
+
+- Final load-path check added deadlines to the two boot requests as well as the snapshot prefetch. Two executable boot-script regressions verify mixed paint filenames and stalled requests, bringing the frontend total to 187.
+- The final build after the boot-request deadline change passed in 6.52 seconds, with 3.4 seconds of staging. The temporary verification server was stopped.

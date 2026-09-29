@@ -15,7 +15,7 @@ import {
 } from "@/lib/choropleth-painter";
 import type { ClassSource } from "@/lib/class-source";
 import type { ZipTable } from "@/lib/zip-table";
-import { mark, measure } from "@/lib/perf";
+import { mark, metricSwitchTicket, finishMetricSwitch } from "@/lib/perf";
 import type { ProgressData } from "@/workers/worker-types";
 
 
@@ -131,6 +131,8 @@ export function MapLibreMap({
   const lastMouseEventRef = useRef<MapMouseEvent | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const painterRef = useRef<ChoroplethPainter | null>(null);
+  const selectedMetricRef = useRef(selectedMetric);
+  selectedMetricRef.current = selectedMetric;
   const highlightedZipRef = useRef<string | null>(null);
   /** The ZIP currently under the cursor, so the popup is rebuilt on change only. */
   const hoveredZipRef = useRef<string | null>(null);
@@ -287,6 +289,7 @@ export function MapLibreMap({
         const errMsg = err instanceof Error ? err.message : "Map initialization failed";
         console.error("Map init failed", err);
         trackError("map_init_failed", errMsg);
+        setError("Could not initialize the map. Reload to try again.");
       }
     };
 
@@ -681,30 +684,15 @@ export function MapLibreMap({
     if (!isMapReady || !pmtilesLoaded || !classSource) return;
     const painter = painterRef.current;
     if (!painter) return;
-    painter.schedule(classSource);
-    setHasPainted(true);
-  }, [isMapReady, pmtilesLoaded, classSource]);
+    const ticket = metricSwitchTicket(selectedMetric);
+    painter.schedule(classSource, () => {
+      if (selectedMetricRef.current !== selectedMetric) return;
+      setHasPainted(true);
+      finishMetricSwitch(ticket);
+    });
+  }, [isMapReady, pmtilesLoaded, classSource, selectedMetric]);
 
-  // Metric-switch timing, end to end, so the headline number is measured by the
-  // page rather than asserted.
-  const firstMetricRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (firstMetricRef.current === null) {
-      firstMetricRef.current = selectedMetric;
-      return;
-    }
-    if (firstMetricRef.current === selectedMetric) return;
-    firstMetricRef.current = selectedMetric;
-    mark("map:metricSwitch:start");
-    const id = requestAnimationFrame(() =>
-      requestAnimationFrame(() => measure("map:metricSwitch", "map:metricSwitch:start", {
-        metric: selectedMetric,
-      })),
-    );
-    return () => cancelAnimationFrame(id);
-  }, [selectedMetric]);
-
-  // 5b. Price outliers: 47 ZIPs, built once from the snapshot; the toggle flips visibility.
+  // Build outliers from the snapshot; the toggle only changes visibility.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapReady || !store) return;
@@ -854,13 +842,11 @@ export function MapLibreMap({
       {isMapReady && !error && (
         <button
           onClick={handleResetBounds}
+          className="map-reset-control"
           style={{
             position: 'absolute',
-            top: 10 + 89 + 2 + 'px',
             right: '10px',
             zIndex: 2,
-            width: '29px',
-            height: '29px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -884,7 +870,10 @@ export function MapLibreMap({
       {((isLoading && !hasData && !hasPainted) || !isMapReady || error) && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white/80 z-10">
           {error ? (
-            <div className="text-red-500 font-bold px-6 text-center">{error}</div>
+            <div role="alert" className="text-red-500 px-6 text-center">
+              <p className="font-bold">{error}</p>
+              <button className="mt-2 underline" onClick={() => window.location.reload()}>Retry map</button>
+            </div>
           ) : (
             <>
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />

@@ -34,6 +34,8 @@ jobs:
 
       - name: Test
         run: npm test -- --run
+      - name: Verify release staging
+        run: node --test scripts/stage-public.test.mjs
 
       - name: Copyright year is current
         # Backstop for the Jan-1 cron in license_year.yml. If that job fails or

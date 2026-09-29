@@ -7,6 +7,7 @@ export const NULL_SENTINEL = -2147483648;
 export const ZIP_SPACE = 100_000;
 
 export interface SnapshotHeader {
+  release_id?: string;
   format: "domapus-snapshot";
   version: number;
   null_sentinel: number;

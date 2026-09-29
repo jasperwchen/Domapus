@@ -1,6 +1,8 @@
 """Declared invariants, asserted every run. Everything here raises (CONTRACT tier)."""
 
 import re
+from datetime import date
+from calendar import monthrange
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -8,6 +10,18 @@ import pyarrow.compute as pc
 
 class PipelineError(RuntimeError):
     """Raised on any condition that should fail the workflow loudly."""
+
+
+def assert_monthly_axis(periods: list[str], name: str) -> None:
+    """Positional lags are safe only on consecutive calendar month ends."""
+    previous = None
+    for value in periods:
+        current = date.fromisoformat(value)
+        ordinal = current.year * 12 + current.month
+        if (current.day != monthrange(current.year, current.month)[1]
+                or (previous is not None and ordinal != previous + 1)):
+            raise PipelineError(f"{name}: expected consecutive month ends near {value}")
+        previous = ordinal
 
 
 # --- Declared grains ---------------------------------------------------------------------

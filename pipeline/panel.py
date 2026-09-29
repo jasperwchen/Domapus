@@ -8,7 +8,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
-from .contracts import PipelineError
+from .contracts import PipelineError, assert_monthly_axis
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ def zhvi_matrix(zhvi_panel_path) -> tuple[list[str], list[str], np.ndarray]:
     """(months, zips, [months x zips] ZHVI), NaN where absent."""
     tbl = pq.read_table(zhvi_panel_path, columns=["zip", "month", "zhvi"])
     months, zips = axis(tbl, "month"), axis(tbl, "zip")
+    assert_monthly_axis(months, "ZHVI panel")
     return months, zips, dense(tbl, "month", "zip", "zhvi", months, zips)
 
 
@@ -56,6 +57,7 @@ def verify(panel_path: Path, expected_rows: int) -> dict:
         )
 
     periods = pc.unique(keys["period_end"]).to_pylist()
+    assert_monthly_axis(sorted(periods), "Redfin panel")
     zips = pc.unique(keys["zip"]).to_pylist()
 
     report = {

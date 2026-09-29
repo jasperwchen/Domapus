@@ -442,9 +442,8 @@ def test_stale_period_warns_but_does_not_refuse_to_publish(caplog, latest):
     """A hard fail refuses to publish, so the manifest carrying the outage banner
     is never written and the banner can never render. The two cancel out."""
     records, _, _ = serialize.assemble(_meta_for(latest), _zhvi_for(latest), latest)
-    for r in records.values():
-        r["period_end"] = "2026-06-01"
-    report = serialize.validate(records, "2026-06-01", "2026-06-01")
+    period = (date.today() - timedelta(days=60)).isoformat()
+    report = serialize.validate(records, period, period)
     assert report["period_age_days"]["redfin"] > serialize.STALE_WARN_DAYS
 
 
@@ -468,14 +467,14 @@ def test_one_month_apart_warns_but_still_publishes(latest):
     between them sees one feed ahead; fresh Redfin beside a month-old ZHVI still
     beats republishing last month's everything."""
     records, _, _ = serialize.assemble(_meta_for(latest), _zhvi_for(latest), latest)
-    report = serialize.validate(records, _recent_month_end(1), _recent_month_end(2))
+    report = serialize.validate(records, _recent_month_end(0), _recent_month_end(1))
     assert report["period_gap_months"] == 1
 
 
 def test_two_months_apart_is_fatal(latest):
     records, _, _ = serialize.assemble(_meta_for(latest), _zhvi_for(latest), latest)
     with pytest.raises(PipelineError, match="broken feed, not a late one"):
-        serialize.validate(records, _recent_month_end(1), _recent_month_end(3))
+        serialize.validate(records, _recent_month_end(0), _recent_month_end(2))
 
 
 # --- ZCTA metadata ---------------------------------------------------------
@@ -740,15 +739,6 @@ def test_release_digest_ignores_timestamps_but_not_values(tmp_path, latest):
     moved["d"][live["f"].index("msp")][0] += 1
     assert serialize.payload_digest(moved) != base
 
-
-def test_release_digest_covers_the_paint_tables(tmp_path, latest):
-    """The paint tables are half of what the map renders and are hashed
-    separately, so a digest over the snapshot alone would call a release
-    unchanged when the colours moved."""
-    snap = serialize.payload_digest(_published(_sample_records(latest), tmp_path))
-    other = {**PAINT, "zhvi": {"sha256": "c" * 64}}
-    assert serialize.release_digest(snap, PAINT) != serialize.release_digest(snap, other)
-    assert serialize.release_digest(snap, PAINT) == serialize.release_digest(snap, dict(PAINT))
 
 
 def test_paint_encode_matches_the_golden_bytes():

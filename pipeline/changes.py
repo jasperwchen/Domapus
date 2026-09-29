@@ -139,6 +139,8 @@ def _yoy(metric: str, now, before):
 def recompute(panel_path, records: dict, latest: str) -> dict:
     """Overwrite every `<metric>_yoy` in `records` with our own lag-12 value."""
     all_periods = periods(panel_path)
+    from .contracts import assert_monthly_axis
+    assert_monthly_axis(all_periods, "Redfin changes")
     if latest not in all_periods:
         raise PipelineError(f"changes: latest period {latest!r} is not in the panel")
     i = all_periods.index(latest)

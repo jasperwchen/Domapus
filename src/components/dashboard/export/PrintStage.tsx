@@ -1,3 +1,4 @@
+import { captureMapCanvas } from "@/lib/map-capture";
 import { useEffect, useRef, useMemo, forwardRef, useImperativeHandle, useState, useCallback } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -15,10 +16,8 @@ import { classPaintExpression, FULL_OPACITY } from "@/lib/choropleth-painter";
 import { tickAt } from "@/lib/legend-format";
 import { fetchDataDates, formatPeriod, formatPeriodDay } from "@/lib/data-dates";
 
-// One layout, two renderers. Every number in `L` is in stage units (the 1200x900 preview);
-// the export canvas is the same layout at EXPORT_SCALE. Text is placed as boxes and centred
-// by both renderers, and map canvases render at stage units x EXPORT_SCALE so `drawImage`
-// is 1:1.
+// Preview and export share stage coordinates; map canvases render at EXPORT_SCALE
+// so exported drawImage calls preserve their native resolution.
 const STAGE_W = 1200;
 const STAGE_H = 900;
 const EXPORT_SCALE = 3;
@@ -26,10 +25,7 @@ const EXPORT_SCALE = 3;
 export const EXPORT_CANVAS_W = STAGE_W * EXPORT_SCALE;
 export const EXPORT_CANVAS_H = STAGE_H * EXPORT_SCALE;
 
-/** Both renderers use this stack so glyph widths agree. A canvas `ctx.font`
- *  falls back silently on a family it cannot parse, and a silent fallback here
- *  means the preview and the file disagree about where a right-aligned run
- *  ends. */
+/** Share fonts so preview and canvas text align. */
 const FONT_STACK = '"Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 const font = (size: number, weight = "400") => `${weight} ${size}px ${FONT_STACK}`;
 
@@ -81,9 +77,7 @@ function layout(includeTitle: boolean, includeLegend: boolean) {
   };
 }
 
-/** Text width in stage units, measured once and used by BOTH renderers, so the
- *  colour bar starts at the same x in the preview and in the file instead of at
- *  two independent measurements of the same string. */
+/** Share measured text widths between the preview and export. */
 let measureEl: HTMLCanvasElement | null = null;
 function textWidth(s: string, size: number, weight = "400"): number {
   if (!measureEl) measureEl = document.createElement("canvas");
@@ -174,6 +168,7 @@ function scaleSuffix(ratio: number | undefined): string {
 }
 
 export interface PrintStageProps {
+  zhviPeriod?: string | null;
   filteredData: ZipData[];
   selectedMetric: string;
   /** The boundaries the live map is painting. The export does not derive its own: see
@@ -187,6 +182,8 @@ export interface PrintStageProps {
   includeTitle: boolean;
   showCities?: boolean;
   onReady?: () => void;
+  onLoading?: () => void;
+  onError?: (message: string) => void;
 }
 
 /** A clickable region of the exported canvas, in canvas pixels. */
@@ -204,7 +201,6 @@ export interface ExportRender {
 }
 
 export interface PrintStageRef {
-  getElement: () => HTMLDivElement | null;
   exportToCanvas: () => Promise<ExportRender>;
 }
 
@@ -215,41 +211,9 @@ function rawValue(zip: ZipData, metric: string): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-/** Wait for a map to settle, then capture its GL canvas as an image. */
-function captureMapCanvas(map: maplibregl.Map): Promise<HTMLCanvasElement> {
-  return new Promise((resolve, reject) => {
-    const CAPTURE_TIMEOUT_MS = 10_000;
-    let settled = false;
-
-    const timeoutId = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        reject(new Error("Map capture timed out"));
-      }
-    }, CAPTURE_TIMEOUT_MS);
-
-    const doCapture = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      map.once("render", () => resolve(map.getCanvas()));
-      map.triggerRepaint();
-    };
-
-    // `loaded()` goes false again after a layout change, which is what makes a
-    // capture taken right after the city-label toggle safe: this waits for the
-    // symbol layers to be placed instead of grabbing the frame before them.
-    if (map.loaded() && map.isStyleLoaded()) {
-      doCapture();
-    } else {
-      map.once("idle", doCapture);
-    }
-  });
-}
-
 export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   filteredData, selectedMetric, breaks, scaleLabel = null, regionScope, regionName,
-  includeLegend, includeTitle, showCities = false, onReady,
+  includeLegend, includeTitle, showCities = false, onReady, onLoading, onError, zhviPeriod: releasePeriod,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mainMapRef = useRef<HTMLDivElement>(null);
@@ -269,7 +233,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   const paintedRef = useRef<Record<string, { zips: Set<string>; classes: Map<string, number> }>>({});
   const [mapsLoaded, setMapsLoaded] = useState(false);
   const [scale, setScale] = useState(1);
-  const [zhviPeriod, setZhviPeriod] = useState<string | null>(null);
+  const [fetchedPeriod, setZhviPeriod] = useState<string | null>(null);
+  const zhviPeriod = releasePeriod === undefined ? fetchedPeriod : releasePeriod;
   const [insetScales, setInsetScales] = useState<{ alaska?: number; hawaii?: number }>({});
 
   // City labels are offered below the national view only. At national extent
@@ -290,15 +255,19 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   // per ZIP, so it comes from last_updated.json. Everything else is Redfin and
   // carries period_end on each record.
   useEffect(() => {
+    if (releasePeriod !== undefined) return;
     let isMounted = true;
     fetchDataDates()
       .then(d => { if (isMounted) setZhviPeriod(d.zhvi_period_end ?? d.period_end); })
       .catch(() => { /* date is omitted rather than guessed */ });
     return () => { isMounted = false; };
-  }, []);
+  }, [releasePeriod]);
 
   const onReadyRef = useRef(onReady);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  const onLoadingRef = useRef(onLoading);
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onLoadingRef.current = onLoading; onErrorRef.current = onError; }, [onLoading, onError]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -431,6 +400,19 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   insetLabelsRef.current = { alaska: alaskaLabel, hawaii: hawaiiLabel };
 
   const exportToCanvas = useCallback(async (): Promise<ExportRender> => {
+    const config = {
+      maps: mapsRef.current,
+      regionScope: regionScopeRef.current,
+      includeTitle: includeTitleRef.current,
+      includeLegend: includeLegendRef.current,
+      metricLabel: metricLabelRef.current,
+      dataDate: dataDateRef.current,
+      regionName: regionNameRef.current,
+      insetLabels: insetLabelsRef.current,
+      legendTicks: legendTicksRef.current,
+      keyLabel: keyLabelRef.current,
+      dataPeriod: dataPeriodRef.current,
+    };
     const S = EXPORT_SCALE;
     const out = document.createElement("canvas");
     out.width = EXPORT_CANVAS_W;
@@ -455,22 +437,16 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       if (!map) throw new Error(`Could not capture ${mapName} map: map is not initialized`);
       return await captureMapCanvas(map);
     };
-    const captureOptional = async (map: maplibregl.Map | null) => {
-      if (!map) return null;
-      try { return await captureMapCanvas(map); }
-      catch { return null; }
-    };
-
     const [mainGl, alaskaGl, hawaiiGl] = await Promise.all([
-      captureRequired(mapsRef.current.main, "main"),
-      captureOptional(mapsRef.current.alaska),
-      captureOptional(mapsRef.current.hawaii),
+      captureRequired(config.maps.main, "main"),
+      config.regionScope === "national" && alaskaZips.size > 0 ? captureRequired(config.maps.alaska, "Alaska") : null,
+      config.regionScope === "national" && hawaiiZips.size > 0 ? captureRequired(config.maps.hawaii, "Hawaii") : null,
     ]);
 
-    const g = layout(includeTitleRef.current, includeLegendRef.current);
-    const label = metricLabelRef.current;
+    const g = layout(config.includeTitle, config.includeLegend);
+    const label = config.metricLabel;
 
-    if (includeTitleRef.current) {
+    if (config.includeTitle) {
       ctx.textAlign = "left";
       ctx.fillStyle = INK;
       ctx.font = font(p(L.title.size), "700");
@@ -479,7 +455,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       ctx.fillStyle = MUTED;
       ctx.font = font(p(L.sub.size));
       text(
-        dataDateRef.current ? `${regionNameRef.current}   ·   ${dataDateRef.current}` : regionNameRef.current,
+        config.dataDate ? `${config.regionName}   ·   ${config.dataDate}` : config.regionName,
         L.pad, L.sub.top, L.sub.h,
       );
     }
@@ -492,7 +468,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     hair();
     ctx.strokeRect(p(g.mapLeft), p(g.mapTop), p(g.mapW), p(g.mapH));
 
-    if (regionScopeRef.current === "national") {
+    if (config.regionScope === "national") {
       const { w, h, labelH, gap, margin } = L.inset;
       const insetY = g.mapBottom - margin - labelH - h;
       let insetX = g.mapLeft + margin;
@@ -515,21 +491,21 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
         insetX += w + gap;
       };
 
-      if (alaskaZips.size > 0) drawInset(alaskaGl, insetLabelsRef.current.alaska);
-      if (hawaiiZips.size > 0) drawInset(hawaiiGl, insetLabelsRef.current.hawaii);
+      if (alaskaZips.size > 0) drawInset(alaskaGl, config.insetLabels.alaska);
+      if (hawaiiZips.size > 0) drawInset(hawaiiGl, config.insetLabels.hawaii);
     }
 
     // The key, in the band below the map. Left-aligned run: name, colour bar with
     // its boundary labels underneath, then the no-data swatch.
-    const ticks = legendTicksRef.current;
-    if (includeLegendRef.current && ticks) {
+    const ticks = config.legendTicks;
+    if (config.includeLegend && ticks) {
       const lg = L.legend;
-      const lx = legendGeom(keyLabelRef.current);
+      const lx = legendGeom(config.keyLabel);
 
       ctx.textAlign = "left";
       ctx.fillStyle = INK;
       ctx.font = font(p(lg.titleSize), "600");
-      text(keyLabelRef.current, L.pad, g.bandTop, g.rowH);
+      text(config.keyLabel, L.pad, g.bandTop, g.rowH);
 
       // One rectangle per class, not a gradient. The map paints CLASSES discrete
       // colours; interpolating between them would put colours in the key that no
@@ -573,7 +549,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     // grey string.
     ctx.font = font(p(L.band.foot.size));
     ctx.textAlign = "left";
-    const footer = footerSegments(dataDateRef.current, includeTitleRef.current);
+    const footer = footerSegments(config.dataDate, config.includeTitle);
     const widths = footer.map(s => ctx.measureText(s.text).width);
     const total = widths.reduce((a, b) => a + b, 0);
     let x = p(g.mapRight) - total;
@@ -584,11 +560,10 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       x += widths[i];
     });
 
-    return { canvas: out, links, period: dataPeriodRef.current };
+    return { canvas: out, links, period: config.dataPeriod };
   }, [alaskaZips.size, hawaiiZips.size]);
 
   useImperativeHandle(ref, () => ({
-    getElement: () => containerRef.current,
     exportToCanvas,
   }), [exportToCanvas]);
 
@@ -603,6 +578,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
 
   useEffect(() => {
     addPMTilesProtocol();
+    onLoadingRef.current?.();
     setMapsLoaded(false);
     setInsetScales({});
     cityLayersRef.current = {};
@@ -629,9 +605,18 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       : 1;
     let isReadyTriggered = false;
     let isCleanedUp = false;
+    let failed = false;
+    const disposeTimers: (() => void)[] = [];
+    const fail = (message: string) => {
+      if (isCleanedUp || failed) return;
+      failed = true;
+      disposeTimers.forEach(dispose => dispose());
+      setMapsLoaded(false);
+      onErrorRef.current?.(message);
+    };
 
     const markReady = () => {
-      if (isCleanedUp || isReadyTriggered) return;
+      if (isCleanedUp || failed || isReadyTriggered) return;
       if (loadedCount >= requiredMaps) {
         isReadyTriggered = true;
         const main = mapsRef.current.main;
@@ -657,20 +642,25 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
       bounds?: Bounds,
       validZips?: Set<string>,
     ) => {
-      if (!container || isCleanedUp) return;
+      if (isCleanedUp || failed) return;
+      if (!container) { fail(`Could not initialize the ${key} map.`); return; }
 
       // One map contributes one count. The interval path and the timeout fallback both used
       // to increment: a map that reported ready while the insets were still loading was
       // counted again ten seconds later, so `markReady()` could fire an inset short.
       let counted = false;
       const countOnce = () => {
-        if (counted) return;
+        if (counted || failed) return;
         counted = true;
+        clearTimeout(readyTimeout);
         loadedCount++;
         markReady();
       };
 
-      const map = new maplibregl.Map({
+      const readyTimeout = setTimeout(() => fail(`The ${key} map took too long to load.`), MAP_READY_TIMEOUT_MS);
+      disposeTimers.push(() => clearTimeout(readyTimeout));
+      let map: maplibregl.Map;
+      try { map = new maplibregl.Map({
         container,
         style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
         // Sized so each map backs onto exactly the export pixels (was a 1.51x upscale).
@@ -687,7 +677,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
         // choropleth renders nothing. See INSET_RENDER_W for why the insets are
         // rendered large enough that this floor never binds.
         minZoom: PMTILES_MIN_ZOOM,
-      });
+      }); } catch { fail(`Could not initialize the ${key} map.`); return; }
       mapsRef.current[key] = map;
 
       // MapLibre reports a rejected paint value as an error EVENT, not a throw,
@@ -699,10 +689,11 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
         if (/abort/i.test(msg)) return;   // teardown mid-load, not a fault
         console.error(`[Export] ${key} map error:`, msg);
         trackError("export_map_error", msg);
+        fail(`The ${key} map could not load. Check your connection and retry.`);
       });
 
       map.on("load", () => {
-        if (isCleanedUp) { map.remove(); return; }
+        if (isCleanedUp || failed) return;
         try {
           map.resize();
 
@@ -808,35 +799,24 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
           }
 
           const checkInterval = setInterval(() => {
-            if (isCleanedUp) { clearInterval(checkInterval); return; }
+            if (isCleanedUp || failed) { clearInterval(checkInterval); return; }
             if (!featureStatesApplied && map.isSourceLoaded("zips")) {
               map.off("sourcedata", onSourceData);
               applyFeatureStates();
             }
             if (map.loaded() && map.isStyleLoaded() && featureStatesApplied) {
               clearInterval(checkInterval);
-              clearTimeout(fallbackTimer);
               countOnce();
             }
           }, 250);
 
-          const fallbackTimer = setTimeout(() => {
-            if (!counted && !isCleanedUp) {
-              clearInterval(checkInterval);
-              if (!featureStatesApplied) {
-                map.off("sourcedata", onSourceData);
-                applyFeatureStates();
-              }
-              countOnce();
-            }
-          }, MAP_READY_TIMEOUT_MS);
+          disposeTimers.push(() => clearInterval(checkInterval));
 
         } catch (error: unknown) {
           const errMsg = error instanceof Error ? error.message : "Unknown export map error";
           console.error(`[Export] Error initializing map ${key}:`, error);
           trackError("export_map_init_error", errMsg);
-          loadedCount++;
-          markReady();
+          fail(`Could not prepare the ${key} map.`);
         }
       });
     };
@@ -853,6 +833,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
 
     return () => {
       isCleanedUp = true;
+      disposeTimers.forEach(dispose => dispose());
       (["main", "alaska", "hawaii"] as const).forEach(k => {
         mapsRef.current[k]?.remove();
         mapsRef.current[k] = null;
@@ -988,7 +969,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
             boxSizing: "border-box",
           }}
         >
-          <div ref={mainMapRef} className="absolute inset-0" />
+          <div ref={mainMapRef} style={{ position: "absolute", inset: 0 }} />
 
           {regionScope === "national" && (
             <div

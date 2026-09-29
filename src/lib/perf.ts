@@ -12,6 +12,26 @@ export function mark(name: string): void {
   }
 }
 
+let switchSequence = 0;
+let pendingSwitch: { id: number; metric: string; start: string } | null = null;
+
+export function beginMetricSwitch(metric: string): void {
+  if (pendingSwitch && PERF) performance.clearMarks(pendingSwitch.start);
+  const id = ++switchSequence;
+  pendingSwitch = { id, metric, start: `map:metricSwitch:${id}` };
+  mark(pendingSwitch.start);
+}
+
+export function metricSwitchTicket(metric: string): number | null {
+  return pendingSwitch?.metric === metric ? pendingSwitch.id : null;
+}
+
+export function finishMetricSwitch(ticket: number | null): void {
+  if (!pendingSwitch || pendingSwitch.id !== ticket) return;
+  measure("map:metricSwitch", pendingSwitch.start, { metric: pendingSwitch.metric });
+  pendingSwitch = null;
+}
+
 /** Entries kept per measure name. Every auto-scale re-cut adds a few, so an unbounded buffer
  *  grows for the life of a tab. The bench reads a whole metric cycle back, which is well
  *  under this, so only the oldest go. */

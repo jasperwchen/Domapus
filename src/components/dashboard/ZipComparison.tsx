@@ -9,8 +9,7 @@ import { METRIC_GROUPS } from '@/lib/metrics';
 
 interface ZipComparisonProps {
   currentZip: ZipData;
-  /** Owned by `HousingDashboard`, so a map click can fill it. Keeping it local
-   *  here is what made clicking the map replace the left-hand ZIP instead. */
+  /** Dashboard-owned so map clicks can choose the comparison ZIP. */
   compareZip: ZipData | null;
   onCompareZipChange: (zip: ZipData | null) => void;
   store: ZipTable | null;
@@ -59,7 +58,6 @@ export function ZipComparison({
         </Button>
       </div>
 
-      {/* The map is an input here and nothing used to say so. */}
       <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         Or click any ZIP on the map.
@@ -108,13 +106,7 @@ export function ZipComparison({
   );
 }
 
-/**
- * One group as a table: metric, A, B, difference.
- *
- * Colour marks direction, not quality: green = B above A, red = below, on every metric. Which
- * is "better" depends on whether the reader buys or sells. The arrow repeats it for readers
- * who cannot separate the hues.
- */
+/** Color and arrows show direction, not whether a difference is better. */
 function Group({
   label, keys, a, b,
 }: {
@@ -145,9 +137,7 @@ function Group({
           const rel = relative(av, bv, m.format as FormatType);
           return (
             <div key={m.key as string} className="flex items-baseline gap-2 px-3 py-2">
-              {/* The label column is whatever the three fixed columns leave,
-                  which at the panel's 360 px floor is about eleven characters.
-                  The title keeps the full name reachable rather than lost. */}
+              {/* Keep truncated metric names available in the title. */}
               <span
                 className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
                 title={m.label}
@@ -175,10 +165,7 @@ function Group({
   );
 }
 
-/** One side's value, with an arrow when it is the larger of the two.
- *
- *  The arrow is inside the 72 px column and the number keeps its own width, so
- *  the two value columns still line up whether or not either carries one. */
+/** Keep value columns aligned when only one has an arrow. */
 function Value({
   v, format, higher,
 }: {
@@ -189,9 +176,7 @@ function Value({
   return (
     <span className="flex w-[66px] shrink-0 items-baseline justify-end">
       {higher && (
-        // Lucide's glyph sits inside about 2.5 px of its own box on each side, so
-        // a nominal gap here reads as a gap twice that wide and the arrow floats
-        // between the two value columns instead of marking one of them.
+        // Compensate for the icon's internal padding.
         <ArrowUp
           className="-mr-px h-3 w-3 shrink-0 self-center text-foreground/70"
           aria-label="higher"

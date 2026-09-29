@@ -115,8 +115,9 @@ Do not reintroduce a path where the map waits on the snapshot to show colour.
 ## Rules the code depends on
 
 **The pipeline never writes `public/data/` from a stage.** Every stage writes `build/` plus a
-`build/<stage>_report.json` receipt. The receipts are a log of this run (`run()` clears old ones
-first); `_require` checks prerequisite receipts for `status: ok`. Exceptions stop the run. Publishing is a separate copy of a verified build. This rule exists because
+`build/<stage>_report.json` receipt. The receipts describe this run (`run()` clears old ones
+first); `_require` checks prerequisite receipts for `status: ok`. Exceptions stop the run.
+Publishing is a separate copy of a verified build. This rule exists because
 a bug once let a run that passed weak validators overwrite the last known-good published data.
 
 **The colour ramp has one definition.** `src/lib/choropleth.generated.ts`, re-derived by
@@ -283,7 +284,7 @@ a run when *either* feed moves, a run landing between the two publishes half a r
 `serialize.validate` compares the two period ends: a one-month gap warns and publishes, two
 months fails.
 
-`deploy.yml` is invoked through `workflow_call` from inside the data run, not by `on: push`.
+The data run invokes `deploy.yml` through `workflow_call`; Deploy also supports push and dispatch.
 A push made with the default `GITHUB_TOKEN` does not trigger workflows, so the data commit used
 to sit on `main` unpublished. A miswired `workflow_call` looks exactly like that original bug,
 so verify a Deploy job actually appears in the run graph rather than that the YAML parses.
@@ -291,7 +292,6 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 ## Docs
 
 - `docs/REVIEW-2026-09-27.md` records the review and verified fixes completed September 28.
-
 - `docs/TODOS.md` — open work only. Read before starting work.
 - `docs/CHANGES.md` — decision history and reference facts moved out of the todos.
 - `docs/METHODOLOGY.md` — developer reference: stage-to-manifest map, constants, wire format,
@@ -377,7 +377,7 @@ transposes it into typed arrays, and transfers them to `src/lib/zip-table.ts`.
 - `class-source.ts` — which authority decides a ZIP's class. Exactly one is live at a time.
 - `choropleth-painter.ts` — turns classes into MapLibre's constant `match` expression.
 - `data-url.ts` — resolves data URLs against `VITE_DATA_BASE`. PR previews point this at
-  production so they don't ship their own 92 MB tileset.
+  production so they don't ship their own 46.9 MB tileset.
 - `history.ts` reads the manifest's versioned history path and validates its index, then fetches one bucket per click and reads the per-ZIP
   series out of it. The bucket carries ~6 neighbouring ZIPs, so panning nearby is free.
   Feeds `Sparkline.tsx` in the sidebar.
