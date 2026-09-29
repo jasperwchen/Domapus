@@ -4030,3 +4030,10 @@ fits 375 px.
 
 - Final load-path check added deadlines to the two boot requests as well as the snapshot prefetch. Two executable boot-script regressions verify mixed paint filenames and stalled requests, bringing the frontend total to 187.
 - The final build after the boot-request deadline change passed in 6.52 seconds, with 3.4 seconds of staging. The temporary verification server was stopped.
+
+## 2026-09-28: dependency refresh
+
+- Ran npm update within existing package.json ranges; 16 installed packages changed, including typescript-eslint 8.71.0, browserslist 4.29.2, caniuse-lite, earcut, and tldts.
+- Installed npm 11.4.2 and bundled npm 10.9.2 failed internally with edgesOut. A current npm 11 client run through npm exec completed successfully without changing the global installation.
+- Verified 187 frontend tests, production build, full lint (zero errors, four existing warnings), Node staging test, and six workflow checks. npm reported zero vulnerabilities.
+- Kept dependency changes separate from review-fix commit 2921e4f. User requested retaining ignored review diagnostics for reproducibility.
