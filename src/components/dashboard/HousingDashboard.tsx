@@ -40,20 +40,18 @@ function getInitialUrlParams() {
   };
 }
 
-const initialUrlParams = getInitialUrlParams();
-
 export function HousingDashboard() {
   const isMobile = useIsMobile();
   const { setUrlState } = useUrlState();
-  const initialUrlStateRef = useRef(initialUrlParams);
+  const [initialUrlState] = useState(getInitialUrlParams);
 
-  const [selectedMetric, setSelectedMetric] = useState<MetricType>((initialUrlStateRef.current.metric as MetricType) || "zhvi");
+  const [selectedMetric, setSelectedMetric] = useState<MetricType>((initialUrlState.metric as MetricType) || "zhvi");
   const [selectedZip, setSelectedZip] = useState<ZipData | null>(null);
   // Compare mode lives here, not in `Sidebar`: a map click in compare mode must set the
   // comparison ZIP rather than replace the primary one, and closing the panel must reset it.
   const [mode, setMode] = useState<"detail" | "compare">("detail");
   const [compareZip, setCompareZip] = useState<ZipData | null>(null);
-  const [searchZip, setSearchZip] = useState<string>(initialUrlStateRef.current.zip || "");
+  const [searchZip, setSearchZip] = useState<string>("");
   const [searchTrigger, setSearchTrigger] = useState<number>(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isExportMode, setIsExportMode] = useState(false);
@@ -140,9 +138,7 @@ export function HousingDashboard() {
     })();
 
     return () => { alive = false; };
-    // setUrlState changes identity with the URL; only a metric change refetches.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMetric]);
+  }, [selectedMetric, setUrlState]);
 
   // --- The interaction path: the snapshot, off the critical path -------------
   useEffect(() => {
@@ -194,6 +190,7 @@ export function HousingDashboard() {
   // this one". The URL keeps naming the primary ZIP: it is what the panel is
   // about, and a shared link should reopen on it.
   const handleZipSelect = useCallback((zip: ZipData) => {
+    initialLoadRef.current = true;
     hasUserInteractedRef.current = true;
     setSidebarOpen(true);
     if (mode === "compare" && zip.zipCode !== selectedZip?.zipCode) {
@@ -204,15 +201,14 @@ export function HousingDashboard() {
     setUrlState({ zip: zip.zipCode, metric: selectedMetric });
   }, [mode, selectedZip, selectedMetric, setUrlState]);
 
-  const handleSearch = useCallback((zip: string, trigger: number) => {
-    setSearchZip(zip);
-    setSearchTrigger(trigger);
+  const handleSearch = useCallback((zip: string) => {
     hasUserInteractedRef.current = true;
-    setUrlState({ zip, metric: selectedMetric });
 
     // Search selects like a map click, obeying the same compare-mode rule.
     const row = store?.get(zip);
     if (row) {
+      setSearchZip(row.zipCode);
+      setSearchTrigger(prev => prev + 1);
       handleZipSelect(row);
       return;
     }
@@ -231,15 +227,19 @@ export function HousingDashboard() {
             description: "The map is ready but the data behind it is not. Try again in a moment.",
           },
     );
-  }, [selectedMetric, setUrlState, store, handleZipSelect]);
+  }, [store, handleZipSelect]);
 
   // Closing the panel ends compare mode. The next ZIP the user clicks opens on
   // its details, which is what closing a panel means everywhere else.
   const handleSidebarClose = useCallback(() => {
+    initialLoadRef.current = true;
     setSidebarOpen(false);
+    setSelectedZip(null);
+    setSearchZip("");
     setMode("detail");
     setCompareZip(null);
-  }, []);
+    setUrlState({ zip: undefined });
+  }, [setUrlState]);
 
   const handleModeChange = useCallback((next: "detail" | "compare") => {
     setMode(next);
@@ -258,18 +258,21 @@ export function HousingDashboard() {
 
   // Auto-load ZIP from URL once the snapshot exists.
   useEffect(() => {
-    const initialZip = initialUrlStateRef.current.zip;
+    const initialZip = initialUrlState.zip;
     if (!initialLoadRef.current && store && initialZip) {
       initialLoadRef.current = true;
-      const row = store.get(initialZip);
+      const row = /^\d{1,5}$/.test(initialZip) ? store.get(initialZip) : null;
       if (row) {
         setSelectedZip(row);
         setSidebarOpen(true);
-        setSearchZip(initialZip);
+        setSearchZip(row.zipCode);
         setSearchTrigger(prev => prev + 1);
+        setUrlState({ zip: row.zipCode });
+      } else {
+        setUrlState({ zip: undefined });
       }
     }
-  }, [store]);
+  }, [store, initialUrlState.zip, setUrlState]);
 
   // Viewport rows from real polygon bounds; a flat scan (~0.1 ms), no index.
   const recomputeVisible = useCallback((
@@ -448,6 +451,7 @@ export function HousingDashboard() {
             <MapLibreMap
               selectedMetric={selectedMetric}
               onZipSelect={handleZipSelect}
+              selectedZip={sidebarOpen ? selectedZip?.zipCode : undefined}
               searchZip={searchZip}
               searchTrigger={searchTrigger}
               store={store}
@@ -457,8 +461,8 @@ export function HousingDashboard() {
               onMapMove={handleMapMove}
               onUserInteraction={handleUserInteraction}
               showLisa={showLisa}
-              initialCenter={initialUrlStateRef.current.lng !== undefined && initialUrlStateRef.current.lat !== undefined ? [initialUrlStateRef.current.lng, initialUrlStateRef.current.lat] : undefined}
-              initialZoom={initialUrlStateRef.current.zoom}
+              initialCenter={initialUrlState.lng !== undefined && initialUrlState.lat !== undefined ? [initialUrlState.lng, initialUrlState.lat] : undefined}
+              initialZoom={initialUrlState.zoom}
             />
           </div>
           {!isExportMode && !(isMobile && sidebarOpen) && (

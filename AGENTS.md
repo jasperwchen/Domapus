@@ -405,6 +405,11 @@ GL + PMTiles), `Legend`, `MetricSelector`, `SearchBox`, `Sidebar` (the detail pa
 `ZipComparison`, `TopBar`, `MobileBottomSheet`, and the export pair
 `export/ExportSidebar.tsx` + `export/PrintStage.tsx` (PNG via canvas, PDF via jsPDF).
 
+The ZIP outline follows the open detail panel's primary ZIP, including in compare mode.
+Search moves the camera only after a valid lookup; it does not own the outline. Closing
+details clears the selection and URL ZIP. Delayed viewport writes merge with the latest URL
+so they cannot restore a closed or previous selection.
+
 **Hooks.** `useDataWorker` (worker lifecycle), `useUrlState` (metric and selected ZIP in the
 query string), `use-mobile` (768 px breakpoint), `use-toast`.
 

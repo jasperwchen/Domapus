@@ -38,6 +38,8 @@ export function SearchBox({ onSearch }: SearchBoxProps) {
           placeholder="Enter ZIP code..."
           value={searchValue}
           onChange={handleInputChange}
+          onFocus={e => e.currentTarget.select()}
+          onClick={e => e.currentTarget.select()}
           className="pl-10 w-full"
           maxLength={5}
           aria-label="Search for ZIP code"

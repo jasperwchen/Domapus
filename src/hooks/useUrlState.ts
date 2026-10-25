@@ -23,7 +23,11 @@ export function parseView(params: URLSearchParams): Pick<UrlState, "lat" | "lng"
 }
 
 export function useUrlState() {
-  const [, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramsRef = useRef(searchParams);
+  const writerRef = useRef(setSearchParams);
+  paramsRef.current = searchParams;
+  writerRef.current = setSearchParams;
   const debounceTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
     if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
@@ -32,19 +36,17 @@ export function useUrlState() {
   // Update URL state (replaceState to avoid polluting browser history)
   const setUrlState = useCallback((updates: Partial<UrlState>, debounce = false) => {
     const updateParams = () => {
-      setSearchParams((prev) => {
-        const newParams = new URLSearchParams(prev);
-        
-        Object.entries(updates).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            newParams.set(key, String(value));
-          } else {
-            newParams.delete(key);
-          }
-        });
-        
-        return newParams;
-      }, { replace: true });
+      // Delayed viewport writes must merge with the latest selection, including a close.
+      const newParams = new URLSearchParams(paramsRef.current);
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          newParams.set(key, String(value));
+        } else {
+          newParams.delete(key);
+        }
+      });
+      paramsRef.current = newParams;
+      writerRef.current(newParams, { replace: true });
     };
 
     if (debounce) {
@@ -59,7 +61,7 @@ export function useUrlState() {
     } else {
       updateParams();
     }
-  }, [setSearchParams]);
+  }, []);
 
   return { setUrlState };
 }

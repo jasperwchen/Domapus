@@ -23,6 +23,7 @@ import type { ProgressData } from "@/workers/worker-types";
 interface MapProps {
   selectedMetric: string;
   onZipSelect: (zipData: ZipData) => void;
+  selectedZip?: string;
   searchZip?: string;
   searchTrigger?: number;
   /** Null until the snapshot lands. The map still paints without it — the paint
@@ -107,6 +108,7 @@ function zoomFloorFor(containerWidthPx: number): number {
 export function MapLibreMap({
   selectedMetric,
   onZipSelect,
+  selectedZip,
   searchZip,
   searchTrigger,
   store,
@@ -563,6 +565,18 @@ export function MapLibreMap({
       // against a production build, which is the only build worth checking.
       (window as unknown as Record<string, unknown>).__map = map;
 
+      map.addLayer({
+        id: "zips-selection-halo",
+        type: "line",
+        source: "zips",
+        "source-layer": "us_zip_codes",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 5, 6, 6, 10, 7, 12, 8],
+          "line-opacity": ["case", ["boolean", ["feature-state", "highlighted"], false], 1, 0],
+        },
+      }, beforeId);
+
       // Border layer
       map.addLayer({
         id: "zips-border",
@@ -570,10 +584,10 @@ export function MapLibreMap({
         source: "zips",
         "source-layer": "us_zip_codes",
         paint: {
-          // Priority: searched ZIP, hovered ZIP, everything else. Feature-state, never a paint rewrite.
+          // Priority: selected ZIP, hovered ZIP, everything else. Feature-state, never a paint rewrite.
           "line-color": [
             "case",
-            ["boolean", ["feature-state", "highlighted"], false], "#ff6b35",
+            ["boolean", ["feature-state", "highlighted"], false], "#0086B3",
             ["boolean", ["feature-state", "hovered"], false], "#1f2937",
             "rgba(0,0,0,0.15)"
           ],
@@ -594,7 +608,7 @@ export function MapLibreMap({
           ],
           // Below z4 the border network packs into fewer pixels and greys the choropleth (stroke ink
           // ~0.198 km per km2 x width x km/px: darkening 4.8% at z4, 13.7% at z2). Opacity holds ink at
-          // its z4 level: 0.33 at z2, 0.67 at z3, 1 from z4. Hovered and searched ZIPs stay full.
+          // its z4 level: 0.33 at z2, 0.67 at z3, 1 from z4. Hovered and selected ZIPs stay full.
           // Recompute if line-width changes. ["zoom"] must be the outer interpolate, hence the repeats.
           "line-opacity": [
             "interpolate", ["linear"], ["zoom"],
@@ -763,33 +777,36 @@ export function MapLibreMap({
     }
   }, [selectedMetric, store]);
 
-  // 6. Fly to Search and Highlight ZIP
+  // Selection follows the open panel; searching only controls camera movement.
   useEffect(() => {
     if (!isMapReady || !mapRef.current || !pmtilesLoaded) return;
-    if (!searchZip) return;
-    const target = store?.get(searchZip);
-    if (!target) return;
-
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || !map.getSource("zips") || !map.getLayer("zips-border")) return;
-    const { longitude, latitude } = target;
+    if (!map.getSource("zips")) return;
 
     // Clear previous highlight
-    if (highlightedZipRef.current && highlightedZipRef.current !== searchZip) {
+    if (highlightedZipRef.current && highlightedZipRef.current !== selectedZip) {
       map.setFeatureState(
         { source: "zips", sourceLayer: "us_zip_codes", id: highlightedZipRef.current },
         { highlighted: false }
       );
     }
 
-    // Set new highlight
-    map.setFeatureState(
-      { source: "zips", sourceLayer: "us_zip_codes", id: searchZip },
-      { highlighted: true }
-    );
-    highlightedZipRef.current = searchZip;
+    if (selectedZip) {
+      map.setFeatureState(
+        { source: "zips", sourceLayer: "us_zip_codes", id: selectedZip },
+        { highlighted: true }
+      );
+    }
+    highlightedZipRef.current = selectedZip ?? null;
+  }, [isMapReady, pmtilesLoaded, selectedZip]);
 
-    if (longitude && latitude) {
+  useEffect(() => {
+    if (!isMapReady || !mapRef.current || !pmtilesLoaded || !searchZip) return;
+    const target = store?.get(searchZip);
+    if (!target) return;
+    const map = mapRef.current;
+    const { longitude, latitude } = target;
+    if (longitude !== null && latitude !== null && Number.isFinite(longitude) && Number.isFinite(latitude)) {
       map.flyTo({ center: [longitude, latitude], zoom: 10, duration: 1500 });
     }
   }, [isMapReady, pmtilesLoaded, searchZip, searchTrigger, store]);
@@ -801,16 +818,7 @@ export function MapLibreMap({
     const container = mapContainer.current;
     const padding = container ? getDynamicPadding(container) : 40;
     map.fitBounds(DEFAULT_BOUNDS, { padding, duration: 1000 }, { reset: true });
-
-    // Clear any highlighted zip
-    if (highlightedZipRef.current) {
-      map.setFeatureState(
-        { source: "zips", sourceLayer: "us_zip_codes", id: highlightedZipRef.current },
-        { highlighted: false }
-      );
-      highlightedZipRef.current = null;
-    }
-  }, []);
+  }, [getDynamicPadding]);
 
   return (
     <div className="absolute inset-0 w-full h-full min-h-[400px]">

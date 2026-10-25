@@ -4037,3 +4037,27 @@ fits 375 px.
 - Installed npm 11.4.2 and bundled npm 10.9.2 failed internally with edgesOut. A current npm 11 client run through npm exec completed successfully without changing the global installation.
 - Verified 187 frontend tests, production build, full lint (zero errors, four existing warnings), Node staging test, and six workflow checks. npm reported zero vulnerabilities.
 - Kept dependency changes separate from review-fix commit 2921e4f. User requested retaining ignored review diagnostics for reproducibility.
+
+## 2026-10-25: keep ZIP details, outline, and URL in agreement
+
+The orange selection outline blended into the housing color ramp and followed the last
+search rather than the detail panel. Map clicks now move a cyan-blue outline with a white
+edge to the panel's primary ZIP. Search only moves the camera; comparison searches keep the
+primary outline and shared URL. Resetting the map view keeps the open ZIP selected.
+
+Closing either desktop details or the mobile sheet clears the selected ZIP, camera search
+target, comparison state, and URL ZIP. Delayed viewport writes now merge with the latest URL
+rather than the URL captured when a pan ended, which could restore a closed or previous ZIP.
+The initial URL is read on each dashboard mount, so returning from methodology cannot reopen
+a ZIP closed earlier. Unknown or malformed shared ZIPs are removed after details load.
+
+The search field selects its text on focus and click. Failed or premature searches preserve
+the current selection. Successful searches use the dashboard's own increasing camera trigger;
+this avoids a collision between URL initialization and the first repeated search.
+
+Chrome checks covered actual map clicks, search replacement, keyboard focus, failed searches,
+reset, a delayed pan followed by close, reload, mobile dismissal, and touch text selection.
+No ZIP paint properties were rewritten. Screenshots and the repeatable check are in
+build/zip-selection/. All 202 tests in the full frontend run passed, followed by all 17 dashboard
+tests after adding the remount regression. The production build and TypeScript passed; lint
+has no errors and only existing unrelated warnings.

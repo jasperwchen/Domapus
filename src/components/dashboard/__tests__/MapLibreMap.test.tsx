@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, act, fireEvent, screen } from "@testing-library/react";
 import { MapLibreMap } from "../MapLibreMap";
 import * as maplibregl from "maplibre-gl";
+import type { ZipTable } from "@/lib/zip-table";
+import type { ZipData } from "../map/types";
 
 // Hoisted so vi.mock (which is hoisted to the top of the module) can access these.
 const mocks = vi.hoisted(() => {
@@ -14,6 +16,14 @@ const mocks = vi.hoisted(() => {
     /** False models a basemap that never answers: no `load` until a test emits one. */
     static autoLoad = true;
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
+    sources = new Map<string, { setData: ReturnType<typeof vi.fn> }>();
+    layers = new Map<string, { id: string; paint?: Record<string, unknown> }>();
+    setFeatureState = vi.fn();
+    flyTo = vi.fn();
+    fitBounds = vi.fn();
+    paintWrites = vi.fn();
+    setPaintProperty = this.paintWrites;
+    setLayoutProperty = vi.fn();
 
     constructor(public options: { style?: unknown } = {}) {
       MockMap.lastInstance = this;
@@ -27,6 +37,10 @@ const mocks = vi.hoisted(() => {
     on(event: string, cb: (payload?: unknown) => void) {
       if (!this.handlers[event]) this.handlers[event] = [];
       this.handlers[event].push(cb);
+    }
+
+    off(event: string, cb: (payload?: unknown) => void) {
+      this.handlers[event] = (this.handlers[event] || []).filter(h => h !== cb);
     }
 
     once(event: string, cb: (payload?: unknown) => void) {
@@ -78,11 +92,17 @@ const mocks = vi.hoisted(() => {
     loaded() {
       return true;
     }
-    getSource() {
-      return null;
+    addSource(id: string) {
+      this.sources.set(id, { setData: vi.fn() });
     }
-    getLayer() {
-      return null;
+    getSource(id: string) {
+      return this.sources.get(id);
+    }
+    addLayer(layer: { id: string; paint?: Record<string, unknown> }) {
+      this.layers.set(layer.id, layer);
+    }
+    getLayer(id: string) {
+      return this.layers.get(id);
     }
     getStyle() {
       return { layers: [] };
@@ -105,6 +125,8 @@ const mocks = vi.hoisted(() => {
 
   return { MockMap, MockPopup, mockResize, mockTriggerRepaint, mockSetStyle };
 });
+
+afterEach(() => vi.useRealTimers());
 
 interface MockMapLibreModule {
   Map: typeof mocks.MockMap;
@@ -148,6 +170,55 @@ beforeEach(() => {
 });
 
 describe("MapLibreMap", () => {
+  const selectionProps = {
+    selectedMetric: "zhvi", onZipSelect: vi.fn(), store: null,
+    isLoading: false, classSource: null, onMapMove: vi.fn(),
+  };
+
+  it("applies a selection after the map loads, moves it, and clears it without flying", async () => {
+    const { rerender } = render(<MapLibreMap {...selectionProps} selectedZip="00501" />);
+    await act(async () => { vi.runAllTimers(); });
+    const map = mocks.MockMap.lastInstance!;
+    expect(map.setFeatureState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "00501" }), { highlighted: true },
+    );
+    map.setFeatureState.mockClear();
+    rerender(<MapLibreMap {...selectionProps} selectedZip="10001" searchZip="00501" />);
+    expect(map.setFeatureState.mock.calls).toEqual([
+      [expect.objectContaining({ id: "00501" }), { highlighted: false }],
+      [expect.objectContaining({ id: "10001" }), { highlighted: true }],
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Reset map to default view" }));
+    expect(map.fitBounds).toHaveBeenCalled();
+    expect(map.setFeatureState).toHaveBeenCalledTimes(2);
+    rerender(<MapLibreMap {...selectionProps} />);
+    expect(map.setFeatureState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "10001" }), { highlighted: false },
+    );
+    expect(map.flyTo).not.toHaveBeenCalled();
+    expect(map.paintWrites).not.toHaveBeenCalled();
+    expect(map.layers.get("zips-border")?.paint?.["line-color"]).toContain("#0086B3");
+    expect(map.layers.get("zips-selection-halo")?.paint?.["line-color"]).toBe("#ffffff");
+  });
+
+  it("flies again on a repeated search without changing the primary highlight", async () => {
+    const store = {
+      n: 0, anchors: () => ({ lng: [], lat: [] }),
+      get: (zip: string) => ({ zipCode: zip, longitude: -75, latitude: 40 } as ZipData),
+    } as unknown as ZipTable;
+    const props = { ...selectionProps, store, selectedZip: "10001", searchZip: "00501", searchTrigger: 1 };
+    const { rerender } = render(<MapLibreMap {...props} />);
+    await act(async () => { vi.runAllTimers(); });
+    const map = mocks.MockMap.lastInstance!;
+    expect(map.flyTo).toHaveBeenCalledTimes(1);
+    expect(map.setFeatureState).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "10001" }), { highlighted: true },
+    );
+    rerender(<MapLibreMap {...props} searchTrigger={2} />);
+    expect(map.flyTo).toHaveBeenCalledTimes(2);
+    expect(map.setFeatureState).toHaveBeenCalledTimes(1);
+  });
+
   it("removes roads before the basemap loads, without waiting for ZIP data", () => {
     mocks.MockMap.autoLoad = false;
     renderMap();
