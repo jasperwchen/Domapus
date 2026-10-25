@@ -19,7 +19,7 @@ Nothing here touches `public/data/`.
 |---|---|---|---|
 | S0 probe | `sources.py` | upstream fingerprint | `upstream`, `fingerprints` |
 | S1 acquire | `sources.py` | the raw CSVs, outside the tree | — |
-| S2 ingest | `redfin.py`, `zhvi.py`, `panel.py` | `panel.parquet`, `zhvi-panel.parquet` | `panel` |
+| S2 ingest | `redfin.py`, `zhvi.py`, `panel.py` | `panel.parquet`, `zhvi-panel.parquet` | `panel`, `redfin.price_quality` |
 | S3 assemble | `serialize.py`, `dim.py`, `geom.py`, `changes.py` | `zip-data.json` | `snapshot`, `coverage`, `orphans`, `redfin`, `zhvi`, `changes` |
 | S4 gate | `gate.py` | pass/fail | `gate`, `validation` |
 | S5 noise | `noise.py` | `msp_rse`, `dom_rse`, `rel` | `noise` |
@@ -44,6 +44,18 @@ The build stages versioned snapshot/history paths; browser readers check the sha
 Both source calendars must contain consecutive month ends before positional lag
 calculations. Explicit local CSVs bypass the unchanged-probe early exit.
 
+Redfin prices outside the existing `contracts.RANGES` bounds, including non-finite
+values, become null at ingestion along with their feed YoY. This applies to all
+months, so snapshot levels, recomputed changes, noise estimates, and history use
+the same cleaned inputs. Other values and ZIPs remain intact. Ingestion fails if
+more than 0.1% of observed prices in any metric/month would be removed. Nulls do
+not count toward that denominator; counts accumulate across CSV batches.
+The S2 receipt records bounds, counts, affected periods, and up to three original
+values and ZIPs per metric/month. The `redfin.price_quality` manifest entry keeps
+bounds, total omissions, and `latest_affected` details; historical details stay in
+the receipt to keep the manifest small on first load.
+Snapshot range validation and the release diff gate remain strict.
+
 Forecast backtests fit each origin using its observed history and production tier
 thresholds (24 and 60 observations). Evaluation starts at least 12 months after the
 last calibration origin, so calibration outcomes precede evaluation. The manifest
@@ -61,6 +73,7 @@ methodology page goes stale.
 | `LAG_USED` | `noise.py` | chosen, justified | 3 is the first lag with no shared transactions in a rolling three-month window. `noise.K_lag` publishes every lag so the plateau is checkable. |
 | `TIER_EDGES` | `noise.py` | chosen | `0.10, 0.06, 0.04` on the relative standard error. The **edges** are the contract; the implied sample sizes move with `K` and are published as `noise.tier_n_implied`, never hardcoded. |
 | `RANKABLE_RSE` | `noise.py` | chosen | `0.10`. Implied `n` published as `noise.rankable_n_implied` (32 on the 2026-07 release). |
+| `MAX_INVALID_PRICE_SHARE` | `redfin.py` | chosen, justified | `0.001` per price metric/month, among non-null inputs. The cached March 2012-July 2026 panel had 1,252 out-of-range price cells; its worst rate was 8/24,563 (0.033%). The 0.1% cap admits sparse observations unsuitable for market pricing but rejects widespread range failures. |
 | `CLASSES` | `classify.py` and `choropleth.generated.ts` | **measured, not chosen** | 14. The count is the largest that keeps the separable span/classes ratio no worse than the old 7-class ramp gave; 13 and 15 fail. The paint byte imposes a second ceiling of 15 (the class field is the low nibble holding `class + 1`), which `paint.py` raises on. **Both must agree** — `PaintTable.from` refuses to construct when `manifest.classes` and the ramp length disagree. Re-run `derive_ramp.mjs` and the byte check before moving it. |
 | `SCHEMES` | `classify.py` | chosen per metric family | log-equal for prices, quantile for counts, equal-anchored-100 for shares. |
 | `COUNT_METRICS` | `classify.py` | chosen, justified | The metrics exempt from the rankable gate on their break population. See §4. |

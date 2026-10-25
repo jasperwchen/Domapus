@@ -1,58 +1,21 @@
-# Domapus — agent log and decision record
+# Domapus change history and decision record
 
-Append-only history. Moved out of `docs/TODOS.md` on 2026-09-03 so that file holds only
-open work. Nothing here is a task; everything here is *why* something is the way it is.
+This record preserves why the project changed: the problem, the chosen approach,
+alternatives rejected, measured evidence, and later corrections. Give a complex decision
+the space it needs. Do not reduce it to an outcome or impose a few-line limit.
 
-Log things here mid work to avoid losing progresas or context when hit limit.
-**Never delete an entry.** Append and date it. If a conclusion here was later overturned,
-add the correction below it rather than editing it — the reversals are the valuable part.
+Keep one substantive account of each change. Remove duplicate summaries and routine
+session handoffs; do not remove the reasoning or measurements they refer to. Working
+state belongs in docs/TODOS.md and raw verification logs belong in ignored build/.
+Historical conclusions below describe their date, not necessarily today's behavior.
+Use AGENTS.md and docs/METHODOLOGY.md for current rules and implementation contracts.
 
-## Protocol for agents
+The original before the October 23 editing is preserved in
+build/map-road-fix/CHANGES-before-20261023.md, including its uncommitted entries.
+Committed versions remain available through git history.
 
-Any agent working this project appends to **this** file: what it verified, what it changed,
-what it could not finish, and what the next session needs to know. Open work goes in
-`docs/TODOS.md`; finished work and rationale go here.
+## August 29-September 1: architecture review and corrections
 
----
-
-## Completed milestones
-
-- Verified the PROPERTY_TYPE bug against live published data (37.3% wrong)
-- Verified gh-pages at 800.70 MiB / 1024 MiB Pages limit
-- gh-pages cleanup commit built: `a2e8476913cbeb9f479f4d622ffb133fd8b0a2ce` (push still pending)
-- Recurrence prevention, 5 changes: previews read prod data · prune-dist · concurrency
-  groups · size guards · renovate removed
-- `datap/` gitignored (1.6 GB raw source had been untracked)
-- Benchmark harness built and validated (`bench/`, see `bench/README.md`)
-- Baseline captured, era 3 HEAD, local, 2026-08-29:
-  **LCP 7016 ms · TBT 4178 ms · transfer 5.27 MB · heap 73.8 MB · metric switch 2650 ms**
-- Design workflow complete, 13/13 agents -> the final spec (2,631 lines, 12 sections)
-- Spec read end to end and cross-checked against the repo (2026-09-01)
-- All 8 blocking spec corrections + 9 numeric fixes applied (2026-09-01, +253/-64 lines)
-- Phase 0.1 done: `requirements.txt` exact-pinned, `.python-version` added, both workflows
-  moved to `python-version-file`
-- Phase 0.4 done: lite JSON + `generate_lite_data.py` deleted, `index.html` preloads
-  `zip-data.json`
-- Phase 0.5 done, and better than the spec asked: repo added `formatRedfinWindow()` and
-  **kept** `formatPeriod()` for ZHVI, which is genuinely a monthly index
-
----
-
-## Agent log
-
-Append-only. Each background agent records what it started, concluded, and what
-the next session needs. Never delete an entry.
-
-- 2026-08-29 main session: harness built, baseline captured, 5 prevention changes
-  applied, gh-pages cleanup commit prepared (needs user push).
-- 2026-08-29 reviewer (feasibility/interview-defensibility lens): started adversarial
-  review of the three competing architectures. Verifying size/perf claims against
-  repo + datap/ before ranking.
-
-- 2026-08-29 critique agent [OPS/RISK LENS]: started adversarial review of the 3
-  competing architectures under the operational-risk lens (Actions limits, repo/git
-  growth, GH Pages bandwidth, LFS, partial failure, reproducibility, py3.14 wheels,
-  wall clock). Verifying claims against the repo before ranking.
   ### Verified during review (new facts, do not re-derive)
   - Redfin **county** tracker EXISTS at
     `.../redfin_market_tracker/county_market_tracker.tsv000.gz`, 241,131,599 B,
@@ -65,7 +28,7 @@ the next session needs. Never delete an entry.
     All three proposals agree the brief's "1% at z3" is wrong. But P1 and P2 then
     still use "~340 features at z3" in their frontend arithmetic (= 33771 x 1%),
     contradicting their own geometry sections. P3 measured 38,077 feature
-    *instances* at z3 (ZCTAs duplicate across tiles) — the only self-consistent one.
+    *instances* at z3 (ZCTAs duplicate across tiles) : the only self-consistent one.
   - Lag-1 high-pass K estimate is provably attenuated. With 90-day windows the
     noise autocorrelation is ~2/3 at lag1, ~1/3 at lag2. Var of the lag-1 filter
     = sigma^2 (1.5 - 2*rho1 + 0.5*rho2) = 0.333 sigma^2 vs 1.5 assumed
@@ -76,12 +39,6 @@ the next session needs. Never delete an entry.
   - Local env is Python 3.13.5 / pyarrow 19.0.1 / pandas 2.2.3 / scipy 1.18.1.
     CI pins '3.14'. cp314-wheel arguments in the dossiers are real but only bite in CI.
 
-- 2026-08-29 critique agent [STATS/DATA-CORRECTNESS LENS]: started adversarial review
-  of the 3 proposals on time-series + spatial-statistics grounds. Checking: 90-day
-  overlapping-window ACF, Redfin MOM/YOY semantics, median-of-medians aggregation,
-  shrinkage specification, backtest leakage, interval calibration, LISA multiple
-  comparisons, quantile classing, ZIP-vs-ZCTA, and whether the property-type fix is
-  actually complete.
   ### Review conclusion (feasibility + interview-defensibility lens)
   - Ranking: **P1 > P3 > P2**. P1 is the only one with a working-at-every-step path.
   - Effort (15 finished LOC/hr, student, school in session):
@@ -129,7 +86,7 @@ the next session needs. Never delete an entry.
     pre-compress binaries.
   * cp314 wheels: **the whole concern is false.** Latest on PyPI all ship cp314
     manylinux x86_64: pyarrow 25.0.1, pandas 3.0.5, numpy 2.5.2, scipy 1.18.1,
-    statsmodels 0.15.0 — and pyogrio 0.13.0 / pyproj 3.7.2 do too (geopandas,
+    statsmodels 0.15.0 : and pyogrio 0.13.0 / pyproj 3.7.2 do too (geopandas,
     libpysal, esda are pure-python). Any design justified by "no cp314 wheels"
     is justified by a false premise.
   * REAL dep risk instead: CI pins python 3.14, this machine runs 3.13.5;
@@ -139,7 +96,7 @@ the next session needs. Never delete an entry.
     that caused the headline bug. Pin exact versions before anything else.
   * pyarrow stream of the real 1.5 GB gz, measured here: 9,725,026 rows read,
     3,298,202 kept (33.91%) in **22.8 s**, table 541 MB. PK assert on
-    (PERIOD_END, REGION, PROPERTY_TYPE_ID) = **1.45 s, 0 duplicate keys** —
+    (PERIOD_END, REGION, PROPERTY_TYPE_ID) = **1.45 s, 0 duplicate keys** :
     confirms that IS the true primary key. Core pipeline is feasible with ~13x
     memory headroom. Actions 6h cap / 7GB RAM / 14GB disk are all non-issues.
   * Per-zoom tile bytes measured independently from the PMTiles dir (matches the
@@ -150,13 +107,13 @@ the next session needs. Never delete an entry.
     ETag is a plain MD5 -> verifiable); **redfin county_market_tracker.tsv000.gz
     EXISTS, 241,131,599 B, same publish batch** (de-risks the county low-zoom layer
     for any design that wanted it); zillow ZHVI ETag is `...-12` = MULTIPART, so
-    **MD5-vs-ETag integrity checks are impossible for Zillow** — scope that check
+    **MD5-vs-ETag integrity checks are impossible for Zillow** : scope that check
     to Redfin only.
   * Bandwidth is NOT a constraint: ~3.4 MB/cold visit today (2.20 MB gz zip-data +
     ~0.75 lite + ~0.45 tiles) = ~29k visits/mo against the 100 GB/mo soft cap.
   * LFS: `lfs: true` in deploy.yml AND preview.yml pulls all 14.45 MiB of
     public/data/archive on every checkout, but prune-dist.mjs deletes archive/ from
-    dist — it is 100% waste. 1 GiB/mo free quota / 14.45 MiB = **70 checkouts/mo**,
+    dist : it is 100% waste. 1 GiB/mo free quota / 14.45 MiB = **70 checkouts/mo**,
     and shrinking ~2 MB per new archive. Deleting two `lfs: true` lines is a
     zero-risk fix available today, independent of any redesign.
   * A 100-day dead-feed hard-fail (all 3 designs propose it) trips **2026-09-10**
@@ -236,12 +193,6 @@ the next session needs. Never delete an entry.
    3. Move the pipeline temp download out of public/ and gitignore *.tsv*.gz.
    4. Delete zip-data-lite.json fetch (both files are fetched every visit today).
 
-- 2026-08-30 CHIEF ARCHITECT (synthesis): started. Task = produce THE FINAL UNIFIED
-  SPECIFICATION from the 3 proposals + 3 critiques. Writing to
-  `docs/FINAL-SPEC.md`. Decisions being locked: P1 skeleton, P2 paint byte,
-  P3 statistics (K=0.5395, full-set chunked feature-state), county layer DROPPED
-  (30-day window + no FIPS), no custom binary containers in v1, no filter-repo in v1.
-
 - 2026-08-30 CHIEF ARCHITECT (synthesis) CONCLUDED. Wrote `docs/FINAL-SPEC.md`
   (2631 lines, 148 KB, 12 sections). That file is now THE plan; this file stays THE progress.
   ### Architecture locked
@@ -279,34 +230,12 @@ the next session needs. Never delete an entry.
   sketch · confidence hatch · bench.yml + Mann-Whitney · git filter-repo (DEFERRED, not
   cancelled) · 4-job data workflow · --require-hashes · integer MVT feature id (keeps
   promoteId; >5,000 ZIPs have leading zeros) · MinT · per-ZIP seasonality · HUD crosswalk.
-  ### Next session: START AT PHASE 0 (spec section 9). ~5 h, all zero-risk:
-   0.0 push gh-pages cleanup commit  [BLOCKED ON USER]
-   0.1 exact-pin requirements.txt + .python-version  <- HIGHEST VALUE PER MINUTE IN THE PROJECT
-   0.2 delete `lfs: true` x2 + untrack public/data/archive
-   0.3 temp download -> $RUNNER_TEMP + gitignore *.tsv*.gz
-   0.4 delete zip-data-lite fetch (index.html + HousingDashboard phase 1)
-   0.5 formatPeriod() -> "90 days ending May 31, 2026"
-  ### 10 open items the spec could not close are listed in FINAL-SPEC.md section 12.
-      Most important: re-measure the sub-pixel ZCTA share from TRUE bboxes (40% vs 89.5%
-      come from different methods and only one may be quoted publicly).
-
 - 2026-09-01 main session: FULL REVIEW of docs/FINAL-SPEC.md against the working tree.
   Verdict: architecture is sound, the 11 bugs are real, the measurements that could be
   re-checked here all held (zcta-meta.csv 2,067,563 B, pmtiles 92,590,855 B, both exact).
   Line-number citations into MapLibreMap.tsx (142 / 412-422 / 499-578 / 564 / 573),
   spatial-index.ts:25 and export/PrintStage.tsx:180-186 are all still accurate.
-  ### Phase 0 actual state (uncommitted in the working tree)
-  0.1 DONE  requirements.txt exact-pinned + .python-version 3.14 + both workflows on
-            python-version-file. NOTE: spec S6.11 says pytest==9.0.3, repo pins 8.4.2 —
-            reconcile. numpy/pyarrow/scipy/statsmodels not added yet (Phase 1).
-  0.2 HALF  `lfs: true` gone from deploy.yml + preview.yml, BUT .gitattributes still has
-            `public/data/archive/** filter=lfs` and the 6 archive files are still tracked.
-  0.3 HALF  *.tsv*.gz gitignored; the RUNNER_TEMP move in update_market_data.py not verified.
-  0.4 DONE  lite json + generate_lite_data.py deleted, index.html preloads zip-data.json.
-  0.5 DONE  and better than the spec: repo added formatRedfinWindow() and KEPT formatPeriod()
-            for ZHVI. Spec S7.9 says "formatPeriod() must change" — that instruction is now
-            WRONG and would mislabel the Zillow monthly index. Fix the spec, not the code.
-  ### 8 blocking defects IN THE SPEC — ALL FIXED IN THE DOC 2026-09-01
+  ### 8 blocking defects IN THE SPEC : ALL FIXED IN THE DOC 2026-09-01
   B1 S8.1 vs S2.5 contradict: S2.5 says "S1..S12 is one job", S8.1 and S8.2 assume separate
      `run` (read) and `publish` (write) jobs. Pick one. Recommend separate publish + upload
      only build/publish/** (~45 MB, not the 180 MB S2.5 rejected) so the untrusted-parse job
@@ -321,10 +250,10 @@ the next session needs. Never delete an entry.
   B4 S4.3 `scales` keys do not match column names (`rse` vs `msp_rse`/`dom_rse`, `yoy` vs
      `msp_yoy`/`zhvi_yoy`/`hs_yoy`/`msp_yoy_se`, no key for `sal`/`om2`/`f_sigma`).
      ZipTable.valueAt() looks scales up BY COLUMN NAME, so every one of those decodes
-     unscaled — an rse of 0.0046 renders as 46. Silent wrong-number bug.
+     unscaled : an rse of 0.0046 renders as 46. Silent wrong-number bug.
   B5 S4.3 says "the 30 columns" and `f` has 30 names, but the column list enumerates 34.
      The encoder asserts d.length === f.length, so this must be resolved before Phase 4.
-  B6 S8.6 goldens reference `snapshot_50.bin` + `header.json` (magic/offsets) — leftovers
+  B6 S8.6 goldens reference `snapshot_50.bin` + `header.json` (magic/offsets) : leftovers
      from the binary container S4.1/S10.1 REJECTED. Nothing produces a .bin in v1. Also
      `paint_50.u8 ~50 B` cannot be read by PaintTable.from(), which asserts exactly
      100,000 bytes, and a real paint table breaks the 64 KB golden-file cap. Redefine the
@@ -339,7 +268,7 @@ the next session needs. Never delete an entry.
      feature-state `k`, but PaintTable (the thing that supplies `k`) ships in Phase 4, and
      S7.6 claims PaintTable is available "from first paint". Phase 3 needs a named interim
      ClassSource computing `k` client-side from zip-data.json. Currently unspecified.
-  ### Numeric inconsistencies — ALL FIXED IN THE DOC 2026-09-01
+  ### Numeric inconsistencies : ALL FIXED IN THE DOC 2026-09-01
   - S6.2 says the lag-1 filter variance factor is 0.333 -> recovery 0.471. S1.1 says 0.275
     -> 0.43, and only 0.43 reproduces the measured 0.2315 (0.5395*0.43=0.232). S6.2 is wrong.
   - S6.6 anchored class counts sum to 19,612; the unanchored ones sum to 20,010. Same
@@ -375,7 +304,7 @@ the next session needs. Never delete an entry.
 ---
 ---
 
-## 2026-09-03 session — decisions locked, and what they change in the spec
+## 2026-09-03 session : decisions locked, and what they change in the spec
 
 Answers to the open design questions raised this session. Each one is a spec edit
 that has NOT been applied to `docs/FINAL-SPEC-08-2026.md` yet.
@@ -383,7 +312,7 @@ that has NOT been applied to `docs/FINAL-SPEC-08-2026.md` yet.
 ### D1 Tile zoom range -> `-Z2 -z10` (NOT 2-13)
 Underzoom and overzoom are not symmetric. MapLibre **overzooms** past a source
 maxzoom natively (z10 tiles serve z11/z12 fine, 0.25 px error) but **does not
-underzoom** — below the source minzoom nothing renders at all. So:
+underzoom** : below the source minzoom nothing renders at all. So:
 - Add z2. Costs ~0.2-0.3 MB (z3 is 0.84 MB and each level down is ~4x fewer tiles).
   Fixes the Alaska export inset, which today renders blank below z3 and is worked
   around by a hand-tightened bbox that literally cuts off the Aleutians
@@ -395,21 +324,21 @@ underzoom** — below the source minzoom nothing renders at all. So:
   slot. Rendering at 400x260 fits ~70 deg lon / ~23 deg lat at z3, which already
   covers 51-71N. Do this first; `-Z2` is the durable version.
 
-### D2 Census boundary file — CB 500k is correct AND is the only option
-`cb_2020_us_zcta520_500k.zip` returns 200; `_5m` and `_20m` both **404** — Census
+### D2 Census boundary file : CB 500k is correct AND is the only option
+`cb_2020_us_zcta520_500k.zip` returns 200; `_5m` and `_20m` both **404** : Census
 does not publish coarser ZCTA cartographic boundaries. So the only alternative is
 TIGER, which is wrong here (water blocks -> ocean blobs on every coastal ZIP).
 Spec 5.1 stands. The `-info` vertex-spacing check (S12 item 5) still applies.
 
-### D3 Upstream feeds — Redfin is 93 days stale, Realtor.com is fresher than both
+### D3 Upstream feeds : Redfin is 93 days stale, Realtor.com is fresher than both
 Measured 2026-09-03 by HEAD:
 - Redfin `zip_code_market_tracker.tsv000.gz` 1,548,403,907 B, **LM 2026-06-02**.
-  Still the correct file — there is only one ZIP-level tracker, and seasonal
+  Still the correct file : there is only one ZIP-level tracker, and seasonal
   adjustment is a *column* (uniformly false), not a separate file.
   **93 days stale. The 100-day dead-feed alarm trips 2026-09-10.**
 - Zillow: all four ZHVI variants exist and 200 (`..._tier_0.33_0.67_sm_sa_month`,
   `..._tier_0.33_0.67_month`, `..._sfrcondo_sm_sa_month`, `..._sfr_tier_..._sm_sa_month`).
-  Keep `sm_sa` — it is the forecasting target and smoothed+SA is what you extrapolate.
+  Keep `sm_sa` : it is the forecasting target and smoothed+SA is what you extrapolate.
   Note the consequence: Zillow already removed seasonality, so any per-ZIP
   seasonality work on ZHVI is measuring the smoother (consistent with the S10 cut).
 - Realtor.com `RDC_Inventory_Core_Metrics_Zip.csv` 7,393,242 B, **LM 2026-09-03**
@@ -419,29 +348,29 @@ Measured 2026-09-03 by HEAD:
 - Realtor.com is a third **estimand**, not a third copy of the same number:
   sold-side (Redfin) / stock (Zillow) / **listing-side supply** (Realtor).
   It carries `price_reduced_share`, `pending_ratio`, `active_listing_count` and a
-  `quality_flag` — none of which the other two have. And it is currently the only
+  `quality_flag` : none of which the other two have. And it is currently the only
   feed that is not stale. 7.4 MB/month for the current-month file.
 - Zillow Market Heat Index is a black-box 0-100 composite with no published recipe.
   It cannot be given an error bar, which is the one thing this project promises
   about every number it displays. Reject.
 
-### D5 MoM — the spec's argument only proves half of what it claims
+### D5 MoM : the spec's argument only proves half of what it claims
 `update_market_data.py:119-129` passes Redfin's own `*_MOM` straight through;
 `:99` **computes** `zhvi_mom` here from two adjacent ZHVI columns. So they are
 two different things and Bug 9 only indicts the first:
-- **Redfin MoM is theirs and is genuinely broken** — one-period change of a 90-day
+- **Redfin MoM is theirs and is genuinely broken** : one-period change of a 90-day
   rolling window, so it compares a window against itself across two shared months.
-- **ZHVI MoM is ours and is not broken** — no window overlap. It is just very low
+- **ZHVI MoM is ours and is not broken** : no window overlap. It is just very low
   value: ~0.12% noise sd on a series Zillow already smoothed, so it mostly reports
   the smoother.
 Drop both, but S6.4's "Not shipped. Ever." needs a second sentence giving the
 second, weaker reason. As written the interview answer overclaims.
 
-### D6 Legend anchors — keep p1/p99, RECOMPUTE each release, ship the breaks
+### D6 Legend anchors : keep p1/p99, RECOMPUTE each release, ship the breaks
 **REVERSED after user pushback on 2026-09-03. The first version of this entry said FREEZE.
 That was wrong; the reasoning is kept here because the correction is the interesting part.**
 
-The freeze argument assumed cross-release comparison happens **by color**. It does not — it
+The freeze argument assumed cross-release comparison happens **by color**. It does not : it
 happens by value, and every artifact already carries its own legend. What freezing actually
 produces is a *stale* legend: as prices drift, fixed anchors swallow more ZIPs into the end
 classes and the legend stops describing the map it is painting. That is the exact failure the
@@ -461,7 +390,7 @@ dramatic and erases the thing YoY exists to show. A clamp is not stale when the 
 ("`>= +25%`" is true in every regime). S12 item 18 makes picking +/-25% an empirical exercise
 rather than a guess.
 
-### D7 No-data rendering — grey. No stripes. Three states, three channels.
+### D7 No-data rendering : grey. No stripes. Three states, three channels.
 1. No data (ZCTA exists, neither source reports), 6,664 ZCTAs -> solid `#E8E8E8`
    + its own legend entry. Never transparent.
 2. No polygon (ocean, park, unpopulated) -> nothing painted, basemap shows through.
@@ -477,7 +406,7 @@ another piece of state that would have to survive the URL, the export and the
 archived snapshot. If a control is wanted, put a before/after demo on the
 methodology page, not a switch on the map.
 
-### D9 Benchmarking in `deploy.yml` — NO browser bench, YES a size/RSS trend line
+### D9 Benchmarking in `deploy.yml` : NO browser bench, YES a size/RSS trend line
 Two different things were conflated:
 - Throttled-Chrome LCP/TBT in CI: rejected, and S10.4 already gives the reasons.
   Shared-runner CPU variance swamps the signal, it adds ~5 min to every deploy, and
@@ -490,7 +419,7 @@ Two different things were conflated:
 ---
 ---
 
-## 2026-09-03 — spec updated
+## 2026-09-03 : spec updated
 
 All of D1–D9 applied to `docs/FINAL-SPEC-08-2026.md`: **22 anchored edits**, each asserting a
 unique match before applying (backup at `scratchpad/FINAL-SPEC.bak2.md`). Verified after:
@@ -500,26 +429,26 @@ tables well-formed. 2,821 -> 2,964 lines.
 Sections touched: 2.3 · 3.3 · 5.1 · 5.3 · 5.6 · 5.7(A7) · 6.1a(new) · 6.4 · 6.6 · 7.9 · 8.7 ·
 9(Phase 5, Phase 6) · 10.4 · 10.9 · 12(items 12, 16–19 added).
 
-**D6 reversed** vs the entry above it — see that entry. Everything else landed as written.
+**D6 reversed** vs the entry above it : see that entry. Everything else landed as written.
 
 ---
 ---
 
-## 2026-09-03 (later) — spec fork resolved, feed migration merged
+## 2026-09-03 (later) : spec fork resolved, feed migration merged
 
 ### What happened
 Another agent worked in `docs/FINAL-SPEC.md` (the OLD filename) instead of
 `docs/FINAL-SPEC-08-2026.md`, so the tree briefly held two divergent specs. Resolved by
 merging, not by picking a side.
 
-- `FINAL-SPEC-08-2026.md` was **never damaged** — byte-identical to the 22-edit version.
+- `FINAL-SPEC-08-2026.md` was **never damaged** : byte-identical to the 22-edit version.
 - `FINAL-SPEC.md` was the **pre-2026-09-01-review base** plus one large new section. It had
   silently reverted ~12 earlier fixes. Not used as the merge base for that reason.
 
 ### Reverted-in-the-agent-file fixes that were NOT carried over (deliberately)
 Each of these was fixed on 2026-09-01 and had regressed. The good file keeps the fix:
 B1 three-jobs split · B3 manifest asset leaves carry `file`+`sha256` · **B4 `scales` keyed by
-column name** (without it an `rse` of 0.0046 renders as **46** — silent wrong number) · B5
+column name** (without it an `rse` of 0.0046 renders as **46** : silent wrong number) · B5
 34-not-30 columns · B7 gated Bonferroni 5.85e-6 · §5.5 + A5 no-clamp bbox rule (clamping
 re-creates a small Bug 3) · the two-`drop_duplicates` finding · the 33,771 denominator ·
 `tiers_pct` as an object · the §6.2 K-attenuation derivation.
@@ -533,18 +462,18 @@ re-creates a small Bug 3) · the two-`drop_duplicates` finding · the 33,771 den
   CONTRACT hard-fail: warn-once was justified by "no available remediation", and a live
   replacement feed is exactly that remediation appearing.
 
-### THE HEADLINE: Redfin replaced the feed. The old one did not 404 — it froze at 200 OK.
+### THE HEADLINE: Redfin replaced the feed. The old one did not 404 : it froze at 200 OK.
 `redfin_data_center/housing_market/monthly/all_zips.csv`, 1.33 GB plain CSV (NOT gzipped),
 refreshed 2026-09-02, period-descending so a `Range: bytes=0-20000000` gets the whole newest
 period. 29,738 ZIPs latest vs 20,010 on the old feed. 14 metrics, up from 11.
-**The All-Residential filter and the 5-pair PROPERTY_TYPE contract are now dead code** — the
+**The All-Residential filter and the 5-pair PROPERTY_TYPE contract are now dead code** : the
 new file *is* the aggregate. Delete them; do not port them.
 
 ### Two of my earlier answers were corrected by this
 - **MoM.** I said ZHVI MoM was ours-but-worthless and should be dropped. §1.5.6 is right and
   I was wrong: `zhvi_mom` **stays**, because `sm_sa` is smoothed + SA on true calendar months,
   which is the one place MoM means what a reader thinks. And Redfin MoM is no longer a judgement
-  call at all — it is **0 of 29,738 non-null**, i.e. the series does not exist at ZIP level.
+  call at all : it is **0 of 29,738 non-null**, i.e. the series does not exist at ZIP level.
   That is a strictly stronger interview answer than the Bug 9 argument.
 - **Realtor.com (D4).** Materially weakened, flagged `[RECONSIDER]` in §6.1a and as §12 item 20.
   The freshness argument is dead, and `ACTIVE LISTINGS`, `MONTHS OF SUPPLY` and price cuts all
@@ -552,9 +481,9 @@ new file *is* the aggregate. Delete them; do not port them.
   new-listings-only), `pending_ratio` and `quality_flag` remain unique. **Open decision.**
 
 ### New §12 items: 20-24 (21 and 24 are the dangerous ones)
-21 — §2, §4 and §6 still describe the dead TSV. §1.5 must stay first-read until they are rewritten.
-24 — delete the `* 100` in `_coerce_value()`; the new feed already ships percent. Silent 100x.
-22 — every coverage number keyed to 20,010 is now suspect, incl. the 19.7% no-data share.
+21 : §2, §4 and §6 still describe the dead TSV. §1.5 must stay first-read until they are rewritten.
+24 : delete the `* 100` in `_coerce_value()`; the new feed already ships percent. Silent 100x.
+22 : every coverage number keyed to 20,010 is now suspect, incl. the 19.7% no-data share.
 
 ### Housekeeping
 - `docs/FINAL-SPEC.md` deleted and re-untracked (the agent had re-added it to the index).
@@ -563,12 +492,12 @@ new file *is* the aggregate. Delete them; do not port them.
 - **ONE spec file only: `docs/FINAL-SPEC-08-2026.md`.** 3,265 lines, 106 fences (even).
 - Untracked junk left in the tree by the exploration: `dl.html`, `head.csv`, `hm_head.csv`,
   `idx.json`, `zh.txt`, `temp-redfin/`. `temp-redfin/` is exactly what Phase 0.3 says must never
-  sit in the working tree. Left in place, not deleted — `temp-redfin/` holds the saved Redfin
+  sit in the working tree. Left in place, not deleted : `temp-redfin/` holds the saved Redfin
   methodology page that §1.5.4's legacy-name table cites as its source. Move it, do not lose it.
 
 ---
 
-## 2026-09-05 — PHASE 1 LANDED: feed migration, correctness fix, and the panel
+## 2026-09-05 : PHASE 1 LANDED: feed migration, correctness fix, and the panel
 
 `scripts/update_market_data.py` and `scripts/tests/` are deleted. `pipeline/` replaces them:
 `contracts.py units.py sources.py redfin.py zhvi.py dim.py panel.py serialize.py __main__.py`.
@@ -579,7 +508,7 @@ same change, because `KEY_ORDER` changed and the site would otherwise render und
 
 Full run, `python -m pipeline --redfin-csv <local> --zhvi-csv <local> --skip-probe`:
 
-- **4,930,000 rows · 173 periods (2012-03-31..2026-07-31) · 33,952 ZIPs** — every figure
+- **4,930,000 rows · 173 periods (2012-03-31..2026-07-31) · 33,952 ZIPs** : every figure
   matches the spec's independent measurement.
 - **0 duplicate `(PERIOD END, REGION NAME)`** across all 4.93M rows.
 - `panel.parquet` is **274.1 MB**, 173 x 33,952, **83.9% filled** (the panel is ragged; not
@@ -601,7 +530,7 @@ The contract fired on the first smoke run. Measured over all 4,930,000 rows:
 | `median_dom` | (0, 3650) | 0..**18,504** | bound was a 10-year cap; real data is 50 years |
 | `median_sale_price` | (1e3, 1e8) | **1.00**..65,900,010 | a real $1 sale exists in history |
 | `median_ppsf` | (1.0, 1e5) | 0..**2,175,007** | |
-| `median_list_price` | — | 100..**999,999,999** | an upstream sentinel; **0 in the latest period** |
+| `median_list_price` | : | 100..**999,999,999** | an upstream sentinel; **0 in the latest period** |
 | `avg_sale_to_list_ratio` | (0.5, 2.0) | **exactly 50.00..200.00** | Redfin clamps it; the spec's percent-scale (50,200) is exactly right |
 | `sold_above_list` | (0.0, 1.0) | 0..100.04 | percent scale confirmed |
 
@@ -616,7 +545,7 @@ coercion point, and the docstring says so.
 
 ### The `/100` on `median_dom_yoy` / `months_of_supply_yoy` is now PROVEN, not asserted
 
-`tests/fixtures/redfin_sample.csv` is 13 periods x 11 ZIPs cut from the real feed — 13 is the
+`tests/fixtures/redfin_sample.csv` is 13 periods x 11 ZIPs cut from the real feed : 13 is the
 minimum that makes a lag-12 comparison possible. Against real lag-12 levels at 2026-07-31,
 `published / 100` matches the level difference on **every** row:
 
@@ -629,7 +558,7 @@ minimum that makes a lag-12 comparison possible. Against real lag-12 levels at 2
 Independent confirmation from the full-file scan: after the division the column's range
 (-18,413..18,466) is the same scale as the LEVEL column (0..18,504). A percent change would
 not be. The test judges the percent hypothesis **in aggregate**, because on a few rows the two
-coincide numerically — 78701 is -16 days against -16.33 percent — and a per-row
+coincide numerically : 78701 is -16 days against -16.33 percent : and a per-row
 "is not a percent" assertion fails on exactly those.
 
 ### Decisions taken, with reasons
@@ -647,7 +576,7 @@ coincide numerically — 78701 is -16 days against -16.33 percent — and a per-
 - **`formatChange` takes a unit.** `percent | ppt | days | months`. Rendering a day difference
   with a `%` would put Redfin's mislabelling back after the pipeline removed it.
 
-### Benchmark gate — both baselines recorded, and they are NOT comparable
+### Benchmark gate : both baselines recorded, and they are NOT comparable
 
 `bench/results/phase0-baseline.json` (pre-migration) and `bench/results/phase1-after.json`.
 Same pinned conditions: slow4g / 4x CPU / 1440x900 / 5 runs / pinned view.
@@ -667,7 +596,7 @@ baseline it is against. The 2026-08-29 figure (`LCP 7016 · TBT 4178 · transfer
 heap 73.8 MB · metric switch 2650`) measured the old feed's payload and is no longer a valid
 comparand for anything.
 
-Both runs still warn "no performance.measure marks" — `src/lib/perf.ts` is Phase 3 and lands
+Both runs still warn "no performance.measure marks" : `src/lib/perf.ts` is Phase 3 and lands
 next, alone.
 
 ### Note for whoever runs the first CI pipeline job
@@ -677,7 +606,7 @@ had disappeared from the Playwright cache between two benchmark runs.
 
 ---
 
-## 2026-09-05 — PHASE 2: diff gate, the deploy fix, fingerprinting
+## 2026-09-05 : PHASE 2: diff gate, the deploy fix, fingerprinting
 
 ### The diff gate is calibrated from real data, and the spec's estimate of it was wrong
 
@@ -712,13 +641,13 @@ pipeline's output) against this build:
 ZHVI passing is the right answer and a useful property: the bug was Redfin-side, so the gate
 localises the fault to a source rather than merely saying "something moved".
 
-Caveat, stated because the number will be quoted: this transition confounds three things — the
+Caveat, stated because the number will be quoted: this transition confounds three things : the
 property-type bug, a two-month period gap (2026-05-31 -> 2026-07-31), and the two series Redfin
 redefined. It is not a clean measurement of the bug alone. It IS exactly the transition the gate
 sees in production, and it trips.
 
 **ZHVI needed a threshold floor.** `moved>25%` is exactly 0.000 in all 318 monthly transitions
-— ZHVI is `sm_sa`, smoothed and seasonally adjusted — so P99 x 1.5 sets the threshold to 0.0 and
+: ZHVI is `sm_sa`, smoothed and seasonally adjusted : so P99 x 1.5 sets the threshold to 0.0 and
 the gate would fire on a single outlier ZIP. `FLOOR = 0.01` in the calibration script, with the
 measurement in the comment.
 
@@ -727,15 +656,15 @@ moves NO individual ZIP past the 25% per-ZIP test, so the per-ZIP check is blind
 `test_national_median_shift_is_caught_even_below_the_per_zip_threshold` asserts exactly that,
 and asserts the per-ZIP fraction is 0.0 first so the test cannot pass for the wrong reason.
 
-### Bug 6 — the deploy fix
+### Bug 6 : the deploy fix
 
 `deploy.yml` gains `workflow_call` with a `ref` input; `update_data.yml` gains a `deploy` job
 that calls it with the data commit's SHA. A push made with `GITHUB_TOKEN` does not trigger
 workflows, so `deploy.yml`'s `on: push` never fired for the data commit.
 
 `ref: inputs.ref || github.sha` is load-bearing. Under `workflow_call` the job inherits the
-CALLER's event, so `actions/checkout` would default to the SHA as of when the cron fired —
-before the data commit — and deploy LAST month's data. That symptom is indistinguishable from
+CALLER's event, so `actions/checkout` would default to the SHA as of when the cron fired :
+before the data commit : and deploy LAST month's data. That symptom is indistinguishable from
 Bug 6 itself, which is why the deploy job prints the SHA and `period_end` it is publishing.
 
 **Acceptance test, still owed:** confirm a Deploy job appears in the same run graph as a
@@ -765,7 +694,7 @@ signal in duplicates. Stage reports upload as a `pipeline-reports` artifact on e
 ### BLOCKED, and not worked around
 
 Spec Phase 2 wants an immutable `data-YYYY-MM` release plus a ~6 KB pointer commit.
-**`gh release list` is empty** — there are no releases at all — and creating the first ones is an
+**`gh release list` is empty** : there are no releases at all : and creating the first ones is an
 outward action on a public repo, so it needs the user, not an agent. Until then
 `update_data.yml` copies `build/` into `public/data/` after both stage reports read `ok`. The
 copy is at least separated from the build, so a failed build leaves `public/data/` untouched,
@@ -776,7 +705,7 @@ This also still blocks, in the order todos.md already records: the archive untra
 
 ---
 
-## 2026-09-05 — PHASE 3: the choropleth fix
+## 2026-09-05 : PHASE 3: the choropleth fix
 
 ### The bug is gone, and it is now measured rather than argued
 
@@ -798,7 +727,7 @@ fired on every `moveend`.
 Now both `fill-color` and `fill-opacity` are CONSTANT expressions set once at `addLayer`, and
 only feature-state changes. `setFeatureState` does not trigger a relayout.
 
-### Benchmarks — slow4g / 4x CPU / 1440x900 / 5 runs / pinned view
+### Benchmarks : slow4g / 4x CPU / 1440x900 / 5 runs / pinned view
 
 | | phase0-baseline | phase1-after | phase3-after |
 |---|---|---|---|
@@ -810,7 +739,7 @@ only feature-state changes. `setFeatureState` does not trigger a relayout.
 | **metric switch** | **3375 ms** | 3190 ms | **1491 ms** |
 
 phase0 and phase1 carry the harness warning "no performance.measure marks"; phase3 does not,
-because `src/lib/perf.ts` landed. Transfer is unchanged from phase1 — Phase 3 touches no payload.
+because `src/lib/perf.ts` landed. Transfer is unchanged from phase1 : Phase 3 touches no payload.
 
 ### What the remaining 1491 ms actually is, measured rather than assumed
 
@@ -821,10 +750,10 @@ that re-selects the ALREADY-selected option so no metric change happens):
 | | ms @ 4x |
 |---|---|
 | dropdown open + click, **no metric change at all** | **580** |
-| `class:breaks` — quantile breaks over 33,771 values | 69 |
-| `class:assign` — build the 33,771-entry class map | 32 |
-| `map:applyChoropleth` — write 17,053 feature states | **38** |
-| `map:metricSwitch` — React effect to two frames later | 416 |
+| `class:breaks` : quantile breaks over 33,771 values | 69 |
+| `class:assign` : build the 33,771-entry class map | 32 |
+| `map:applyChoropleth` : write 17,053 feature states | **38** |
+| `map:metricSwitch` : React effect to two frames later | 416 |
 
 So ~580 ms is the Radix Select UI and ~416 ms is React re-rendering a tree that carries 33,771
 ZIPs in props. **The choropleth work itself is 139 ms.** The spec's "< 150 ms" target is met by
@@ -839,7 +768,7 @@ the choropleth; it was never scoped to the dropdown or to React.
 1.4 ms. The full 33,771-ZIP set is therefore ~5 ms of work, a third of one frame.
 
 **This made `CHUNK = 8_000` actively harmful.** Chunking at 8,000 spread the set over five
-animation frames — and that did not cost five frames of writing, it cost five frames of
+animation frames : and that did not cost five frames of writing, it cost five frames of
 WAITING, because each chunk dirties the source and MapLibre does a full map render between
 them. Raising `CHUNK` to 50,000 so the set lands in one frame took `map:applyChoropleth` on a
 metric switch from **579 ms to 9 ms** unthrottled (38 ms at 4x). Nothing else changed.
@@ -849,7 +778,7 @@ comment so nobody re-tunes it downward on the old assumption.
 
 **2. Skipping no-op writes halves the work on a switch.** The painter caches the last class
 written per ZIP; a metric change leaves 16,718 of 33,771 ZIPs in the same class, so only 17,053
-writes are needed. This does NOT weaken the full-set guarantee — every ZIP is still visited
+writes are needed. This does NOT weaken the full-set guarantee : every ZIP is still visited
 every epoch, and MapLibre's own feature-state store already holds the value that would have
 been re-written, so a skipped write and a redundant write leave the map identical. The
 invariant it depends on (nothing else clears feature state) is documented at the field.
@@ -872,7 +801,7 @@ Measured, 12 colours -> 7:
 | L* | 96.9 -> 12.9, monotone | 96.9 -> 12.9, monotone |
 
 This independently reproduces the spec's ramp exactly except `#EB5D5E` where the spec wrote
-`#EB5E5E` — one unit in one channel, i.e. rounding. The spec's CVD figures (7.4 -> 11.9) differ
+`#EB5E5E` : one unit in one channel, i.e. rounding. The spec's CVD figures (7.4 -> 11.9) differ
 from mine; mine are computed in linear RGB at severity 1.0 and the script is the record.
 
 ### One class authority at a time
@@ -885,7 +814,7 @@ classes come from, so Phase 4 swaps the authority in one line.
 The Legend now renders the SAME break values the map is painting, straight from the live
 `ClassSource`, plus a no-data swatch. It previously computed its own quantiles from its own
 sample, so it could describe a scale the map was not using. Its value formatter also stopped
-sniffing substrings of the metric key — that read `months_of_supply` as neither price nor ratio
+sniffing substrings of the metric key : that read `months_of_supply` as neither price nor ratio
 and would have read any future `*_price_ratio` as a price.
 
 ### Already done, so not redone
@@ -899,13 +828,13 @@ separate chunks. `grep -c "jsPDF\\|html2canvas" dist/assets/index-*.js` returns 
 `src/lib/__tests__/choropleth-painter.test.ts`, 12 cases, including the two the spec calls
 mandatory: switch -> pan away -> pan back shows the correct class, and an aborted metric change
 never applies stale feature state. The rAF stub queues callbacks and drains on demand rather
-than running them synchronously — a stub that registers a frame it never runs wedges the
+than running them synchronously : a stub that registers a frame it never runs wedges the
 painter in a way a real browser never does, and the first version of the test failed for
 exactly that reason rather than for a real defect.
 
 ---
 
-## 2026-09-05 — the before/after the spec asked for, and it is worse than the example
+## 2026-09-05 : the before/after the spec asked for, and it is worse than the example
 
 Phase 1's Verify says "publish the before/after for 30309, 10001, 90210, 60614, 78701 in the PR
 description". There is no PR, so it goes here. Both columns are real: the LEFT is what the site
@@ -923,7 +852,7 @@ pipeline), the RIGHT is the all-residential aggregate from the new feed at the s
 
 The sales counts are the tell. 90210 published a median computed over **7** transactions when
 75 existed; 60614 over **5** when 368 existed. 10001 matching exactly is not the bug being
-absent — it is the coin landing on the aggregate row that month.
+absent : it is the coin landing on the aggregate row that month.
 
 **The spec's own example numbers no longer reproduce, and that is a confirmation rather than a
 discrepancy.** It quotes 30309 as $575,000 across 9 sales (a Townhouse row). The published value
@@ -940,7 +869,7 @@ here would make every downstream number a coin flip again.
 
 ---
 
-## 2026-09-05 — copyright year automation
+## 2026-09-05 : copyright year automation
 
 `scripts/update_license_year.mjs` rolls the END year of `Copyright 2025-2026 Jasper Chen`. The
 start year never moves: 2025 is a statement of fact about when the work was first published,
@@ -958,7 +887,7 @@ Three behaviours worth knowing:
 Two triggers, deliberately:
 
 - `.github/workflows/license_year.yml`, cron `7 0 1 1 *`. Seven minutes past midnight rather
-  than exactly midnight — every cron on the platform lands on `:00` and this job does not care.
+  than exactly midnight : every cron on the platform lands on `:00` and this job does not care.
 - A CI step (`--check`) so a failed or disabled cron shows up instead of leaving a stale year on
   a public repo for a year. There is a ~7-minute window on 1 January where CI could go red
   before the cron fires; that is the cost of the backstop being real.
@@ -969,7 +898,7 @@ deploy from a human push either, and nothing in `dist/` reads the year.
 
 ---
 
-## 2026-09-05 — the spec is now tracked, on purpose
+## 2026-09-05 : the spec is now tracked, on purpose
 
 `docs/FINAL-SPEC-08-2026.md` was untracked by convention (`.gitignore` carries
 `docs/FINAL-SPEC*.md`) but `docs/FINAL-SPEC.md` had been tracked all along, and a previous
@@ -978,12 +907,12 @@ session staged a `git mv` to the new name. Phase 1's `git add -A` carried that r
 
 Untracked again on request: `git rm --cached`, and the `.gitignore` rule that already covered
 it now does its job. The last tracked copy is at `1249f88..d5b662f` if it is ever needed, which
-is more recovery than the convention promised — it said explicitly "no git history and no
+is more recovery than the convention promised : it said explicitly "no git history and no
 recovery".
 
 ---
 
-## 2026-09-05 — react-router 6 -> 7, and why the advisories were not the reason
+## 2026-09-05 : react-router 6 -> 7, and why the advisories were not the reason
 
 `npm audit` reported two moderate advisories against `react-router@6.30.6`.
 
@@ -991,19 +920,19 @@ recovery".
 
 | advisory | why it does not apply here |
 |---|---|
-| GHSA-337j-9hxr-rhxg — arbitrary constructor injection via `deserializeErrors()` in **SSR hydration** | This is a static SPA on GitHub Pages. No `createBrowserRouter`, no `RouterProvider`, no `HydratedRouter`, no `hydrateRoot`. The hydration path does not exist. |
-| GHSA-wrjc-x8rr-h8h6 — open redirect via backslash in `<Link>` / `useNavigate` | `useNavigate` appears **nowhere**. There is exactly one `<Link>`, `to="/"`, a hardcoded literal. No user input reaches a navigation target. |
+| GHSA-337j-9hxr-rhxg : arbitrary constructor injection via `deserializeErrors()` in **SSR hydration** | This is a static SPA on GitHub Pages. No `createBrowserRouter`, no `RouterProvider`, no `HydratedRouter`, no `hydrateRoot`. The hydration path does not exist. |
+| GHSA-wrjc-x8rr-h8h6 : open redirect via backslash in `<Link>` / `useNavigate` | `useNavigate` appears **nowhere**. There is exactly one `<Link>`, `to="/"`, a hardcoded literal. No user input reaches a navigation target. |
 
 So the upgrade was not a fix for an exploitable hole. It was taken anyway, for a
 different reason: **an audit that always reports something is an audit nobody reads.**
 Same argument as a contract that fires every month.
 
-**It cost nothing, and that was verified rather than hoped.** Zero source changes —
+**It cost nothing, and that was verified rather than hoped.** Zero source changes :
 `BrowserRouter`, `Routes`, `Route`, `Link`, `useLocation` and `useSearchParams` are the
 entire surface and all keep their v6 API in v7. `tsc`, lint, 75 vitest, 34 pytest and
 the production build all pass untouched.
 
-**Runtime-checked on both versions, same script, same three surfaces** — because
+**Runtime-checked on both versions, same script, same three surfaces** : because
 `useSearchParams` carries the app's whole URL state (zip, metric, lat, lng, zoom) and a
 silent regression there would look like a map bug, not a router bug:
 
@@ -1030,18 +959,18 @@ Also dropped `d3-array` and `@types/d3-array` from `package.json`. Nothing in `s
 
 ---
 
-## 2026-09-05 — `docs/ENGINEERING-LOG.md` untracked
+## 2026-09-05 : `docs/ENGINEERING-LOG.md` untracked
 
 Same reasoning as the spec: a local working document that churns far too fast to be
 worth reviewing in diffs. `git rm --cached`, rule added to `.gitignore`, file stays on
 disk. History up to `50cc65b` remains in git if an earlier version is ever wanted.
 
-`docs/AGENT-LOG.md` and `docs/todos.md` stay tracked — they are the handoff surface
+`docs/AGENT-LOG.md` and `docs/todos.md` stay tracked : they are the handoff surface
 between sessions, and a handoff nobody else can read is not a handoff.
 
 ---
 
-## 2026-09-05 — CI failed on a pin I chose badly, and the fix is a guard not a bump
+## 2026-09-05 : CI failed on a pin I chose badly, and the fix is a guard not a bump
 
 **What broke.** `pip install -r requirements.txt` spent four minutes compiling and died on:
 
@@ -1065,7 +994,7 @@ answer. `py -3.14` reaches the interpreter CI actually uses; todos.md now says s
 |---|---|
 | `pyarrow` | **22.0.0** (19.0.1 is three majors short) |
 | `numpy` | **2.3.2** (2.2.4 is short) |
-| `pandas` | 2.3.3 — the existing comment was right |
+| `pandas` | 2.3.3 : the existing comment was right |
 
 **Fixes, in order of how much they matter.**
 
@@ -1081,12 +1010,12 @@ answer. `py -3.14` reaches the interpreter CI actually uses; todos.md now says s
 2. **`pyarrow==25.0.1`.** Latest, not the 22.0.0 minimum, because the version had to be
    re-verified against the real file either way and there is no reason to verify an older one.
    **The whole 1.33 GB pipeline was re-run under Python 3.14 with pyarrow 25 and
-   `zip-data.json` is byte-identical** — sha256 `bd796dfe351a9b15fc4400279b0c49e12a3e267d4ed3c2f86fa6f328370198d8`
+   `zip-data.json` is byte-identical** : sha256 `bd796dfe351a9b15fc4400279b0c49e12a3e267d4ed3c2f86fa6f328370198d8`
    before and after, with panel shape, coverage and orphan count all unchanged. The bump moves
    no published number. 34 pytest pass on 3.14.
 
-3. **`numpy` removed, not bumped.** Nothing in `pipeline/`, `tests/` or `scripts/` imports it —
-   `gate.py` computes its own median precisely so the gate carries no numeric dependency — and
+3. **`numpy` removed, not bumped.** Nothing in `pipeline/`, `tests/` or `scripts/` imports it :
+   `gate.py` computes its own median precisely so the gate carries no numeric dependency : and
    it arrives transitively via pandas anyway (2.5.2 on the 3.14 env). Declaring a package
    nothing imports is how you end up maintaining a pin for a dependency you do not have. Phase 5
    adds it explicitly with scipy and statsmodels.
@@ -1096,30 +1025,30 @@ environment happened to report, without checking it against the environment that
 consume it. That is the same failure as the choropleth chunk size and the inherited column
 bounds: a plausible number nobody checked against the thing itself.
 
-### Deploy acceptance test — partial result from run 33974615713
+### Deploy acceptance test : partial result from run 33974615713
 
 The failed run is still informative, because two of the three jobs behaved correctly:
 
 | job | result | reading |
 |---|---|---|
 | `update-data` | failure | the pip build, above |
-| `deploy` | **skipped** | correct — `needs.update-data.outputs.changed` is empty when update-data fails |
+| `deploy` | **skipped** | correct : `needs.update-data.outputs.changed` is empty when update-data fails |
 | `notify` | **success** | opened **#90 "Market data pipeline failure"** with the `pipeline-failure` label |
 
 So the notify rewiring is **verified working**: one labelled issue, not one issue per run.
 `deploy` skipping on a failed build is also the right behaviour, but it means the actual Bug 6
-acceptance test — a Deploy job in the same run graph as a *successful* publish — is still owed
+acceptance test : a Deploy job in the same run graph as a *successful* publish : is still owed
 and needs a green `update-data`.
 
 ---
 
-## 2026-09-05 — the deploy acceptance test, and the gap it exposed
+## 2026-09-05 : the deploy acceptance test, and the gap it exposed
 
 Run 33985964118, after the pyarrow fix: **`update-data` succeeded**, and `deploy` was
 **skipped**.
 
 That skip is correct. `if: needs.update-data.outputs.changed == 'true'`, and the data had
-not changed — same Redfin vintage, same period, already published locally — so
+not changed : same Redfin vintage, same period, already published locally : so
 `data_points_changed` was 0, nothing was committed, and there was nothing to deploy.
 
 **But it means the fix for Bug 6 could not be verified.** The bug is "the data commit never
@@ -1138,15 +1067,15 @@ Run history so far:
 |---|---|---|---|---|
 | 33974615713 | failure (pyarrow build) | skipped | **success** | notify opens ONE labelled issue (#90), not one per run; deploy correctly refuses to run on a failed build |
 | 33985964118 | **success** | skipped | skipped | the pipeline runs end to end on the runner; the no-change path publishes nothing, as designed |
-| next, with `force_deploy` | — | — | — | the Bug 6 wiring itself |
+| next, with `force_deploy` | : | : | : | the Bug 6 wiring itself |
 
 ---
 
-## 2026-09-05 — the rest of the dependency alerts
+## 2026-09-05 : the rest of the dependency alerts
 
 The push warned about 5 alerts where local `npm audit` reported 0. Split by ecosystem:
 
-**pyarrow, GHSA-rgxp-2hwp-jwgg, HIGH** — use-after-free reading an IPC file with
+**pyarrow, GHSA-rgxp-2hwp-jwgg, HIGH** : use-after-free reading an IPC file with
 pre-buffering, `>= 15.0.0, < 23.0.1`. Already showed `state: fixed` by the time it was
 looked at, because the CI fix had moved the pin to 25.0.1.
 
@@ -1157,22 +1086,22 @@ the wheel requirement and kept a high-severity advisory open.** Picking the mini
 satisfies the stated constraint is not the same as picking the right version, and here the
 difference was a HIGH.
 
-We do not read Arrow IPC files — the pipeline reads CSV and reads/writes Parquet — so the
+We do not read Arrow IPC files : the pipeline reads CSV and reads/writes Parquet : so the
 advisory was very likely not reachable either. Fixed regardless; the cost was zero.
 
-**requests, GHSA-gc5v-m9x4-r6x2, medium** — insecure temp file reuse in
+**requests, GHSA-gc5v-m9x4-r6x2, medium** : insecure temp file reuse in
 `extract_zipped_paths()`, `< 2.33.0`. Bumped to 2.33.0. Pure-Python wheel, so no cp314
 question. 34 tests pass on 3.14.
 
-**react-router x2, medium** — fixed by `d6a1380`; the alerts predate that push and clear on
+**react-router x2, medium** : fixed by `d6a1380`; the alerts predate that push and clear on
 the next scan. Local `npm audit` already reports 0.
 
 ---
 
-## 2026-09-05 — a workflow GitHub silently refused to run
+## 2026-09-05 : a workflow GitHub silently refused to run
 
 **Symptom.** Three consecutive CI runs failed with no failing step, no
-annotation, and no log — `gh run view` said only "This run likely failed because
+annotation, and no log : `gh run view` said only "This run likely failed because
 of a workflow file issue". The giveaway was in `gh run list`: the workflow's name
 showed as **`.github/workflows/ci.yml`** rather than **`CI`**. GitHub falls back
 to the file path when it cannot parse the file well enough to read its `name:`.
@@ -1181,7 +1110,7 @@ to the file path when it cannot parse the file well enough to read its `name:`.
 
     run: pip install --only-binary=:all: -r requirements.txt
 
-A plain YAML scalar **may not contain ": "** — colon followed by space. Here
+A plain YAML scalar **may not contain ": "** : colon followed by space. Here
 `--only-binary=:all:` is followed by ` -r`, so the parser sees a nested mapping
 where a string was intended. Nothing about the line looks like YAML, which is
 what makes it easy to write and hard to see. In a block scalar the same command
@@ -1192,7 +1121,7 @@ is fine:
 
 **How it got in.** I edited `ci.yml` and then validated `update_data.yml`. The
 other file got the same flag but inside an existing `run: |` block, so it was
-genuinely fine — and its run succeeded, which made the green "Update ZIP code
+genuinely fine : and its run succeeded, which made the green "Update ZIP code
 market Data" run look like evidence the change was good. Validating a file
 adjacent to the one you changed is not validating your change.
 
@@ -1203,11 +1132,11 @@ on the corrected tree and, with the plain scalar reintroduced, reports
 
 Wired in **two** places, deliberately:
 
-* `.githooks/pre-commit` — the only place that catches `ci.yml` breaking itself,
+* `.githooks/pre-commit` : the only place that catches `ci.yml` breaking itself,
   since a workflow that will not parse never reaches the job that would check it.
   Skips silently if PyYAML is absent so it cannot block a commit on a bare
   machine.
-* the `pipeline` CI job — catches every *sibling* workflow, and runs even for
+* the `pipeline` CI job : catches every *sibling* workflow, and runs even for
   contributors who have not enabled the hook.
 
 Neither placement covers the whole space alone. The pair does, and the docstring
@@ -1220,7 +1149,7 @@ property-type bug's, which at least produced a wrong number somebody could check
 
 ---
 
-## 2026-09-05 — Bug 6 is verified fixed
+## 2026-09-05 : Bug 6 is verified fixed
 
 Run **33986134801**, dispatched with `force_deploy=true`:
 
@@ -1231,7 +1160,7 @@ Run **33986134801**, dispatched with `force_deploy=true`:
 That is the acceptance criterion the spec names, and it is the one that could not be met by
 reading YAML: a miswired `workflow_call` fails exactly like the bug it fixes.
 
-The deploy job's own report closes the second half — that it deploys the RIGHT commit:
+The deploy job's own report closes the second half : that it deploys the RIGHT commit:
 
     ref input : ''
     deploying : 7880a47fdf3456752efe3bcbefde520441961d49
@@ -1239,7 +1168,7 @@ The deploy job's own report closes the second half — that it deploys the RIGHT
 
 `ref input` is empty because nothing was committed on a forced redeploy, `deploy.yml` fell back
 to `github.sha` as designed, and the published period is current. Both branches of
-`ref: inputs.ref || github.sha` are now exercised — the commit SHA path will run on the next
+`ref: inputs.ref || github.sha` are now exercised : the commit SHA path will run on the next
 month with real data.
 
 Three runs, three different things learned:
@@ -1256,13 +1185,13 @@ which is the other half of the workflow-parse fix.
 
 ---
 
-## Phases 4 and 5 — LANDED 2026-09-05, commit `477acd1`, pushed to `main`
+## Phases 4 and 5 : LANDED 2026-09-05, commit `477acd1`, pushed to `main`
 
 Paint byte, typed-array store, real bboxes, and the whole statistics layer, in one
 commit. They cannot be separated: the paint byte is
 `(reliability_tier << 4) | (class_index + 1)` and both fields come from Phase 5
 modules, so splitting them ships a file whose every byte is undefined. The wire
-format change is one commit for the same reason — pipeline, worker, `types.ts` and
+format change is one commit for the same reason : pipeline, worker, `types.ts` and
 the frontend all read the same positional contract.
 
 ### Measured, `bench/results/phase5-after.json`, 3 runs, slow4g / 4x CPU / 1440x900
@@ -1281,7 +1210,7 @@ the frontend all read the same positional contract.
 The three regressions are structural and expected: the snapshot went 38 -> 50
 columns, and the manifest and paint table are two more requests. None is on the
 path to first colour. `class:assign` (48 ms) and `class:breaks` (94 ms) disappear
-entirely — the pipeline does that work now — and `store:construct` is 5 ms.
+entirely : the pipeline does that work now : and `store:construct` is 5 ms.
 
 `GATES_FIRST_COLOR` in `bench/run.mjs` changed with the architecture, which is the
 metric working rather than cheating: the snapshot no longer gates paint, so
@@ -1291,15 +1220,15 @@ counting it would report 2.5 MB and claim the phase changed nothing.
 ### The five numbers that moved, and why each mattered
 
 **K = 0.5598, not 0.5395.** Refitted on the migrated `173 x 33,952` panel. The
-method reproduced on a completely different file — same plateau shape, same lag-1
-attenuation (`0.5598 * 0.43 = 0.241` predicted vs `0.2369` measured) — which is
+method reproduced on a completely different file : same plateau shape, same lag-1
+attenuation (`0.5598 * 0.43 = 0.241` predicted vs `0.2369` measured) : which is
 better evidence for the estimator than the original fit was.
 
 **The rankable gate is `rse < 10%` = n >= 32, not `n >= 30`.** This is the one to
 remember. `n >= 30` was never a chosen threshold; it was `0.5395/sqrt(30) = 9.85%`
 rounded to a nice integer. At the new K, n = 30 gives 10.22% and is *not* rankable.
 Hardcoding 30 would have quietly made the "one threshold, explained once" property
-false — the map would gate on one number while the methodology page explained a
+false : the map would gate on one number while the methodology page explained a
 different one. `noise.py` derives it from the fitted K and publishes
 `rankable_n_implied`. Rankable population: **9,456 of 25,603 reporting ZIPs**,
 superseding both the dead feed's 8,544/20,010 and the 9,781 the paint-table
@@ -1308,11 +1237,11 @@ experiment used.
 **The selection effect is four times worse than the spec estimated.** Rankable
 ZIPs have a median price of $394,884 against $275,953 for excluded ones, and
 **24.8%** of thin ZIPs land in the bottom colour class against **5.5%** of reliable
-ones — the spec said 11.3% vs 4.2%. Same direction, much larger. `classify.py`
+ones : the spec said 11.3% vs 4.2%. Same direction, much larger. `classify.py`
 publishes all four numbers so the legend copy cannot drift from them.
 
 **Redfin publishes a +30,993,016% year-over-year change.** ZIP 12207 (Albany, NY)
-recorded a $1 median sale price in 2025-07 — one $1 transaction. The published YoY
+recorded a $1 median sale price in 2025-07 : one $1 transaction. The published YoY
 is arithmetically correct, useless, and too large for the int32 the wire format
 uses. `changes.py` nulls a ratio change whose base falls below that metric's own
 declared range floor: there is no honest value to clamp to, because we do not know
@@ -1327,20 +1256,20 @@ exceed, `median_list_price` 1 of 25,625, `median_list_ppsf` 42 of 25,570,
 `median_ppsf` 62 of 23,673. The survivors are ZIPs whose base Redfin has since
 **restated** (31905's published YoY implies a 2025-06 level of 491,058.7 against
 the 492,250.0 now in the file), which no tolerance on our side can reconcile. So
-the contract is a SHARE, gated at 1% against a worst measured 0.262% — sharp
+the contract is a SHARE, gated at 1% against a worst measured 0.262% : sharp
 against the failure it exists to catch, since a lag or units error moves every ZIP.
 
 ### The LISA gate did what it was designed to do
 
 This is the result worth keeping. `lisa_median_n_by_class` ungated:
 `HH 38 / ns 22 / LL 5 / LH 6 / HL 2`. The spatial-outlier classes were a low-sample
-detector wearing a spatial-statistics costume — sampling noise pushes a thin ZIP
+detector wearing a spatial-statistics costume : sampling noise pushes a thin ZIP
 away from its neighbourhood mean, which is the definition of an HL/LH outlier.
 
 Gated to the 9,456 rankable ZIPs: **`ns 87 / HH 74 / LL 68 / LH 77 / HL 86`**. The
 classes are no longer separable by sample size. The 27 HL and 20 LH survivors are
 real. Moran's I on the gated set is `0.7699 / 0.7343 / 0.6862 / 0.6363` at
-k = 4/8/16/32 — uniformly *higher* than ungated, because the ungated graph is
+k = 4/8/16/32 : uniformly *higher* than ungated, because the ungated graph is
 diluted by ZIPs whose value is mostly noise.
 
 ### The forecast's interval story held up
@@ -1372,7 +1301,7 @@ All 85 vitest and 37 pytest passed throughout. These came from opening a browser
 2. **The map never initialised when its container measured 0x0 at mount.**
    `tryInit` gives up at zero size and the ResizeObserver only ever resized a map
    that already existed, so it never retried. Symptom: permanently blank map, no
-   canvas, no style request, no failed fetch, no error anywhere — and intermittent,
+   canvas, no style request, no failed fetch, no error anywhere : and intermittent,
    because it came down to layout timing. Pre-existing; the new load order changed
    when the container settles and made it reproducible.
 3. **`loadedZips()` threw when called before the `zips` source existed.** It runs
@@ -1380,7 +1309,7 @@ All 85 vitest and 37 pytest passed throughout. These came from opening a browser
    source is added later.
 4. **`<link rel="preload" as="fetch">` needs `crossorigin` even same-origin.**
    Without it the preload and the fetch land in different cache entries and the
-   file downloads twice — measured 27,780 -> 55,560 B before first colour. The
+   file downloads twice : measured 27,780 -> 55,560 B before first colour. The
    obvious repair makes it worse: `crossorigin` means credentials mode
    *same-origin*, not *omit*, so adding `credentials: 'omit'` to the fetch breaks
    the match in the other direction. The paint preload link was then dropped
@@ -1396,7 +1325,7 @@ All 85 vitest and 37 pytest passed throughout. These came from opening a browser
   family.
 - **"Equal interval anchored at 100%" is a 100-pinned grid whose width comes from
   p1..p99**, not equal intervals over a literal [0, 100] domain. The literal
-  reading collapses `sold_above_list` into two colours — the exact failure section
+  reading collapses `sold_above_list` into two colours : the exact failure section
   6.6 rejects when it argues against unanchored log classing.
 - **The fade carve-out lives in feature-state, not in a second paint expression.**
   Swapping expressions on a metric change calls `setPaintProperty` on a value
@@ -1405,11 +1334,11 @@ All 85 vitest and 37 pytest passed throughout. These came from opening a browser
 
 ### Closed in the same pass
 
-Section 12 items **5** (median vertex spacing **292.9 m** over 5,624,668 segments —
+Section 12 items **5** (median vertex spacing **292.9 m** over 5,624,668 segments :
 do NOT take the TIGER branch; the ~150 m rule was a proxy for "too coarse to draw"
 and at z10 one CSS pixel is ~117 m, so the median segment is ~2.5 px), **7**
 (per-metric K: `median_dom` 1.4576, `avg_sale_to_list_ratio` 0.0749), **11** (gated
-LISA) and **12** (the 398-ZIP classing gap — it was two populations, not a lost ZIP).
+LISA) and **12** (the 398-ZIP classing gap : it was two populations, not a lost ZIP).
 
 `pytest` 8.4.2 -> **9.1.1**, which closes Dependabot alert 46: pytest through 9.0.2
 puts temp directories at the predictable `/tmp/pytest-of-{user}` (CVE-2025-71176)
@@ -1419,40 +1348,40 @@ rather than assumed: all 37 tests pass.
 
 ---
 
-## 2026-09-06 — Phases 6 and 7
+## 2026-09-06 : Phases 6 and 7
 
 Docker Desktop was started by the user, which unblocked the only hard blocker.
 
-### Phase 6 — geometry
+### Phase 6 : geometry
 
 `Dockerfile.tippecanoe` (felt/tippecanoe 2.78.0, built from source, committed so the
 *compiler* is pinned too), `scripts/geometry/build_geometry.sh`,
 `scripts/geometry/verify_coverage.mjs`, `geometry.lock.json`, `.github/workflows/geometry.yml`.
-`scripts/geometry/build_sidecar.sh` is deleted — `build_geometry.sh` is a strict superset and
+`scripts/geometry/build_sidecar.sh` is deleted : `build_geometry.sh` is a strict superset and
 two copies of the same mapshaper invocation is a divergence waiting to happen.
 
 **The coverage loss is now measured by this repo, not inherited.** `verify_coverage.mjs`
 decodes the finished archive and counts distinct `ZCTA5CE20` per zoom. Against the *old*
-tileset: **1,952 missing at z3 (5.8%), 841 at z4** — the default view — and only z12 complete.
+tileset: **1,952 missing at z3 (5.8%), 841 at z4** : the default view : and only z12 complete.
 The old archive's own metadata says why: it was built `--drop-densest-as-needed` with
 `--no-tiny-polygon-reduction-at-maximum-zoom` (note: *at maximum zoom*, not the full flag), so
 `dropped_by_rate` is 99 at z3 / 94 at z4 and `tiny_polygons` 5,225 / 2,354. Bug 2, recorded by
 the tool that caused it. The rebuilt archive has **no `strategies` block at all**.
 
-After: **z3-z10 carry all 33,780**, as polygon or dot. A1 and A4 pass exactly — 33,791 source,
+After: **z3-z10 carry all 33,780**, as polygon or dot. A1 and A4 pass exactly : 33,791 source,
 33,780 kept, 11 territory features dropped, matching the lock file.
 
 Three places the spec was wrong, all resolved by measuring:
 
 - **A7 cannot be "100% polygons at every zoom".** At z2 one pixel is ~39 km at 40°N, so a
   smaller ZIP cannot survive quantisation however it is tiled. §5.6's dot layer is the spec's
-  own answer, so A7 now asserts *represented* — polygon **or** dot — and gates from z3, the
+  own answer, so A7 now asserts *represented* : polygon **or** dot : and gates from z3, the
   main map's `minZoom`. z2 exists only for the AK/HI export insets and is 75 short; all 75 are
   lower-48 (IL, MI, OH, NY) and appear in no z2 inset. Reported, not gated.
 - **A6's 500 KB raw cap was written when the tileset still dropped features to stay small.**
   Carrying every ZCTA at low zoom is the point of the rebuild. Measured worst tile is
   **806,400 B raw at z2** (743,661 B stored across all three z2 tiles). Cap moved to 1,000,000 B
-  — still a tripwire, ~24% headroom. The old tileset also breached 500 KB (564,080 B at z3), so
+  : still a tripwire, ~24% headroom. The old tileset also breached 500 KB (564,080 B at z3), so
   the cap was never met by anything.
 - **The archive is 46,948,252 B, not the estimated ~20 MB.** 2.0x, not 4.6x. The estimate
   assumed tippecanoe would keep dropping features.
@@ -1461,12 +1390,12 @@ Three places the spec was wrong, all resolved by measuring:
 weight falls to ~2.9 MB after Phase 6. Measured at the pinned view, tile transfer went
 **1,052,980 -> 1,426,268 B (+35%)** and total transfer 5.42 -> 5.79 MB. Correctness cost bytes:
 z4 now ships all 33,712 ZCTAs instead of dropping 841 and merging tiny ones into squares, and
-the size cut came from dropping z11/z12 — zooms this view never requests. TBT 2695 -> 2997 ms
+the size cut came from dropping z11/z12 : zooms this view never requests. TBT 2695 -> 2997 ms
 for the same reason. **Do not repeat the 1.9x page-weight claim.** The defensible claims are
 the deploy footprint (92.6 -> 46.9 MB) and the coverage fix.
 
 §12 #16 closed: the z2 tiles cost **743,661 B stored**, against the estimated 0.2-0.3 MB.
-Phase 3's invariant still holds on the new tileset — `map:sourceReload` 0, no tile refetch
+Phase 3's invariant still holds on the new tileset : `map:sourceReload` 0, no tile refetch
 through a metric switch.
 
 **A JavaScript bug worth remembering, because it looked like corrupt data.** The MVT parser
@@ -1475,10 +1404,10 @@ skipped length-delimited fields with `r.pos += r.varint()`. JS reads the left-ha
 and the reader landed short, then read a tag byte out of the middle of a field and threw
 "unsupported wire type 7". It presented as a malformed archive.
 
-### Phase 7 — history and sparkline
+### Phase 7 : history and sparkline
 
 `pipeline/history.py` (stage S8), `src/lib/history.ts`, `src/components/dashboard/Sparkline.tsx`,
-wired lazily into `Sidebar.tsx`. `forecast.py` now keeps `f_h1`/`f_h3`/`f_h6` — `model["f"]` was
+wired lazily into `Sidebar.tsx`. `forecast.py` now keeps `f_h1`/`f_h3`/`f_h6` : `model["f"]` was
 always a 4 x Z array and `run()` discarded three rows.
 
 **The break marker has no valid target, and that is a measured result, not a shortcut.** The
@@ -1491,7 +1420,7 @@ series we hold are internally continuous. Drawing an axis break inside them woul
 discontinuity. What is true is that they no longer match what this site published before the
 migration (+6.70 pp, -$8,200), so they ship as per-series *restatement notes*. The chart draws a
 break line exactly when `notes[series].at` is non-null; it is null for both today. §12 #23
-closes as "no splice, no break — restated upstream".
+closes as "no splice, no break : restated upstream".
 
 **§4.4's sizing was low by ~8x and the shape had to change.** The panel is dense: only 11.9% of
 Redfin cells are null and the median series has no leading or trailing padding to trim.
@@ -1505,16 +1434,16 @@ Redfin cells are null and the median series has no leading or trailing padding t
   **`history/index.json` (50,303 B raw / 16,198 B gz)**. First click 22.6 KB gz, every click
   after 6.4 KB.
 - **Series are §4.4's three** (`msp`, `hs`, `zhvi`). `abv` and `mlp` were added and then removed
-  once the measurement above showed there was no break to draw — the only reason they were there.
+  once the measurement above showed there was no break to draw : the only reason they were there.
 
 `dist` is **198 MB** (history 121, tileset 45, snapshot 11). Under the 300 MiB guard.
 `prune-dist.mjs` gained `data/temp-geo`: the geometry build unpacks a 162 MB Census shapefile
-under `public/`, which Vite publishes wholesale — the first build after a geometry run was
+under `public/`, which Vite publishes wholesale : the first build after a geometry run was
 **360 MB** and would have failed the deploy guard.
 
 Verified in a real browser at the pinned view: series switching, the confidence slider moving
 the band across all six levels, the band and slider appearing only for ZHVI (the only forecast
-series), and — with `fetch` patched to reject every `/history/` request — the sidebar still
+series), and : with `fetch` patched to reject every `/history/` request : the sidebar still
 rendering all 15 metric cards with no error boundary. 122 tests pass (85 vitest, 37 pytest).
 
 ### Corrections to `todos.md` that were already stale
@@ -1522,18 +1451,18 @@ rendering all 15 metric cards with no error boundary. 122 tests pass (85 vitest,
 - **The gh-pages cleanup commit is obsolete and must not be pushed.** `deploy.yml` uses
   `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, which replaces the branch with one
   commit per deploy. gh-pages is **1 commit, 119.88 MiB, no `pr-preview/`**. The prepared
-  commit `a2e8476` is 7 commits and a **133.45 MiB** tree from 2026-08-29 — bigger and older.
+  commit `a2e8476` is 7 commits and a **133.45 MiB** tree from 2026-08-29 : bigger and older.
   Pushing it would revert the live site and regrow the branch.
 - The `data-2026-07` release exists with all seven snapshots plus the ZHVI vintage;
   `.gitattributes` is empty and `public/data/archive/**` is untracked. Phase 0.2 is finished
   and both P0 items are closed.
-- The export-inset half of Phase 6 landed in Phase 4 already — `ALASKA_DEFAULT_BOUNDS` is
+- The export-inset half of Phase 6 landed in Phase 4 already : `ALASKA_DEFAULT_BOUNDS` is
   `[[-168.0, 54.5], [-130.0, 70.0]]` and the "we don't want to rebuild the tileset" comment is
   gone. The spec's Phase 6 section is stale on this.
 
 AGENT_LOG.md renamed to CHANGES.md
 all temp source file (redfin, zillow, zip cb) moved to temp-data/
-### 2026-09-06, later — the full pipeline run that closes Phase 7's placeholder
+### 2026-09-06, later : the full pipeline run that closes Phase 7's placeholder
 
 Both source CSVs were on disk the whole time; the earlier search only looked in `temp-data/`
 and the Redfin file there is the **dead pre-migration feed**
@@ -1548,7 +1477,7 @@ py -3.14 -m pipeline \
 ```
 
 Exit 0, all stages S0-S8. S8: **6,085 buckets, 33,458 ZIPs, 173 periods x 319 ZHVI months,
-107.0 MB, median bucket 19,087 B.** The forecast paths are now real — **0 of 26,261 ZIPs have
+107.0 MB, median bucket 19,087 B.** The forecast paths are now real : **0 of 26,261 ZIPs have
 all four horizons identical**, against 100% before (30303 declines 205,213 -> 196,930 across
 h1..h12; 30305 and 30306 rise). §12 #4's history-bucket **[E]** is now **[M]**.
 
@@ -1559,11 +1488,11 @@ same inputs: **0 of 50 columns differ**, same ZIP list, same `d` arrays. Only `b
 **Pre-existing bug found by that comparison, NOT introduced here and NOT fixed here.**
 `serialize.count_changes()` reported **28,919 changed data points against bit-identical
 output**. It compares full-precision in-memory `records[z][k]` against `live[z][k]` decoded
-from the snapshot, which was quantised on the way out — 0.13995 encodes to 1400 at scale 1e4
+from the snapshot, which was quantised on the way out : 0.13995 encodes to 1400 at scale 1e4
 and decodes to 0.14, so the `!=` fires on quantisation, not on change. Consequences:
 `update_data.yml`'s "Check for changes to commit" gate (`data_points_changed > 0`) can never
 say no, and `built_utc` churns every run even when nothing moved. The fix is to compare
-*encoded* integers, the way `_assert_value_round_trip` already deliberately does — it has a
+*encoded* integers, the way `_assert_value_round_trip` already deliberately does : it has a
 comment explaining exactly why decoded comparison is the weaker test. Left alone because it is
 outside Phases 6-7 and touches the publish gate.
 
@@ -1577,7 +1506,7 @@ given a tag, so the §5.9 path stays available without rewriting anything.
 
 ---
 
-## 2026-09-06, later still — the change report, the publish gate, and the paint hole
+## 2026-09-06, later still : the change report, the publish gate, and the paint hole
 
 Closes the "Pre-existing bug found by that comparison" note above, and finds three more
 things behind it. Verified by a full offline run against the same two local source files:
@@ -1585,12 +1514,12 @@ things behind it. Verified by a full offline run against the same two local sour
 
 ### The 28,919 was a constant, and the earlier diagnosis named the wrong cause
 
-The note above blamed quantisation — full-precision `records[z][k]` against a `live[z][k]`
+The note above blamed quantisation : full-precision `records[z][k]` against a `live[z][k]`
 that was decoded from a rounded int. That hazard is real but it was **not** what was firing.
 `assemble()` already runs `units.coerce`, which rounds every metric to the decimals the wire
 scale carries, so those cells compared equal.
 
-The actual cause: `count_changes` iterated `SOURCE_KEYS`, which contains **`period_end`** — a
+The actual cause: `count_changes` iterated `SOURCE_KEYS`, which contains **`period_end`** : a
 key with no wire column. `live[z].get("period_end")` was therefore `None` for every ZIP on
 every run, so every Redfin-reporting ZIP read as changed by exactly one point, forever.
 
@@ -1606,7 +1535,7 @@ ZIP. A real month cannot produce that.
 
 | | what it answers |
 |---|---|
-| `read_live` | the live snapshot, parsed, nothing decoded — read once per run |
+| `read_live` | the live snapshot, parsed, nothing decoded : read once per run |
 | `decode_live` | native-scale values for the **diff gate**, which asks "did this move 25%" |
 | `diff` | wire-int comparison for the **change report**, which asks "did this move at all" |
 | `encode_columns` | the one encoder, shared by `write_snapshot` and `diff` |
@@ -1614,13 +1543,13 @@ ZIP. A real month cannot produce that.
 
 Both sides of `diff` now go through `encode_columns`, so quantisation cannot masquerade as
 movement and a key with no column cannot be compared at all. It reports `added` / `removed` /
-`changed` separately, plus a **`by_column` map sorted descending** — which is the diagnostic
+`changed` separately, plus a **`by_column` map sorted descending** : which is the diagnostic
 that was missing. One column moving for every ZIP while nothing else moves is a lost scale or
 a renamed column, and it now says so instead of printing one large number.
 
 Three statuses replace one integer: `compared`, `no_baseline`, `format_change`. The old
 version returned `(0, 0)` for a missing baseline, and `update_data.yml` gated **both** the
-commit and the deploy on that number being positive — so an unreadable live snapshot would
+commit and the deploy on that number being positive : so an unreadable live snapshot would
 have silently skipped publication. That direction is now impossible.
 
 ### The publish gate is a digest, not a count
@@ -1639,13 +1568,13 @@ looks exactly like the deploy bug this repo already spent a phase fixing.
 
 ### An ordering trap, found by running the thing
 
-The first draft called `diff` at S3, next to the gate. Seven wire columns — `rel`, `msp_rse`,
-`dom_rse`, `f_h12`, `f_sigma`, `f_tier`, `lisa` — are written by S5/S5b/S5c, which is *after*
+The first draft called `diff` at S3, next to the gate. Seven wire columns : `rel`, `msp_rse`,
+`dom_rse`, `f_h12`, `f_sigma`, `f_tier`, `lisa` : are written by S5/S5b/S5c, which is *after*
 the gate, so the diff compared this build's empty statistics against the live snapshot's real
 ones and called every ZIP changed. The same shape of false positive as the bug it replaces, in
 a new place. `diff` now refuses a build whose records all carry a null `rel`, with a test.
 
-### `build/paint/` was never published — the worst of the four
+### `build/paint/` was never published : the worst of the four
 
 `update_data.yml` copied `zip-data.json`, `last_updated.json`, `manifest.json` and
 `orphans.json` into `public/data/`, and staged those four. It never touched `build/paint/`,
@@ -1654,7 +1583,7 @@ and `public/data/paint` was not in the `git add` list.
 Paint filenames carry a content hash, so a data change renames all nine. The workflow was
 therefore committing a manifest naming files that were not in the repo. `vite.config.ts`
 inlines `manifest.assets.paint` into `index.html` at build time precisely so the 24 KB paint
-fetch starts in the same tick as the manifest fetch — so this is not a 404 on a background
+fetch starts in the same tick as the manifest fetch : so this is not a 404 on a background
 asset, it is a 404 on the critical path, and the map renders grey.
 
 It has not fired yet only because the count above could never say "unchanged" while the paint
@@ -1664,8 +1593,8 @@ Fixed three ways: the publish step replaces `public/data/paint` wholesale (so la
 hashed files disappear rather than accumulating), a new step runs `sha256sum -c` over every
 `manifest.assets.paint` entry **before** the commit, and the commit stages
 `git add -A public/data/paint` so deletions are staged too. Accepted cost: ~900 KB of new
-blobs per release, ~11 MB/year, against a 131 MiB repo. The alternative — paint on the data
-release, fetched at deploy time — reintroduces the silent-fetch-failure mode already rejected
+blobs per release, ~11 MB/year, against a 131 MiB repo. The alternative : paint on the data
+release, fetched at deploy time : reintroduces the silent-fetch-failure mode already rejected
 for the tileset.
 
 The `sha256sum -c` that `vite.config.ts`'s comment claims verifies the deploy now exists. It
@@ -1691,7 +1620,7 @@ symmetric about zero with the outer two landing on ±bound, the five gaps betwee
 `2 * bound / (EDGES - 1)` = `bound / 2.5`.
 
 Shipped edges were `-20 -14.29 -8.57 -2.86 +2.86 +8.57`. Six edges, strictly increasing, and
-they passed every assertion in `compute()` — which is why this survived. But the top class
+they passed every assertion in `compute()` : which is why this survived. But the top class
 meant "≥ +8.57%" on a scale whose stated design is a p95-derived ±20, and the saturation was
 lopsided by 74x:
 
@@ -1711,7 +1640,7 @@ dispatch.
 
 ### Also in this pass
 
-- `decode_live`'s row-major compatibility branch is deleted — a v3 snapshot has been published,
+- `decode_live`'s row-major compatibility branch is deleted : a v3 snapshot has been published,
   which is the condition its own comment named. It refuses a non-v3 payload instead, so the
   gate sees no baseline rather than a scrambled one.
 - `forecast.backtest` refitted the whole `[T x Z]` panel inside the horizon loop for a value
@@ -1719,7 +1648,7 @@ dispatch.
 - `forecast.run`'s `index` parameter was never passed and is gone.
 - `_build_dicts` took a `zips` argument it never read.
 
-## 2026-09-06, evening — the six "reviewed but not actioned" items, cleared
+## 2026-09-06, evening : the six "reviewed but not actioned" items, cleared
 
 None of these was a shipped defect. They were the judgement calls left over from the
 2026-09-06 read of every Python file, and each is now decided rather than deferred.
@@ -1748,7 +1677,7 @@ one reshape in the codebase instead of two shapes of the same thing.
 ### `changes._period_map` read the whole panel three times
 
 Each call wanted ~29k of 4,930,000 rows and read every row group to get them. The filter now
-goes through the dataset API, so it reaches the row-group statistics — and it prunes well,
+goes through the dataset API, so it reaches the row-group statistics : and it prunes well,
 because `redfin.ingest` *enforces* that PERIOD END descends, which makes each period sit in one
 or two of the 159 row groups.
 
@@ -1758,7 +1687,7 @@ or two of the 159 row groups.
 
 `write_panel` (S2) and `process` (S3) each called `read_csv` on the same 123 MB. There is now a
 `zhvi.read` that parses once and returns the frame plus its date columns; `__main__` calls it in
-S2, drops the raw bytes, and hands the frame to S3. `process` is vectorised — the `iterrows`
+S2, drops the raw bytes, and hands the frame to S3. `process` is vectorised : the `iterrows`
 loop over ~26k rows is gone.
 
 Equivalence was checked against the old row-at-a-time implementation on 4,000 synthetic ZIPs
@@ -1769,7 +1698,7 @@ changed.
 
 ### `calibrate_diff_gate.from_panel` built 4.9M dicts
 
-It materialised one three-key dict per (period, ZIP) cell plus three `to_pylist()` copies —
+It materialised one three-key dict per (period, ZIP) cell plus three `to_pylist()` copies :
 roughly 3 GB and several minutes. It now uses `panel.dense`, one 47 MB array per metric.
 `from_zhvi` had the same defect in the same file (`list(csv.DictReader(f))` over the 123 MB
 wide file) and now parses through `zhvi.read`, so the script and the pipeline agree on what a
@@ -1780,7 +1709,7 @@ date column is and how a ZIP is spelled.
 
 ### `forecast.fit` warned on every run
 
-`RuntimeWarning: Mean of empty slice` and `Degrees of freedom <= 0`, from an all-NaN column —
+`RuntimeWarning: Mean of empty slice` and `Degrees of freedom <= 0`, from an all-NaN column :
 a ZIP with no ZHVI history in the window. `np.errstate` never suppressed them, because it
 governs floating-point error states and these are Python warnings numpy raises itself
 (confirmed directly: both messages escape an `errstate(invalid="ignore")` block). Now filtered
@@ -1790,7 +1719,7 @@ log. Verified: zero warnings, the all-NaN column still forecasts NaN, real colum
 ### `DIVERGING_BOUND_PCT` is deleted
 
 Exported from `choropleth.generated.ts`, re-exported from `choropleth.ts`, read by nothing. It
-duplicated `classify.DIVERGING_BOUND` on the frontend side — a second authority sitting there
+duplicated `classify.DIVERGING_BOUND` on the frontend side : a second authority sitting there
 waiting to be used, which is what `class-source.ts` exists to prevent. Removed from the
 generator and the ramp re-derived; the diff is those three lines and nothing else.
 
@@ -1806,26 +1735,26 @@ On the shipped ZHVI panel (26,269 ZIPs, 319 months):
 | 3 | >= 60, full fit | 25,019 |
 
 The shortest ZHVI history is **31 months**, seven clear of tier 2's floor. So todos.md was
-right that tier 1 is dead code, and tier 0 is dead with it. Left in place — deleting a rung is
+right that tier 1 is dead code, and tier 0 is dead with it. Left in place : deleting a rung is
 a decision about what happens when Zillow adds a new ZIP, not a cleanup.
 
 ---
 
-## 2026-09-06 — UI/UX pass. Contrast, the sidebar, the map, and one live bug found by arithmetic
+## 2026-09-06 : UI/UX pass. Contrast, the sidebar, the map, and one live bug found by arithmetic
 
 Plan and pre-work measurements: `docs/UIUX-PLAN.md`. Developer reference for everything
 below: `docs/METHODOLOGY.md`.
 
 ### The fade was a lightness channel on a lightness ramp
 
-Reliability drove `fill-opacity` — tier 0 at 0.38, the rest at 0.8. On this release tier 0 is
+Reliability drove `fill-opacity` : tier 0 at 0.38, the rest at 0.8. On this release tier 0 is
 **24,315 of 33,771 ZIPs (72%) and 78.5% of the drawn land area**, so the ramp was being read
 through it almost everywhere.
 
 The ramp runs light to dark, so lightness IS the value channel; compositing over a near-white
 basemap also moves lightness. The two are one perceptual channel used twice. Measured by
 compositing each ramp colour over Positron's `#FAFAF8` and converting to CIELAB, with the ramp
-averaging 14.0 L* per class step — error on the darkest class, in class-step units:
+averaging 14.0 L* per class step : error on the darkest class, in class-step units:
 
 | alpha | 0.38 | 0.62 | 0.75 | 0.85 | 0.92 | 0.95 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -1841,8 +1770,8 @@ The bias was systematic, not random. Reliability tracks sales volume tracks urba
 (median $275,953 against $394,885). Both errors pointed the same way.
 
 **`FULL_OPACITY = 1`, flat.** Reliability moved to the popup, the detail panel and the legend.
-A texture overlay gated to zoom >= 6 is the intended fill-side channel — texture is orthogonal
-to lightness — and is **deferred by the user, not cancelled**.
+A texture overlay gated to zoom >= 6 is the intended fill-side channel : texture is orthogonal
+to lightness : and is **deferred by the user, not cancelled**.
 
 **CORRECTION TO AN EARLIER RECOMMENDATION IN THIS SESSION.** A graded step (0.62 / 0.78 / 0.90
 / 0.97) was proposed first, before the artefact was measured. 0.62 is 2.43 class steps of
@@ -1867,7 +1796,7 @@ seven classes:
 | inventory | 66% | 10% |
 
 `months_of_supply` and `sold_above_list` stay gated: one is inventory over the sales rate, the
-other is a share OF the sales. **Code landed, NOT published — needs a data run.**
+other is a share OF the sales. **Code landed, NOT published : needs a data run.**
 
 ### Live bug found while computing ZCTA areas: every bounding box was 10,000x too large
 
@@ -1876,13 +1805,13 @@ so the wire carried degrees x 1e8 under a header saying x 1e4. `ZipTable.boundsO
 header and divided once. Every ZIP claimed a box roughly 1,500 degrees wide.
 
 Confirmed by decoding at 1e8 and recovering exactly **8.3966 degrees** as the widest longitude
-span — the figure `geom.py`'s own docstring cites for Anchorage 99503 as the reason the column
+span : the figure `geom.py`'s own docstring cites for Anchorage 99503 as the reason the column
 is int32.
 
 Consequence: a box that size intersects every viewport, so `visibleZipRows` accepted every
 loaded ZIP and **auto-scale silently scaled to loaded tiles rather than to the view**. Nothing
 caught it because that is what auto-scale looks like when it works. The sidecar exists to fix
-the opposite bug — a 0.01-degree box around each centroid — and the correction overshot by
+the opposite bug : a 0.01-degree box around each centroid : and the correction overshot by
 four orders of magnitude.
 
 Fixed in the pipeline (`offsets` returns degrees; the scale belongs to `COLUMNS` alone), with
@@ -1892,18 +1821,18 @@ the national scale rather than to a wrong viewport. The checked-in golden fixtur
 double-scaled values and was rescaled; the checks caught it there too, independently of the
 published data.
 
-**Reaches the site only on a republish.** Until then the client-side check fires — verified in
+**Reaches the site only on a republish.** Until then the client-side check fires : verified in
 the browser, naming ZIP 99503 at 83,966 degrees.
 
 ### Cluster overlay reframed around the 47 outliers
 
 Measured area share: ns 80.11%, LL 13.10%, HH 5.93%, LH 0.60%, HL 0.26%. Global Moran's I at
-k=8 is 0.7343, so HH and LL — 2,552 of the 2,599 significant ZIPs — restate the choropleth
+k=8 is 0.7343, so HH and LL : 2,552 of the 2,599 significant ZIPs : restate the choropleth
 underneath. HH polygons are median 40 km2 against LL's 153 km2, so an overlay painting both laid
 down 2.2x as much blue as red; the reported symptom was "only blue clusters, nothing else",
 which is what the geometry predicts.
 
-The overlay is now LH and HL only — 47 ZIPs — as circle markers on a client-built GeoJSON
+The overlay is now LH and HL only : 47 ZIPs : as circle markers on a client-built GeoJSON
 source, choropleth intact underneath, with a plain-English key in the legend that appears when
 the overlay is on. Verified in a production build: 47 features, 20 LH + 27 HL, matching the
 manifest. `map:sourceReload` still 0.
@@ -1912,7 +1841,7 @@ manifest. `map:sourceReload` still 0.
 
 `zips-labels` read `symbol-placement: "point"` off the POLYGON source. A polygon crossing a
 vector-tile boundary is clipped into one piece per tile and gets a symbol on each; multi-part
-ZCTAs get one per part. `text-allow-overlap: false` could not help — the copies sit at
+ZCTAs get one per part. `text-allow-overlap: false` could not help : the copies sit at
 genuinely different screen positions, so collision detection had nothing to suppress.
 
 Now a client-built GeoJSON point source, one feature per ZIP, rebuilt on `moveend` above z9.5
@@ -1921,36 +1850,36 @@ from ZIPs whose **anchor** is in view. The anchor is the snapshot's `lat`/`lng`,
 Filtering on the anchor rather than the bbox keeps this independent of the bbox columns.
 
 Verified at z10 over Los Angeles: **117 labels for 117 distinct ZIPs, zero duplicates**,
-against 423 polygon instances — 78 of those ZIPs are split across tiles, 90022 into 4 pieces.
+against 423 polygon instances : 78 of those ZIPs are split across tiles, 90022 into 4 pieces.
 
 No tileset rebuild needed, which matters because the tileset is committed by decision.
 
 ### Interaction cost
 
-- `loadedZips()` ran on every `moveend` — a `querySourceFeatures` over every loaded tile,
-  38,077 feature instances at z3 — and its result was discarded whenever auto-scale was off,
+- `loadedZips()` ran on every `moveend` : a `querySourceFeatures` over every loaded tile,
+  38,077 feature instances at z3 : and its result was discarded whenever auto-scale was off,
   which is the default. `onMapMove` now takes a **thunk**, so the cost sits at the call site
   that wants it.
 - The hover popup was torn down and rebuilt via `createMetricPopupContent` + `setDOMContent`
   on every animation frame the mouse moved, even inside one ZIP. Now rebuilt only when the ZIP
   under the cursor changes; movement within one is a `setLngLat`.
-- Added a hover outline on `zips-border` via a `hovered` feature-state. Not performance — the
+- Added a hover outline on `zips-border` via a `hovered` feature-state. Not performance : the
   only hover feedback was the popup, so the surface never acknowledged the pointer.
 
 ### Benchmarks: one fixed, versioned metric set
 
 Metrics were added to `bench/run.mjs` as they became interesting, which is why phase 0 and
 phase 3 share only a handful of comparable fields. Now every key in `METRIC_KEYS` and every id
-in `SCENARIO_IDS` is emitted on every run, as `null` where unavailable — a null and a zero are
-different claims — `SCHEMA_VERSION` (in `scenarios.mjs`, which has no side effects on import)
+in `SCENARIO_IDS` is emitted on every run, as `null` where unavailable : a null and a zero are
+different claims : `SCHEMA_VERSION` (in `scenarios.mjs`, which has no side effects on import)
 bumps on any change, and `compare.mjs` **refuses** to compare across a bump. Verified: it
 refuses a schema-1 against a schema-2 file and still compares two schema-1 files.
 
 Added: TTFB, FCP, Long Animation Frames (Chrome 123+, supersedes Long Tasks by covering the
 whole frame rather than the script task), Event Timing as the lab stand-in for INP, heap after
 interaction as the only leak signal, and `map:sourceReload` as an asserted invariant. Plus 11
-scripted interaction scenarios — pan at z4/z7/z10, zoom in and out, a 200-step hover sweep,
-click to panel, a full metric cycle, search fly-to, and both legend toggles — each reporting
+scripted interaction scenarios : pan at z4/z7/z10, zoom in and out, a 200-step hover sweep,
+click to panel, a full metric cycle, search fly-to, and both legend toggles : each reporting
 dropped frames, worst frame, p95 frame and LoAF blocking time.
 
 **Not yet run.** No schema-2 baseline exists, so there is nothing to compare against yet.
@@ -1982,23 +1911,23 @@ page depends on (removing one removes a section).
 - `TopBar` split into `TopBarShell` + the map's controls, so the methodology page gets a header
   without a metric selector and a ZIP search that drive a map on another route. A Methodology
   button was added to both. The header degrades by breakpoint rather than by the binary
-  `isMobile` hook — adding the button pushed the minimum width past a 900 px viewport and the
+  `isMobile` hook : adding the button pushed the minimum width past a 900 px viewport and the
   wordmark overlapped the search field.
 - Legend: three break labels instead of six (six 5-7 character values across 256 px was ~36 px
   each at 10 px type, which is why the old markup carried a negative margin to hide the
   overlap). Per-swatch ranges on hover.
-- Sidebar: fifteen `<Card>`s, one number each, became grouped rows — roughly 1,400 px of scroll
+- Sidebar: fifteen `<Card>`s, one number each, became grouped rows : roughly 1,400 px of scroll
   down to about a third. A hero block leads with the metric the map is painting. The history
   chart gained a pointer readout (`Jul 2027 (forecast) - $437,000 - 80% range $391k-$489k`), a
   y-axis, year ticks and an explicit forecast divider; the confidence slider was demoted to a
   select.
 - Comparison: green/red good-bad colouring dropped. `isGoodHigher = key !== 'median_dom'` is
-  wrong for `months_of_supply` and meaningless for `homes_sold` — which direction is better
+  wrong for `months_of_supply` and meaningless for `homes_sold` : which direction is better
   depends on whether the reader is buying or selling, which the panel does not know.
 
 ---
 
-## 2026-09-09 — /methodology was unreachable in production
+## 2026-09-09 : /methodology was unreachable in production
 
 `https://jasperwchen.github.io/Domapus/methodology` showed the map. The address bar read
 correctly, the page did not change, and every local mode looked fine. Verified live before
@@ -2007,13 +1936,13 @@ touching anything: the URL served `404.html`, the bounce ran, and the router sta
 **Cause.** The restore lived in an `App.tsx` effect and called `window.history.replaceState`.
 That call fires no `popstate`, and React Router reads `window.location` once while mounting.
 So the address bar was fixed and the router never learned about it. The fix is not a
-different effect — it is doing the restore in static HTML, before the bundle is even fetched.
+different effect : it is doing the restore in static HTML, before the bundle is even fetched.
 The restore is now the first thing in `<head>` of `index.html`, ahead of GTM (so the pageview
 reports the real path) and ahead of the paint-boot script (which reads `location.search`).
 
 **Why no local mode caught it.** `npm run dev` and `vite preview` both serve `index.html` for
 any path, so no bounce happens and the scripts never run. `bench/serve.mjs` falls back to
-`index.html` too, despite its "matching GitHub Pages" comment — that fallback is about
+`index.html` too, despite its "matching GitHub Pages" comment : that fallback is about
 byte measurement, but it means the harness cannot see a routing break. The chain only ever
 executed in production.
 
@@ -2041,7 +1970,7 @@ not just green on the fix. It also asserts the restore stays ahead of GTM and of
 `__domapusBoot` in source order.
 
 Everything checked against a server that returns `404.html` with a 404 for unknown paths, the
-way Pages does — not against `vite preview`.
+way Pages does : not against `vite preview`.
 
 **Not changed, worth knowing.** The methodology links in `TopBar` and `Legend` are plain
 `<a href>`, so reaching the page costs a full reload plus the 404 round trip; React Router
@@ -2135,7 +2064,7 @@ window opening unannounced is a WCAG 3.2.5 problem.
 The Legend's inline Methodology link is a `<Link>` too. It used to open a new tab to
 protect the reader's map state; the query string carries that now.
 
-### 2026-09-09 (same day) — Back out of the methodology page hung the map
+### 2026-09-09 (same day) : Back out of the methodology page hung the map
 
 Reported: on the map, click Methodology, press Back, and the map sits on its
 loading state.
@@ -2182,12 +2111,12 @@ canvas, the restored 90210 panel and the URL, with no console errors.
 
 ---
 
-## 2026-09-11 — maplibre-gl 5 → 6, and the rest of `npm outdated` deliberately left alone
+## 2026-09-11 : maplibre-gl 5 → 6, and the rest of `npm outdated` deliberately left alone
 
 `npm audit` reported a **critical** XSS advisory against `maplibre-gl <= 6.4.0`
 (GHSA-jrc7-96c5-q579, a `DOM.sanitize()` bypass) and the only fix is the v6 major. That is the
-whole reason for this pass. The hole is not actually reachable here — popups go through
-`setDOMContent`, never `setHTML` — so this clears the advisory rather than patching a live
+whole reason for this pass. The hole is not actually reachable here : popups go through
+`setDOMContent`, never `setHTML` : so this clears the advisory rather than patching a live
 bug, but leaving a critical open to avoid a major is the wrong trade.
 
 **What v6 forced.**
@@ -2199,7 +2128,7 @@ bug, but leaving a critical open to avoid a major is the wrong trade.
   `import.meta.url` and a bundler's module graph does not point at the real file. New
   `src/lib/maplibre-worker.ts` calls it once at module scope; `MapLibreMap.tsx` and
   `PrintStage.tsx` import it for the side effect, next to their existing `addPMTilesProtocol()`
-  call. The URL must come in as `?worker&url` and not plain `?url` — `?url` emits the worker
+  call. The URL must come in as `?worker&url` and not plain `?url` : `?url` emits the worker
   verbatim without its `maplibre-gl-shared.mjs` sibling, which dies on first import and loads
   no tiles at all. That failure only appears in `npm run build`; dev mode is forgiving of
   either, which is exactly the shape of bug that ships.
@@ -2207,7 +2136,7 @@ bug, but leaving a critical open to avoid a major is the wrong trade.
 **The one behavioural change worth checking.** `zoomLevelsToOverscale` defaults to 4 in v6
 instead of 0, so maplibre slices vector tiles where it used to overscale them, and that changes
 what both `queryRenderedFeatures` and `querySourceFeatures` return. Those are what hover, click
-and `loadedZips()` in `class-source.ts` are built on — `loadedZips()` decides the live class
+and `loadedZips()` in `class-source.ts` are built on : `loadedZips()` decides the live class
 source in auto-scale mode. Dedup is by a `Set` of feature ids so slicing should be harmless in
 theory, and it is in practice: verified on the production build served at the real base path.
 Click selection resolves a ZIP and fills the sidebar including the history sparkline, and
@@ -2237,7 +2166,7 @@ pre-existing warnings, `npm run build` clean with the worker emitted as a self-c
 
 ---
 
-## 2026-09-11 — the colour scale carried 2.5 bits and the legend hid it
+## 2026-09-11 : the colour scale carried 2.5 bits and the legend hid it
 
 **Seven classes was a legend rule applied to a map.** `derive_ramp.mjs` justified it as
 "sequential ramps support 5-9 steps before adjacent colours stop being distinguishable",
@@ -2248,7 +2177,7 @@ $400k mark two ZIPs $190k apart painted identically.
 **The real ceiling is the ramp's arc length under colour-vision deficiency, and it is
 fixed.** About 84 dE76, bounded by how far L* can travel between the palest and darkest
 usable fill, because tritanopia collapses the yellow-blue axis this ramp's chroma lives on.
-No choice of hues buys more. So the check is no longer "are adjacent swatches separable" —
+No choice of hues buys more. So the check is no longer "are adjacent swatches separable" :
 it measures the SEPARABLE SPAN, how many classes apart two ZIPs must be before every reader
 can tell them apart, and rejects any count whose span/classes ratio is worse than the 14.3%
 of range seven classes gave:
@@ -2262,8 +2191,8 @@ of range seven classes gave:
 14 is therefore the largest count that costs a colour-blind reader nothing: they still
 resolve ~7 bands, while normal vision resolves 14 at 13.79 dE76 adjacent, far above the
 ~2.3 perceptual floor. 15 was asked for first and measured down. The byte imposes a second,
-independent ceiling of 15 — the class field is the low nibble holding `class + 1`, so class
-15 encodes as 0x10 and reads back as reliability tier 1 with no class — and `paint.py` now
+independent ceiling of 15 : the class field is the low nibble holding `class + 1`, so class
+15 encodes as 0x10 and reads back as reliability tier 1 with no class : and `paint.py` now
 raises on it rather than trusting the palette script to have caught it.
 
 **`sold_above_list` was one colour over 97% of the drawn area.** `equal_anchored_100` pins
@@ -2273,12 +2202,12 @@ sales, which approaches 100% from below and never straddles it. The lowest edge 
 33.6% against a national median of 16.7%, so the grid never reached the data: 65.6% of ZIPs
 in the bottom class. Now `equal_interval_0_100`, which reads no sample at all and so cannot
 be tuned to the distribution in either direction. Bottom class 33.8%, of which 29.3 points
-are ZIPs reporting EXACTLY zero sales above list — that floor is the data, not the classing,
+are ZIPs reporting EXACTLY zero sales above list : that floor is the data, not the classing,
 and quantile classing would have spread it artificially to 31.5%.
 
 **An even class count puts a boundary on zero.** 14 classes means 13 diverging edges, an odd
 number, so the middle one is exactly 0.0. The 7-class scale had a neutral -4%..+4% band
-holding 57% of ZIPs — the map's largest single block was the one that said nothing. Now every
+holding 57% of ZIPs : the map's largest single block was the one that said nothing. Now every
 cool colour is a decline and every warm one is a rise. `DIVERGING_COLORS` is resampled per
 half so the arms stay symmetric (the RdBu halves are not the same CIELAB arc length) and no
 swatch sits on neutral.
@@ -2286,7 +2215,7 @@ swatch sits on neutral.
 **The legend is a seamless 14-band strip, not an interpolated gradient.** At 14 bands it
 reads as a ramp, and every pixel in it is a colour some ZIP is actually painted. A smooth
 gradient was the easier way to get that look and would have put colours in the key the map
-can never produce — invisible at 14 classes in a way it was not at 7. Same fix applied to the
+can never produce : invisible at 14 classes in a way it was not at 7. Same fix applied to the
 PNG/PDF export, which was building a smooth canvas gradient. Five tick labels on desktop and
 three on mobile, both spread across the boundary list and positioned at the boundary each one
 names; the mobile strip previously spread three PERCENTILES of the value list evenly down the
@@ -2297,7 +2226,7 @@ from a real build using the shipped `classify` and `paint`, changing only the cl
 parts and leaving the hand-chosen ZIP selection alone. They had been checked in by hand, which
 made a class-count change a 48-ZIP-by-9-metric edit. `golden.test.ts` now derives the maximum
 legal byte from the ramp length instead of the literal 0x37, and asserts the fixture still
-reaches it — a fixture that quietly stops exercising the bound is a test that reads stronger
+reaches it : a fixture that quietly stops exercising the bound is a test that reads stronger
 than it is.
 
 **Measured, 2026-07 release.** Biggest single class, before -> after:
@@ -2306,7 +2235,7 @@ than it is.
     median_dom -> 19.7%   median_ppsf -> 16.0%   zhvi -> 14.1%   median_sale_price -> 13.5%
 
 Neighbour class disagreement (mean |dk| over 8 nearest neighbours / shuffled baseline, where
-1.00 is pure noise) is a property of the data and does not move with the class count —
+1.00 is pure noise) is a property of the data and does not move with the class count :
 identical at 7 and 15. It splits the metrics in two, and the split matters for what to do
 about the speckle on the count and time maps:
 
@@ -2316,18 +2245,18 @@ about the speckle on the count and time maps:
 
 For the two estimates the roughness is thin-sample noise and the signal underneath is about
 as spatially structured as price. For the two counts it goes UP among busy ZIPs, which rules
-sampling noise out — there is none, a count is not estimated — so that roughness is real
+sampling noise out : there is none, a count is not estimated : so that roughness is real
 heterogeneity in ZIP size and density. Neither argues for dropping a metric; what is missing
 is a reliability channel on the fill, deferred since the opacity fade was removed.
 
 ---
 
-## 2026-09-11 — "Adjust Contrast to View" was dead on click, then dishonest once it worked
+## 2026-09-11 : "Adjust Contrast to View" was dead on click, then dishonest once it worked
 
 Two separate defects behind one user report. Both fixed, both now covered by tests.
 
-**1. The toggle did nothing until the next pan.** `visibleRows` — the viewport sample the
-auto-scale authority cuts its breaks from — was only ever computed inside the map's `moveend`
+**1. The toggle did nothing until the next pan.** `visibleRows` : the viewport sample the
+auto-scale authority cuts its breaks from : was only ever computed inside the map's `moveend`
 handler, and that handler early-returned whenever auto-scale was off. So flipping the checkbox
 set a boolean and nothing else; the class source stayed `PaintTableSource` and the map kept its
 colours. On a map nobody had moved yet the feature looked broken, which is exactly how it was
@@ -2338,8 +2267,8 @@ that effect ("turning it on waits for the next map move to supply one") *describ
 **2. Once it fired, it swapped the classing scheme, not just the sample.**
 `ViewportClassSource` cut plain quantiles for every metric. The pipeline classes prices
 log-equal between their p1 and p99 anchors, counts by quantile, shares on a 100%-anchored
-grid, and YoY on a fixed diverging scale. So on the FULL NATIONAL EXTENT — where the viewport
-sample is the same data the pipeline classed — the toggle still repainted the country much
+grid, and YoY on a fixed diverging scale. So on the FULL NATIONAL EXTENT : where the viewport
+sample is the same data the pipeline classed : the toggle still repainted the country much
 darker. Measured on the 2026-07 release, `zhvi`, share of ZIPs in the two darkest of seven
 classes: **6.0% fixed vs 28.6% auto, a 4.8x jump**, top break $1.24M vs $567k. Quantiles put
 14.3% in every class by construction; that is what "every map looks equally hot" means and
@@ -2347,13 +2276,13 @@ classes: **6.0% fixed vs 28.6% auto, a 4.8x jump**, top break $1.24M vs $567k. Q
 
 A second, quieter mismatch rode along: break population. Boundaries for an estimated statistic
 are cut on the rankable set only, so a four-sale ZIP cannot move the scale for everyone else.
-Auto-scale sampled every visible ZIP — for `zhvi`, 26,262 voters against the pipeline's 9,452.
+Auto-scale sampled every visible ZIP : for `zhvi`, 26,262 voters against the pipeline's 9,452.
 
 `src/lib/classing.ts` now ports the pipeline's four schemes, and `ViewportClassSource` reads
 the scheme name and the break gate out of `manifest.classing[metric]` rather than choosing.
 The pipeline stays the authority on WHICH scheme a metric gets; the frontend only re-runs it on
-a smaller sample. Where no honest cut exists — `diverging` (fixed on purpose), a sample too thin
-to cut, or a scheme name this build does not know — the source now defers wholesale to the paint
+a smaller sample. Where no honest cut exists : `diverging` (fixed on purpose), a sample too thin
+to cut, or a scheme name this build does not know : the source now defers wholesale to the paint
 table, i.e. falls back to the fixed national scale. It used to answer -1 for every ZIP in that
 case, which is a blank map.
 
@@ -2367,7 +2296,7 @@ metrics including the wire-scaled ones (`ppsf`, `abv`, `mos`). It reads the real
 
 Verified live at the real national extent: breaks move $157k / $360k / $1.2M → $157k / $359k /
 $1.2M and the map is visually identical. That residual 0.3% on the middle break is real and
-correct — the viewport sample excludes ZIPs whose polygons lie outside the visible window
+correct : the viewport sample excludes ZIPs whose polygons lie outside the visible window
 (Alaska, Hawaii, the map edges), so it is a genuinely slightly smaller sample. Zoomed to
 SoCal the same toggle gives $205k / $496k / $1.9M, which is the feature doing its actual job:
 the scale follows an expensive region instead of flooding the dark end of the ramp.
@@ -2679,7 +2608,7 @@ than measured independently in each.
 
 ---
 
-## 2026-09-12 evening — todos reconciled against the artifacts, not against the file
+## 2026-09-12 evening : todos reconciled against the artifacts, not against the file
 
 Five open items in `docs/todos.md` were already finished. Each was checked against the thing
 it described rather than taken on the file's word, and then deleted.
@@ -2719,7 +2648,7 @@ hand-committed `public/data/paint` bypasses the check entirely.
 
 **The bbox decode fix is published and can be verified from the wire.** Max `be - bw` in the
 shipped `public/data/zip-data.json` is 83,966 raw, which at the declared 1e4 scale is 8.3966
-degrees — exactly the figure `geom.py` cites for Anchorage 99503. `ZipTable.checkBounds` has
+degrees : exactly the figure `geom.py` cites for Anchorage 99503. `ZipTable.checkBounds` has
 nothing left to log and auto-scale runs on real bounds.
 
 ### `featureStateWrites` now reports its skip count
@@ -2741,7 +2670,7 @@ exactly one home, so the first edge lands on 1.0. A ZIP is class 0 only when its
 strictly below the first edge, and no reporting ZIP has `homes_sold < 1`. Every one-sale ZIP
 paints class 1 and the first swatch goes unused.
 
-The break is right — `_quantile_breaks` is already commented *"Ties collapse classes; that is
+The break is right : `_quantile_breaks` is already commented *"Ties collapse classes; that is
 real."* The legend is what is wrong, and it can be fixed without a data run because
 `class_counts` is already in the manifest and already typed in `src/lib/manifest.ts`.
 
@@ -2755,7 +2684,7 @@ The earlier note called it unreachable. It is also unimplemented. `pipeline/fore
 documents tier 1 as *"the METRO's growth path on the ZIP's last level"*, but `_tier()` only
 assigns the integer and the fill loop special-cases tier 0 alone. There is no metro-growth
 branch in the file. A ZIP with 12-23 observations would receive the ordinary shrunk AR(1)
-output stamped `f_tier: 1` — a weaker label on an identical forecast. Nothing in the frontend
+output stamped `f_tier: 1` : a weaker label on an identical forecast. Nothing in the frontend
 reads `f_tier` either; it is declared in `map/types.ts` and used in no component.
 
 That changes the decision from "delete dead code" to "the ladder documents four rungs and
@@ -2766,7 +2695,7 @@ implements two, and the day Zillow adds a short-history ZIP it starts lying."
 The todo kept it on the theory that an auto-scale path would reach for it. Auto-scale already
 exists and does not: `ViewportClassSource` calls `fitBreaks` in `src/lib/classing.ts`, which
 reads the scheme and the break gate out of the manifest. Cutting plain quantiles for every
-metric is the exact bug `class-source.ts` documents in its own header — it moved 28.6% of ZIPs
+metric is the exact bug `class-source.ts` documents in its own header : it moved 28.6% of ZIPs
 into the two darkest classes against the fixed scale's 6.0%. `d3-scale` is imported by nothing
 else in `src/`, so deleting the function drops the dependency with it.
 
@@ -2778,7 +2707,7 @@ image is the **data period**. A PNG pasted into a deck six months later cannot b
 
 ---
 
-## 2026-09-12, later — the five open decisions, answered and implemented
+## 2026-09-12, later : the five open decisions, answered and implemented
 
 All five were answered in one pass and all five landed the same session. `npx tsc -b` clean,
 144 vitest, 54 pytest, verified in the browser on the dev server.
@@ -2786,7 +2715,7 @@ All five were answered in one pass and all five landed the same session. `npx ts
 ### `computeQuantileBuckets` is gone, and `d3-scale` with it
 
 Deleted from `src/lib/quantiles.ts`, its re-export dropped from `map/utils.ts`, its four tests
-removed, and `d3-scale` + `@types/d3-scale` uninstalled — nothing else in `src/` imported them.
+removed, and `d3-scale` + `@types/d3-scale` uninstalled : nothing else in `src/` imported them.
 
 The function cut plain equal-count quantiles for every metric. That is the bug
 `class-source.ts` documents in its own header: on the full national extent, classing the same
@@ -2805,13 +2734,13 @@ CLASSES, which `fitBreaks` refuses, so a production helper is the wrong dependen
 
 ### Forecast tiers 0 and 1 are now one rung
 
-`TIER_METRO` deleted, `_tier` no longer assigns 1, and `tier_counts` reports `(0, 2, 3)` — a
+`TIER_METRO` deleted, `_tier` no longer assigns 1, and `tier_counts` reports `(0, 2, 3)` : a
 key that is structurally always zero reads as a measurement rather than an absence.
 
 The earlier note called tier 1 unreachable. It was also unimplemented: the ladder documented
 it as "the METRO's growth path on the ZIP's last level" and no such branch was ever written,
 so a ZIP with 12-23 observations would have been handed the ordinary shrunk AR(1) output
-stamped `f_tier: 1` — an identical forecast wearing a weaker label. It never fired because the
+stamped `f_tier: 1` : an identical forecast wearing a weaker label. It never fired because the
 shortest ZHVI history in the shipped panel is 31 months, so nothing was ever published under
 it. Under 24 observations now gets no forecast, which is the only reading that cannot ship a
 wrong number.
@@ -2823,19 +2752,19 @@ branch behind it is not.
 ### Empty classes are notched in the legend
 
 `homes_sold` and `active_listings` draw zero ZIPs in class 0, because the first of thirteen
-quantile edges lands on 1.0 and nothing reports under one sale. The break is right — ties
+quantile edges lands on 1.0 and nothing reports under one sale. The break is right : ties
 collapsing classes is a real property of the distribution. The legend showing a swatch for a
 colour with no owner was not.
 
 An unused class now keeps its slot and its colour but shrinks to a 4 px sliver inside the
-16 px band, with the title "… — no ZIP codes" and a caption under the key. Two things about
+16 px band, with the title "… : no ZIP codes" and a caption under the key. Two things about
 that choice:
 
 **Width is untouched on purpose.** The tick labels are positioned from `(i + 1) / CLASSES`, so
 dropping a band outright would silently move every label off the boundary it names.
 
 **Height, not lightness.** A faded swatch on a lightness ramp is the same channel the value is
-encoded in — the reason the reliability fade came off the map in the first place.
+encoded in : the reason the reliability fade came off the map in the first place.
 
 `classCounts` is withheld whenever the counts do not describe the breaks on screen. In
 auto-scale the live source re-cuts to the viewport, so the published counts belong to a
@@ -2843,7 +2772,7 @@ different set of boundaries; marking nothing there is the safe miss, marking the
 empties would be a lie.
 
 Verified in the browser: `homes_sold` national shows 14 bands all 15.9 px wide, the first 4 px
-tall titled "below 1 — no ZIP codes", caption present. `median_sale_price` shows 14 full bands
+tall titled "below 1 : no ZIP codes", caption present. `median_sale_price` shows 14 full bands
 and no caption. `homes_sold` with auto-scale on shows 14 full bands and no caption.
 
 ### Export identity, both halves
@@ -2862,7 +2791,7 @@ is right-aligned from `mapRight`; measured clearance to the key at the worst cas
 about 260 stage units.
 
 The earlier note framed this as "an untitled export cannot be identified later", which was
-wrong about the file — the stem already had metric and region. What it was right about is the
+wrong about the file : the stem already had metric and region. What it was right about is the
 picture: a PNG pasted into a deck is not a file any more.
 
 ### Kaggle is closed, not deferred
@@ -2875,13 +2804,13 @@ display or provide access to any portion of the Services on Third Party Sites" (
 
 The distinction that settles it: Redfin welcomes *citing* the data and asks only for a
 citation and a link on first reference, which is what Domapus does today and is squarely
-permitted. A Kaggle upload is the other act — redistributing the data on a third-party site,
+permitted. A Kaggle upload is the other act : redistributing the data on a third-party site,
 which 2.3.4 names directly.
 
 The benefit was never large enough to chase written permission. The case was discovery, which
 is a marketing channel; a download link on Domapus itself buys most of it, since the artifacts
 are already public static files. And to interest a Kaggle audience the upload would need the
-full 173-period panel rather than one month — the maximal version of exactly what the terms
+full 173-period panel rather than one month : the maximal version of exactly what the terms
 refuse.
 
 ### Export memory, measured
@@ -2897,7 +2826,7 @@ belongs to the dialog. During the export call itself a further 3600 x 2700 = 38.
 exists transiently.
 
 Peak is therefore about 196 MB of heap plus ~74 MB of canvas. What a phone does under that is
-still unknown — memory pressure is not something the harness can emulate, so this needs a real
+still unknown : memory pressure is not something the harness can emulate, so this needs a real
 low-end device or a decision to drop `EXPORT_SCALE` to 2 (~13 MB instead of 29, at a 1.51x
 upscale).
 
@@ -2986,156 +2915,20 @@ the viewport re-cut all render, no console errors.
 
 ---
 
-## 2026-09-16: reference moved out of todos.md
+## 2026-09-16: consolidated historical measurements
 
-`docs/todos.md` now holds open items only. The standing conventions, landed-phase tables and measured facts it carried are kept here verbatim.
+These are dated reference measurements, not current configuration or open tasks.
+Duplicated phase, export and decision summaries from the old todo file were removed;
+their original dated explanations remain above. Current rules live in AGENTS.md.
 
-### Conventions
-
-**The spec is `docs/FINAL-SPEC-08-2026.md`, and it is deliberately untracked.**
-
-- **One spec file. That exact name.** There is no `FINAL-SPEC.md`. An earlier agent recreated
-  that older name, worked in it from a stale base, and silently reverted ~12 fixes before the
-  fork was caught and merged (see CHANGES.md). If you find a second spec file, you are looking
-  at a fork — merge it, do not adopt it.
-- **Untracked on purpose.** It is a local working document, not a shipped artifact, and it
-  churns far too fast to be worth reviewing in diffs.
-- Because it is untracked there is **no git history and no recovery**. Back it up to the
-  session scratchpad before any bulk edit. Every edit should assert a unique anchor match
-  before applying — that is what caught the fork. (One snapshot exists by accident:
-  `1249f88..d5b662f` carried the file. Use `git show 1249f88:docs/FINAL-SPEC-08-2026.md` if
-  the working copy is ever lost.)
-- `docs/CHANGES.md` and `docs/todos.md` **are** tracked. Keep them that way.
-- `docs/ENGINEERING-LOG.md` is **not** tracked, same reasoning as the spec. Its history up to
-  `50cc65b` is in git if an earlier version is ever wanted.
-- `datap/` renamed to `temp-data/`.
-
----
-
-### Phases 0-5 — LANDED. Rationale and measurements in CHANGES.md.
-
-On `main` and pushed. Phases 4 and 5 are commit `477acd1`.
-
-| | phase0 | phase1 | phase3 | **phase5** |
-|---|---|---|---|---|
-| LCP | 7352 ms | 7228 ms | 7012 ms | **6212 ms** |
-| TBT | 5120 ms | 4053 ms | 2934 ms | **2695 ms** |
-| metric switch | 3375 ms | 3190 ms | 1491 ms | **647 ms** |
-| **bytes to first colour** | — | — | 2,570,348 B | **27,780 B** |
-
-**phase0 and phase1 are not comparable.** Phase 1 took the latest period from 20,010
-reporting ZIPs to 29,738 (+48.6%), so transfer moved for reasons unrelated to any
-optimisation. Name the baseline in every claim.
-
-**Never quote a performance number that is not in `bench/results/`.**
-
----
-
-### Phases 6 and 7 — LANDED 2026-09-06. Rationale and measurements in CHANGES.md.
-
-| | phase3 | phase5 | **phase7** |
-|---|---|---|---|
-| LCP | 7012 ms | 6212 ms | **6224 ms** |
-| TBT | 2934 ms | 2695 ms | **2997 ms** |
-| metric switch | 1491 ms | 647 ms | **564 ms** |
-| bytes to first colour | 2,570,348 B | 27,780 B | **27,780 B** |
-| tile transfer @ pinned view | — | 1,052,980 B | **1,426,268 B** |
-| tileset archive | 92.6 MB | 92.6 MB | **46.9 MB** |
-| ZCTAs present at z4 | 32,939 | 32,939 | **33,780** |
-
-**Fixing the coverage bug cost bytes, and the claim must be stated that way.** Tile transfer
-at the default view went UP 35%, because z4 now ships all 33,712 ZCTAs instead of dropping 841
-and merging tiny ones into squares; the archive cut came from dropping z11/z12, zooms this
-view never requests. TBT moved for the same reason. **Do not repeat §3.7's "1.9x page weight
-after Phase 6" — it is wrong in sign for the tile component.** The defensible claims are the
-deploy footprint (92.6 -> 46.9 MB) and the coverage fix itself.
-
-`dist` is 198 MB (history 121, tileset 45, snapshot 11), under the 300 MiB guard.
-
-### Phase 6 — closed
-
-- **DECIDED 2026-09-06 (user): the tileset stays committed in git.** `public/data/us_zip_codes.pmtiles`
-  is the 46.9 MB archive, tracked, and `deploy.yml` needs no download step. The cost accepted
-  is that each geometry rebuild adds a permanent ~47 MB blob to history; geometry is a roughly
-  annual job, so that is a slow clock. **Do not re-open this as a "cleanup" without asking.**
-  §5.9's release path is not dead — `geometry.yml` still cuts a `geometry-vN` release when
-  handed a tag, which is the escape hatch if repo size ever does become the problem.
-
----
-
-### Decided 2026-09-12 and implemented. Rationale in CHANGES.md.
-
-All five answered by the user in one pass; each landed the same session. Kept here only as
-the short form of what was decided, because each one changes an invariant someone could
-otherwise undo by accident.
-
-1. **`computeQuantileBuckets` deleted.** It cut plain equal-count quantiles for every metric,
-   which is the scheme mismatch `class-source.ts` documents. Auto-scale uses `fitBreaks`.
-   `d3-scale` went with it — nothing else in `src/` imported it.
-2. **Forecast tiers 0 and 1 collapsed.** Under 24 observations now gets no forecast. Tier 1
-   was documented as a metro growth path that was never written, so a 12-23-observation ZIP
-   would have been handed the ordinary shrunk AR(1) output under a weaker label.
-3. **Empty classes are notched in the legend, not dropped.** The break stays as cut.
-4. **Both halves of export identity.** The period is in the filename and, when the title is
-   off, in the attribution row.
-5. **Kaggle: shelved.** Redfin's terms are the answer; see below.
-
-### Kaggle — CLOSED 2026-09-12. Do not re-open without new terms from Redfin.
-
-**The terms were read, and they do not permit it.** Redfin's Terms of Use grant only "a
-limited, personal, non-exclusive, non-transferable, non-sublicensable, revocable license to
-access, view, and use the Services" (2.3.2), prohibit creating "derivative works based upon,
-or attempt to commercially gain from your use" (2.3.3), and state the Terms "do not provide
-you a license to use, reproduce, distribute, display or provide access to any portion of the
-Services on Third Party Sites" (2.3.4). Redfin sells enterprise licensing separately for
-large-scale commercial use.
-
-**The distinction that matters.** Redfin explicitly welcomes *citing* the data — its support
-documentation asks only for a citation and a link on first reference. That is what Domapus
-does today, and it is squarely permitted. Uploading a dataset to Kaggle is the other thing:
-redistributing the data itself on a third-party site, which is what 2.3.4 names.
-
-**And the benefit was never large.** The honest case for Kaggle was discovery — reaching a
-data-science audience that will not find a GitHub Pages map. That is a marketing channel, and
-a "download the data" link on Domapus itself buys most of it, because the artifacts are
-already public static files. To be interesting to a Kaggle audience the upload would have to
-carry the full 173-period panel rather than one month, which is the maximal version of exactly
-the redistribution the terms refuse.
-
-Publishing only Domapus's *own* derived columns — the `rel` tier, `msp_rse`, `lisa`, the
-forecast — would be a much weaker redistribution claim, since those are computed here rather
-than copied. It is also much less useful without the levels they describe, which is the part
-that cannot be shipped. That is the trade if this is ever revisited.
-
----
-
-### Standing rule, not an open item
-
-**±20% diverging bound is derived, never chosen.** `classify.derive_diverging_bound()`
-recomputes it from the pooled ZHVI panel every run (p95 |yoy| = 18.85% over 6,137,683 lag-12
-cells, share clamped 4.07%). It has rounded to 20 on every start window tested. If a release
-ever produces a different bound, that is a regime change worth seeing, not a number to
-override.
-
----
-
-### Benchmark protocol
-
-- [ ] Per phase, per spec §8.7: `node bench/run.mjs` on the built `dist/` at the pinned view,
-      **before and after**, result into `bench/results/` and a line here.
-- [ ] **Final full benchmark after the last phase lands**, same pinned conditions as the
-      2026-08-29 baseline (slow4g / 4x CPU / 1440x900 / 5 runs / pinned view).
-
----
-
-### Facts established — do not re-derive
+### Facts established : do not re-derive
 
 ### Publishing surfaces (measured 2026-09-06)
 
 - **`gh-pages` is NOT at 800.70 MiB and the cleanup commit is obsolete.** `deploy.yml` uses
   `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, which replaces the branch with one
   fresh commit per deploy. The branch is **1 commit, 119.88 MiB, no `pr-preview/`**. The prepared
-  cleanup commit `a2e8476` is 7 commits and a **133.45 MiB** tree from 2026-08-29 — bigger and
+  cleanup commit `a2e8476` is 7 commits and a **133.45 MiB** tree from 2026-08-29 : bigger and
   older. Pushing it would revert the live site and regrow the branch. **Do not push it.**
 - The `data-2026-07` release exists and carries all seven `zip-data-*.json.gz` snapshots plus the
   123,065,811 B ZHVI vintage. `.gitattributes` is empty and `public/data/archive/**` is untracked,
@@ -3158,12 +2951,12 @@ run and written to `manifest.panel`; do not carry a period count forward from an
 ### The statistics (measured 2026-09-05, shipped)
 
 - **K = 0.5598** for `median_sale_price`; `median_dom` 1.4576; `avg_sale_to_list_ratio` 0.0749.
-- **The rankable gate is `rse < 10%`, which is n >= 32** — not 30, which was only ever true at
+- **The rankable gate is `rse < 10%`, which is n >= 32** : not 30, which was only ever true at
   the dead feed's K. Derived per release as `manifest.noise.rankable_n_implied`.
   **9,456 of 25,603 reporting ZIPs (36.9%)** qualify.
 - **Tier edges imply n >= 32 / 88 / 196**, not 30 / 81 / 182.
 - **Selection effect:** rankable median price $394,884 vs excluded $275,953; bottom-class share
-  **24.8% of thin ZIPs vs 5.5% of reliable ones** — four times the spec's estimate.
+  **24.8% of thin ZIPs vs 5.5% of reliable ones** : four times the spec's estimate.
 - **LISA gated (n = 9,456):** I = 0.7699 / 0.7343 / 0.6862 / 0.6363 at k = 4/8/16/32.
   `lisa_median_n_by_class` = ns 87 · HH 74 · LL 68 · LH 77 · HL 86, against the ungated
   HH 38 · ns 22 · LL 5 · LH 6 · HL 2. **Never quote the ungated figures.**
@@ -3173,9 +2966,9 @@ run and written to `manifest.panel`; do not carry a period count forward from an
 ### Geometry
 
 - 2020 ZCTA count is **33,791** (not 33,120, the 2010 delineation). `zcta-meta.csv` has 33,771
-  rows — a *derived* file, 20 short. Use 33,791 as the denominator for coverage percentages.
+  rows : a *derived* file, 20 short. Use 33,791 as the denominator for coverage percentages.
 - `zcta-geom.csv`: **33,780 rows**, 2,058,046 B. Max lon extent **8.3966° at 99503**, which is
-  83,966 at x1e4 and overflows int16 — bbox offsets must be **int32**. Post-territory-filter
+  83,966 at x1e4 and overflows int16 : bbox offsets must be **int32**. Post-territory-filter
   the tallest is 99701 at 2.7511°, which *fits* int16; do not let a later reader "optimise"
   latitude on the strength of that.
 - **Median vertex spacing 292.9 m** over 5,624,668 segments after the 20 m simplify (p25 188.3,
@@ -3183,7 +2976,7 @@ run and written to `manifest.panel`; do not carry a period count forward from an
   **Do not take the TIGER branch.**
 - Sub-pixel share from true bboxes: z2 91.7% · **z3 62.1%** · **z4 31.4%** · z5 15.7% · z6 7.4%
   · z7 3.2% · z8 1.1% · z9 0.4% · z10 0.1%. Quote 62.1% (z3) and 31.4% (z4, default view).
-- CRS is NAD83 geographic, not WGS84 — sub-2 m, immaterial here, but record it. The raw dataset
+- CRS is NAD83 geographic, not WGS84 : sub-2 m, immaterial here, but record it. The raw dataset
   bbox crosses the antimeridian (Adak AK to Guam), so any global-bbox or mean-centroid
   computation over *all* features is garbage. The territory filter drops 11 features
   (96799 + 7 Guam + 3 Northern Marianas); Puerto Rico and USVI are retained.
@@ -3194,15 +2987,15 @@ run and written to `manifest.panel`; do not carry a period count forward from an
   which is how a wheel-less pin once slipped through. Use `py -3.14 -m pytest tests` and
   `py -3.14 -m pipeline` to match CI.
 - Pins as shipped: `pandas==2.3.3` `requests==2.33.0` `pytest==9.1.1` `pyarrow==25.0.1`
-  `numpy==2.5.2` `scipy==1.18.1` `statsmodels==0.15.0`. **K was derived under numpy 2.5.2** —
+  `numpy==2.5.2` `scipy==1.18.1` `statsmodels==0.15.0`. **K was derived under numpy 2.5.2** :
   do not bump it without refitting. Every pin needs a cp314 wheel; CI installs with
   `--only-binary=:all:` so a wheel-less pin fails immediately.
 - **Do NOT add** `geopandas` / `libpysal` / `esda`. Not for wheel reasons (that claim is false)
-  — because Local Moran's I is ~40 lines of numpy and is more explainable hand-written, and
+  : because Local Moran's I is ~40 lines of numpy and is more explainable hand-written, and
   because KNN weights are right on their merits: ZCTA islands produce zero-neighbour units for
   which contiguity-based Moran's I is undefined.
 
-### Dataset choice — CONFIRMED, do not reopen
+### Dataset choice : CONFIRMED, do not reopen
 
 `housing_market/monthly/all_zips.csv`. The other four ZIP-level families are `property_types`
 (2.86 GB, reintroduces the aggregation bug), `zips_in_top_50_metros` (364 MB, coverage loss),
@@ -3211,65 +3004,11 @@ publishing 16 days behind `housing_market`, so a shared staleness contract would
 `housing_market/zip_lookup.csv` is 403.
 
 Timeline, verified online: the new Data Center launched 2026-05-12, the old feed kept publishing
-for three more weeks and stopped 2026-06-02 — no deprecation notice, no 404.
+for three more weeks and stopped 2026-06-02 : no deprecation notice, no 404.
 
 ---
 
-### Change detection and the publish gate — LANDED 2026-09-06. Rationale in CHANGES.md.
-
-Verified by a full offline run: 33,771 ZIPs, **0 moved, 0 cells**, where the old code
-reported a constant 28,919. Content correctly reported CHANGED, because the `zhvi_yoy`
-paint table moved (the symmetric diverging scale, now published).
-
-`[ ]` **Acceptance-test the `update_data.yml` changes on a dispatch before trusting them.**
-Three of the four are step-ordering or `if:` guards that CI cannot exercise, and
-`update_data.yml` has not been dispatched since they landed:
-- the `Did upstream change?` short-circuit (dispatch with nothing changed upstream),
-- the `sha256sum -c` paint verification (should pass; corrupt a table locally to see it
-  fail — done locally, not in CI),
-- `git add -A public/data/paint` staging last month's hashed files as deletions.
-
-**The `sha256sum -c` check lives in `update_data.yml`, not `deploy.yml`.** An earlier note
-here said `deploy.yml`; it has no such step. Deploy trusts what the data run committed. So a
-hand-committed `public/data/paint` bypasses the verification entirely.
-
----
-
-### Export - LANDED 2026-09-12. Measurements and rationale in CHANGES.md.
-
-The export takes the pipeline's published class boundaries instead of cutting 14 plain
-quantiles of its own, paints through the live map's `match` expression instead of a `step`
-that MapLibre rejected on 670 of 869 metros, draws preview and file from one set of layout
-numbers, and keeps its legend and insets off the data (measured: 0 ZCTAs covered, down from
-164 under the legend and 8 under the Hawaii inset). Open follow-ups:
-
-- [ ] **Export memory, MEASURED 2026-09-12 on the dev host. The estimate was right; the
-      question of whether a phone survives it is still open.** Chrome, national view,
-      `median_ppsf`, title and legend on:
-
-      | | |
-      |---|---|
-      | JS heap before opening the dialog | 54.8 MB |
-      | JS heap with the dialog open | 196.0 MB (**+141.2**) |
-      | main export map GL canvas | 3402 x 2148 = 7.31 Mpx = **29.2 MB** at 4 B/px |
-      | two inset canvases | 648 x 504 each = 2.6 MB total |
-      | live map behind the dialog | 1280 x 880 = 4.3 MB |
-      | all canvas backing while open | **34.7 MB**, of which ~30.4 is the dialog's |
-      | transient full export canvas | 3600 x 2700 = **38.9 MB**, only during the export call |
-
-      So peak is roughly **196 MB of heap plus ~74 MB of canvas**. `EXPORT_SCALE = 3` is what
-      buys `drawImage` a 1:1 copy instead of a 1.51x upscale, and the earlier "~30 MB" note was
-      accurate for the persistent GL backing store.
-
-      **What is still unknown is the only part that matters.** A desktop measurement cannot
-      tell you whether a phone with a few hundred MB of per-tab budget loses the WebGL context
-      here, and memory pressure is not something the harness can emulate. This needs a real
-      low-end device, or a decision to drop `EXPORT_SCALE` to 2 (a 1.51x upscale, ~13 MB
-      instead of 29) and accept the softer image.
-
----
-
-### UI/UX pass — LANDED 2026-09-12. B1-B9 all shipped; rationale in CHANGES.md.
+### UI/UX pass : LANDED 2026-09-12. B1-B9 all shipped; rationale in CHANGES.md.
 
 Plan and the measurements behind it: `docs/UIUX-PLAN.md`. The batch record below is kept
 only because it is the **schema-2 bench baseline**: `bench/results/uiux.json`, gitSha
@@ -3303,19 +3042,7 @@ bca751e, slow4g / 4x CPU / 1440x900 / 5 runs, pinned view.
   **pan.z4 and the two legend toggles are the worst rows, and are where an interaction fix
   should start.** There is no prior number for any of them, so these are the first.
 
-### Open after this pass
-
-- `[ ]` **Deferred, not cancelled: the reliability texture overlay.** A diagonal hatch on
-  tier-0 ZIPs, gated to zoom >= 6, via a runtime-generated canvas pattern and one extra fill
-  layer whose `fill-opacity` is a constant `case` on the existing `rel` feature-state.
-  Texture is orthogonal to lightness, which is the property that made opacity unusable.
-- `[ ]` **Re-baseline the bench at 14 classes.** `bench/results/uiux.json` is a valid
-  schema-2 baseline, but it was taken at gitSha `bca751e` — seven classes, before the colour
-  work. Any interaction comparison against it now straddles a palette change. Same pinned
-  conditions. Do this before touching `pan.z4` or the legend toggles, or the fix has nothing
-  honest to be measured against.
-
-### Measured facts this pass depends on — do not re-derive
+### Measured facts this pass depends on : do not re-derive
 
 - `noise.tiers` = {0: 24315, 1: 5109, 2: 3515, 3: 832}. Tier 0 is 72.0% by count and
   **78.5% of drawn land area**.
@@ -3326,7 +3053,7 @@ bca751e, slow4g / 4x CPU / 1440x900 / 5 runs, pinned view.
 - `classing.median_sale_price.selection_effect`: faded ZIPs median $275,953 vs $394,885
   ranked. The fade and the class assignment skew the same direction.
 - Bottom-class share **before B7**: sold_above_list 74%, active_listings 70%, homes_sold 68%;
-  price and time metrics 13-21%. **Those numbers are superseded — do not quote them.** As
+  price and time metrics 13-21%. **Those numbers are superseded : do not quote them.** As
   shipped 2026-09-12: sold_above_list 33.8%, active_listings 0.0%, homes_sold 0.0%,
   median_sale_price 10.6%, median_ppsf 12.7%, median_dom 9.1%, months_of_supply 7.1%,
   zhvi 7.3%, zhvi_yoy 0.2%.
@@ -3336,22 +3063,9 @@ bca751e, slow4g / 4x CPU / 1440x900 / 5 runs, pinned view.
 - **Bbox decode bug (fixed in B1, published 2026-09-12).** `geom.offsets()` multiplied by 1e4
   and `serialize` applied the declared 1e4 scale again, so the wire value was degrees x 1e8.
   Verified against the shipped `public/data/zip-data.json`: max `be - bw` is 83,966 raw, which
-  at the declared 1e4 scale is **8.3966 deg** — exactly the figure `geom.py` cites for
+  at the declared 1e4 scale is **8.3966 deg** : exactly the figure `geom.py` cites for
   Anchorage 99503. `ZipTable.checkBounds` no longer has anything to log and auto-scale runs on
   real bounds.
-
----
-
-### Open question: the count and time metrics are unmarked noise
-
-`median_dom`, `months_of_supply`, `homes_sold` and `active_listings` read as camouflage
-because at ZIP level they largely are noise — two thirds of the way to random, measured
-above. The scale is honest; what is missing is that a 3-sale ZIP's median DOM paints at
-full strength beside a 300-sale ZIP's. The rankable gate keeps thin ZIPs from SETTING the
-breaks but still paints them, and the fill has carried no reliability channel since the
-opacity fade was removed (it was a lightness signal on a lightness ramp). The deferred
-texture overlay in `choropleth-painter.ts` is the intended fix. 14 classes makes the
-speckle more visible without making it more or less honest.
 
 ---
 
@@ -3370,14 +3084,14 @@ history and were left as written.
 `docs/todos.md` was renamed to `docs/TODOS.md` in git to match the file on disk.
 
 The correct local dev url is actually http://localhost:3677/ without the /Domapus/ at the end which returns 404
-## 2026-09-19 — Redfin renamed AND rescaled a YoY column; the run died on a value it discards
+## 2026-09-19 : Redfin renamed AND rescaled a YoY column; the run died on a value it discards
 
 The 2026-09-18 `update_data.yml` run failed at S2 with
 
     redfin_raw: 1 expected column(s) missing (schema drift): ['MEDIAN DAYS ON MARKET YOY (%)']
 
 after downloading the whole 1.33 GB file. Redfin's 2026-08 release renamed that column to
-`MEDIAN DAYS ON MARKET YOY (DAYS)` — and renamed `MEDIAN DAYS ON MARKET MOM (%)` to
+`MEDIAN DAYS ON MARKET YOY (DAYS)` : and renamed `MEDIAN DAYS ON MARKET MOM (%)` to
 `(DAYS)` with it, which went unnoticed because the MoM columns are never read.
 
 ### What was measured, on both sides
@@ -3394,19 +3108,19 @@ Probed the live file's first 6 MB (`Range` GET, descending by period, so that is
 | DOM level max | 5,304 days | 7,100 days |
 
 So the column was rescaled as well as renamed: `1301.22 / 100 = 13.01 days` against the new
-release's 11 days. The percent-change hypothesis is dead on the range alone — a percent
+release's 11 days. The percent-change hypothesis is dead on the range alone : a percent
 change cannot reach -3,876%.
 
 A 4 MB window from byte 300,000,000 (the 2023-06 and 2023-07 periods) shows median |YoY| of
 10 and 28 days against level medians of 29 and 46, all whole numbers: **Redfin rewrote the
 entire column's history on the new scale, not just the new rows.** `MONTHS OF SUPPLY YOY` is
-untouched — still `(%)`, still x100, in both the newest period and 2023 (median |YoY| 60.52
+untouched : still `(%)`, still x100, in both the newest period and 2023 (median |YoY| 60.52
 against a level median of 2.10).
 
 ### The declared divisor was dead, and that is how it stayed wrong
 
 `units.DIVIDE_BY_100 = {"median_dom_yoy", "months_of_supply_yoy"}` was applied in
-`units.coerce`, called from `serialize.assemble` — and `changes.recompute` overwrites every
+`units.coerce`, called from `serialize.assemble` : and `changes.recompute` overwrites every
 `<metric>_yoy` from the levels on the very next line of `__main__`. The coerced feed value
 never reached the wire. Had the header simply been aliased and the divisor kept, a -6 day
 change would have become -0.06 with **no observable effect at all**: no test, contract or
@@ -3424,11 +3138,11 @@ not a forgotten division, a `recompute` that did not run.
 one raises and the message carries `difflib` near-misses from the file's own header instead
 of printing 50 columns and leaving the reader to spot the rename. A missing YoY column is
 recorded and written as an all-null panel column, which keeps `redfin.PANEL_COLUMNS` fixed
-across releases — a column that vanishes crashes `changes` and `noise` two stages later.
+across releases : a column that vanishes crashes `changes` and `noise` two stages later.
 
 Binding moved to S0, off the 1 MB probe that already had the header: 0.1 ms to bind, against
 a 1.33 GB download to reach the same conclusion. Writing that check surfaced a bug in
-itself — the probe's raw first line is CSV-quoted (`"LAST UPDATED"`), which `.split(",")`
+itself : the probe's raw first line is CSV-quoted (`"LAST UPDATED"`), which `.split(",")`
 does not strip and pyarrow does, so `sources.probe_header` parses it with `csv.reader`.
 
 ### The scale is derived per release, and the two drifting columns are now reconciled
@@ -3444,7 +3158,7 @@ nearest candidate.
 `_reconcile` was prices only, which is why a units change in DOM was invisible to it. It now
 covers `median_dom` and `months_of_supply` at the derived scale. Tolerances are measured, not
 guessed: the gap is entirely the published level's own rounding, with **no revision noise at
-all** — DOM's gap is exactly 0.0 or 0.5 (max 0.5000, integer level) and months-of-supply's max
+all** : DOM's gap is exactly 0.0 or 0.5 (max 0.5000, integer level) and months-of-supply's max
 is 0.0993 (a 1 dp level, so 2 x 0.05). `SCALE_TOL` is 3x those maxima; 0 of 23,660 and 0 of
 22,562 ZIPs exceed it. The ratio family's numbers are unchanged by the refactor (0, 71, 1, 59
 exceeded), which is the check that `_pairs` extracted the loop faithfully.
@@ -3455,22 +3169,22 @@ the detector is gone.
 ### Fixtures
 
 `tests/fixtures/redfin_sample_2026_08.csv` is the same real rows under the new header
-generation — DOM MoM/YoY renamed to `(DAYS)` and the YoY rescaled to whole days. Both
+generation : DOM MoM/YoY renamed to `(DAYS)` and the YoY rescaled to whole days. Both
 generations are parametrised through the scale-derivation test, so the suite exercises the
 alias rather than asserting a constant. Eight tests added, two removed (`DIVIDE_BY_100` and
 the fixture-based /100 proof, both of which asserted things that are no longer true).
 
-## 2026-09-19 — the workflow YAML check had never run
+## 2026-09-19 : the workflow YAML check had never run
 
 `scripts/check_workflows.py` returned 0 with "PyYAML not installed, skipping" when
 `import yaml` failed, and nothing in `requirements.txt` pulled PyYAML in, so the CI step had
-never parsed a workflow since it was added. Pinned `PyYAML==6.0.3` — the first release with
+never parsed a workflow since it was added. Pinned `PyYAML==6.0.3` : the first release with
 cp314 wheels, which matters because CI installs with `--only-binary=:all:` under Python 3.14
-— and made the script return 1 when `CI` is set and the parser is missing. The pre-commit
+: and made the script return 1 when `CI` is set and the parser is missing. The pre-commit
 hook still skips on a machine without it. Verified both paths: 6 workflows parse OK locally,
 and a simulated `ImportError` under `CI=1` exits 1.
 
-## 2026-09-19 — stale references cleared
+## 2026-09-19 : stale references cleared
 
 - `manifest.assets.history` said `history/<zip3>.json`; `BUCKET_DEPTH` is 4 and the files are
   `<zip4>.json`. This one is a published string, so it would have gone out with the release.
@@ -3482,10 +3196,10 @@ and a simulated `ImportError` under `CI=1` exits 1.
   saying it is gitignored, so a public reader followed a link to nothing. Both now say it is
   local-only and point at `docs/CHANGES.md` for the decisions.
 
-## 2026-09-20 — the 2026-08 release published; what the real run proved
+## 2026-09-20 : the 2026-08 release published; what the real run proved
 
 Dispatched `update_data.yml` against `fix/redfin-yoy-schema-drift`
-(run 35484310990). Both jobs green, and **a Deploy job did appear in the run graph** —
+(run 35484310990). Both jobs green, and **a Deploy job did appear in the run graph** :
 that is the `workflow_call` acceptance test, which CLAUDE.md warns must be checked by
 looking at the graph rather than at whether the YAML parses.
 
@@ -3501,10 +3215,10 @@ Reconciliation, now covering six metrics instead of four:
 
 | metric | compared | exceeded | share | worst gap | scale |
 |---|---|---|---|---|---|
-| median_sale_price | 24,013 | 1 | 0.004% | 10.0 | — |
-| median_ppsf | 23,960 | 68 | 0.284% | 15.64 | — |
-| median_list_price | 25,672 | 4 | 0.016% | 49.92 | — |
-| median_list_ppsf | 25,625 | 58 | 0.226% | 67.06 | — |
+| median_sale_price | 24,013 | 1 | 0.004% | 10.0 | : |
+| median_ppsf | 23,960 | 68 | 0.284% | 15.64 | : |
+| median_list_price | 25,672 | 4 | 0.016% | 49.92 | : |
+| median_list_ppsf | 25,625 | 58 | 0.226% | 67.06 | : |
 | median_dom | 23,945 | 0 | 0.000% | 1.0 | x1 |
 | months_of_supply | 22,889 | 1 | 0.004% | 1.4637 | x100 |
 
@@ -3513,7 +3227,7 @@ Two numbers worth recording against the tolerances chosen from the x100 generati
 - DOM's worst gap is **1.0, not the 0.5 measured before**. Redfin now rounds the day
   difference itself, so both sides round independently rather than only ours. `SCALE_TOL`
   of 1.5 still clears it, but the margin is 1.5x rather than the 3x it was designed for.
-- Months of supply threw one genuine outlier at **1.4637**, nearly 5x its 0.3 bound — a
+- Months of supply threw one genuine outlier at **1.4637**, nearly 5x its 0.3 bound : a
   restated base, absorbed by the share contract (1 of 22,889 against a 1% allowance).
 
 So the flat bounds are a rounding floor, not a ceiling; `RECONCILE_MAX_SHARE` is what
@@ -3528,8 +3242,8 @@ short-circuit is armed and a second dispatch can now acceptance-test it.
 ### New, and dated: LISA hysteresis now holds 172 ZIPs
 
 `spatial.hysteresis_held` went from 0 to **172**. These are the first real holds, so the
-open bug — `spatial.run()` reads `previous` from the live snapshot and republishes the held
-class, which comes back as `previous` next month — now has a deadline rather than being
+open bug : `spatial.run()` reads `previous` from the live snapshot and republishes the held
+class, which comes back as `previous` next month : now has a deadline rather than being
 theoretical. Fix before the scheduled run on 18 October or those 172 ZIPs are drawn as
 outliers permanently.
 
@@ -3543,12 +3257,12 @@ the live August site.** Merging closes the window.
 
 ---
 
-## 2026-09-19 — the LISA hold now expires, and five smaller todos closed
+## 2026-09-19 : the LISA hold now expires, and five smaller todos closed
 
 ### LISA hysteresis: the hold lasts one release again
 
 The hold exists so a ZIP whose Moran's I dips below significance for a single month is not
-redrawn as ordinary and then as an outlier again — a 1.8% monthly flicker on the outlier
+redrawn as ordinary and then as an outlier again : a 1.8% monthly flicker on the outlier
 overlay. It did not work. `spatial.run()` read `previous` out of the LIVE snapshot, and the
 published `lisa` column cannot tell a real class from a held one: both are the same integer.
 So next month the held value came back as `previous`, the recomputed class was still `ns`,
@@ -3560,8 +3274,8 @@ permanent outliers.
 
 The fix gives the rule a second input it can trust. `spatial` now publishes the held ZIPs as
 `manifest.spatial.held` beside the existing count (~172 strings, ~1 KB against a 20 KB
-manifest), `__main__` reads them back off the live manifest — already fetched for the gate,
-so no extra cost — and a ZIP in that set is not eligible to be held again. The rule itself
+manifest), `__main__` reads them back off the live manifest : already fetched for the gate,
+so no extra cost : and a ZIP in that set is not eligible to be held again. The rule itself
 moved out of `run()` into a pure `_apply_hysteresis(cls, zips, previous, previously_held)`,
 which is what the three-release tests drive. Testing the rule rather than the statistic was
 deliberate: fabricating spatial data until Moran's I produces a chosen class tests the
@@ -3571,7 +3285,7 @@ A manifest key was chosen over a wire column because a column would drag `SNAPSH
 `FIELD_OF` and both golden fixtures with it, for a fact no reader needs.
 
 **Bootstrap.** The published release has the count but not the list, so `held` is absent, not
-empty. Absent is treated as *unknown* and holds nothing that run — the alternative, reading it
+empty. Absent is treated as *unknown* and holds nothing that run : the alternative, reading it
 as "nothing was held", would hold the same 172 once more and only release them in November.
 The cost is that some ZIPs skip one release of damping, once.
 
@@ -3588,7 +3302,7 @@ lines with a test. The version that ran for one release did not earn its keep; t
   `paint.metric === selectedMetric`: the painter keeps the colours already on the map and the
   legend drops its numeric labels, so nothing on screen claims a value it cannot back.
 - **Export readiness could double-count a map.** In `PrintStage.createMap` the 250 ms interval
-  and the 10 s fallback both incremented `loadedCount`, and the fallback was never cleared —
+  and the 10 s fallback both incremented `loadedCount`, and the fallback was never cleared :
   so a map that reported ready while the insets were still loading was counted again ten
   seconds later and `markReady()` could fire an inset short. Each map now counts once
   (`countOnce`) and the interval clears the fallback.
@@ -3597,7 +3311,7 @@ lines with a test. The version that ran for one release did not earn its keep; t
 - **`statsmodels==0.15.0` now has the test that justifies it.**
   `test_closed_form_ar1_matches_statsmodels` filters SARIMAX(1,0,0) with `trend="c"` at the
   same (mu, rho) `forecast.fit` produced and checks our closed-form geometric sum against its
-  recursion at every shipped horizon. It tests the recursion, not the estimator — `fit`
+  recursion at every shipped horizon. It tests the recursion, not the estimator : `fit`
   shrinks and clips rho, so only the arithmetic on top is comparable. The requirements comment
   claimed agreement with ETS(A,Ad,N), which is a different model (damped-trend ETS is
   ARIMA(1,1,2), ours is ARIMA(1,1,0) with drift); corrected to what the test does.
@@ -4038,6 +3752,122 @@ fits 375 px.
 - Verified 187 frontend tests, production build, full lint (zero errors, four existing warnings), Node staging test, and six workflow checks. npm reported zero vulnerabilities.
 - Kept dependency changes separate from review-fix commit 2921e4f. User requested retaining ignored review diagnostics for reproducibility.
 
+## 2026-10-21: isolate sparse Redfin price failures without weakening release gates
+
+- The October 18 run stopped on seven price cells in four ZIPs. Price bounds were
+  treated as an all-or-nothing feed contract even though isolated nominal prices
+  already occurred in historical data.
+- `redfin.ingest` now applies the existing four price bounds before saving the panel
+  or extracting the latest rows. Out-of-range and non-finite prices and their feed
+  YoY become null. Other metrics and ZIPs remain intact; changes, noise estimates,
+  map classes, and history consume the cleaned values.
+- More than 0.1% invalid observations in any price metric/month still fails the run.
+  The denominator excludes missing inputs and counts span CSV batches. Snapshot
+  ranges, reconciliation, and the publication diff gate are unchanged.
+- The S2 receipt retains counts and original samples for every affected month.
+  The manifest publishes totals and latest-period samples only, keeping historical
+  diagnostics off the site's initial download.
+- Verified all 116 Python tests, including 33 new cases covering the exact reported
+  prices, historical bases, chart gaps, paint bytes, non-finite values, boundary
+  rates, missing inputs, batch splitting, and widespread corruption. Local runtime:
+  Python 3.13.5 / Arrow 19.0.1; production uses the repository's pinned Python 3.14
+  environment. Sandbox temp failures were resolved using temporary paths in build.
+- Applied the cleanup to every row of the cached March 2012-July 2026 panel:
+  1,252 omissions across 523 metric/month groups; all rows preserved. Worst observed
+  rate: 8/24,563, or 0.033%. Evidence: `build/price-quality-cached-report.json` and
+  `build/price-range-review.py`. Removed the temporary test directories.
+- Local HEAD matched GitHub main at `3d140e4` before edits. Preserved the unrelated
+  README and concurrent package-lock edits. No commit or deployment was made.
+- Full live-data verification completed successfully in `build/price-quality-review`,
+  using Redfin and Zillow fingerprints matching the failed October 18 run. All
+  stages and the unmodified diff gate passed: 33,771 snapshot ZIPs, eight paint
+  tables, 6,086 history buckets, and release archives. The feed contained 1,317
+  quarantined historical/current price cells, exactly seven in September 2026.
+  Verified that the reported ZIPs have null prices and changes, gaps in history,
+  and zero paint bytes for missing prices. The run log and stage receipts remain
+  available; the raw Redfin download was automatically removed after ingestion.
+
+## 2026-10-21: actionable todo closeout
+
+- Shortened historical comments in the pipeline files already touched by the price
+  fix. Kept the reasons beside the code: fixed panel schema, one wire rounding
+  step, local-input fingerprints, expiring spatial holds, and digest-based publication.
+  Their detailed history remains in this log and AGENTS.md. The old difference-column
+  comment measured raw x100 extremes of +/-654,499 days and +/-35,608 months on
+  July 31, 2026; the code retains the native-unit bounds.
+- Corrected the todos' standing-rules link from CLAUDE.md to AGENTS.md.
+- Added an offline full-pipeline regression proving an override reason reaches both
+  the gate receipt and manifest verbatim, including whitespace, quotes, a newline,
+  a backslash, and shell-like text. All five pipeline-driver tests pass. The real
+  monthly release still uses its normal gate, with no override.
+- Published root `robots.txt` in `jasperwchen/jasperwchen.github.io`, commit
+  `2b8d5c37aaa44601ee1ab68197804e7d7e31582f`, declaring the Domapus sitemap. The
+  Pages configuration serves main from the repository root.
+- The user chose to retain verification diagnostics before committing. Unrelated
+  README/package-lock changes remain outside this work. Striping and its dependent
+  fade-code cleanup remain explicitly deferred.
+
+
+## 2026-10-22: CAC narration and recording guide
+
+Added docs/CAC-NARRATION.txt and docs/CAC-RECORDING-GUIDE.md for a demo-led submission under three minutes. Verified the 30024/30041 comparison against the committed snapshot and checked the 2026 video requirements. The guide distinguishes caption analysis from visual review and notes that original submission-cut provenance remains unverified. No application code changed; a browser recording rehearsal was not performed.
+
+
+## 2026-10-22: Revised CAC demo sequence
+
+Updated narration and recording guide to use verified 30004/30009 data, a Zillow opening, Homes Sold and optional local contrast demonstration, no methodology page, and a branded closing-slide specification. Added sourced OBS/Clipchamp recording guidance. Narration is 354 words. No slide artifact or browser rehearsal was produced.
+
+
+## 2026-10-22: Pipeline video slide
+
+Created CAC-PIPELINE.svg and a visually inspected 3840x2160 PNG using documented first-color byte measurements. Added user-reported January 2026 analytics to narration with views replacing sessions; analytics were not independently verified.
+
+## 2026-10-23: todo verification completed without committing
+
+- Confirmed local HEAD and remote main both point to `753c1c5` before further edits.
+  The prior commit/push/dispatch attempt was never executed because automatic approval
+  review hit its usage limit. The user now explicitly requests no commits.
+- Verified HTTP 200 for `https://jasperwchen.github.io/robots.txt`, with the correct
+  Domapus sitemap declaration, and for the sitemap itself, which lists the home and
+  methodology pages. Removed the completed sitemap todo.
+- Verified 117 Python tests and all six workflow files. The test report is retained
+  at `build/todo-closeout-20261023/pytest.xml`. The earlier full-data verification
+  remains in `build/price-quality-review`; no new data download was needed.
+- Removed the completed comment-cleanup todo and preserved its ongoing practice in
+  AGENTS.md. Corrected the deployment description to include both direct main pushes
+  and workflow calls from the data run.
+- Left publication pending the user's permission to commit. Striping and the dependent
+  fade-code cleanup remain deferred. Preserved unrelated Legend and CAC edits and all
+  requested diagnostics. No commit, push, workflow dispatch, or deployment was performed
+  during this continuation.
+
+## 2026-10-23: remove road layers before rendering (local, not deployed)
+
+The production map showed white roads over the ZIP colors, especially at closer zooms.
+The old filter hid only source layers named transportation and transportation_name;
+CARTO's current style uses roads, and road_path_areas comes from landuse. The filter
+also ran after map loading instead of before style installation.
+
+The main map and export maps now share a style transform that removes those source
+layers and transportation layer-name families before MapLibre installs the style.
+This covers road labels, bridges, tunnels, rail and path areas, including layers whose
+minimum zoom would hide the problem at the national view. Water, boundaries, place
+labels and ZIP layers remain. No extra download or wait for housing data was introduced.
+Filtering before installation was chosen over another late visibility update so roads
+cannot flash while the initial style loads. Existing fallback behavior remains tested.
+
+The regression failed against the old implementation. All 189 frontend tests and the
+production build passed after the fix; export assertions cover every preview map.
+Chrome installed the current 95-layer provider style with 56 transportation layers
+removed and 39 layers retained. At zooms 3, 8 and 12, no road layers remained and no map
+errors were reported. Evidence: build/map-road-fix/browser-style-report.json and the
+test/build logs beside it. These changes remain uncommitted and are not on production.
+
+### CAC ending slide (2026-10-23)
+Created docs/CAC-ENDING.svg and its 3840 x 2160 PNG with the existing vector logo, Wei Jasper Chen, and the site URL. Updated the recording guide.
+
+Corrected the ending-slide logo by restoring the original evenodd fill rule. Regenerated and visually checked the 4K PNG; the lower-left section is hollow.
+
 ## 2026-10-25: keep ZIP details, outline, and URL in agreement
 
 The orange selection outline blended into the housing color ramp and followed the last
@@ -4061,3 +3891,16 @@ No ZIP paint properties were rewritten. Screenshots and the repeatable check are
 build/zip-selection/. All 202 tests in the full frontend run passed, followed by all 17 dashboard
 tests after adding the remount regression. The production build and TypeScript passed; lint
 has no errors and only existing unrelated warnings.
+
+## 2026-10-25: export compass and presentation updates
+
+Export previews and PNG/PDF output share a north arrow drawn with the export palette, so
+orientation is visible in downloaded maps. The header consistently says "Data through:"
+and the export scale help now gives short National and Local/State/Metro descriptions.
+Updated the help-text assertion to follow that copy; all 46 export tests pass.
+
+The dependency lock advances MapLibre to 6.16.0 and its vector-tile encoder to 4.3.3.
+The production build and lint pass, with only existing unrelated lint warnings. Earlier
+documentation edits consolidate the change history, remove completed todos, and document
+the pipeline's price-quality handling. Ignored verification scripts and screenshots remain
+local. ZIP highlighting and search fixes are committed separately.

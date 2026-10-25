@@ -188,10 +188,8 @@ export function TopBar({
     ? dataDates.zhvi_period_end ?? dataDates.period_end
     : dataDates.period_end;
   const sourceLabel = isZillowMetric ? "Zillow" : "Redfin";
-  // Zillow ZHVI is a monthly index, so "Jul 2026" is the honest label. Redfin
-  // rows are a rolling three-month window, so the header names the window.
-  // NOT "90 days": the window is calendar-aligned and runs 89-92 days.
-  const periodLabel = isZillowMetric ? "Data through:" : "3 months ending:";
+  // DO NOT CHANGE LABEL
+  const periodLabel = "Data through:";
   const periodValue = isZillowMetric ? formatPeriod(activePeriod) : formatPeriodDay(activePeriod);
   const periodPhrase = isZillowMetric
     ? `through ${formatPeriod(activePeriod)}`

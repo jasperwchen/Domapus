@@ -404,6 +404,7 @@ transposes it into typed arrays, and transfers them to `src/lib/zip-table.ts`.
 GL + PMTiles), `Legend`, `MetricSelector`, `SearchBox`, `Sidebar` (the detail panel),
 `ZipComparison`, `TopBar`, `MobileBottomSheet`, and the export pair
 `export/ExportSidebar.tsx` + `export/PrintStage.tsx` (PNG via canvas, PDF via jsPDF).
+The export maps are north-up; `PrintStage` shares the compass drawing between the preview and PNG/PDF output.
 
 The ZIP outline follows the open detail panel's primary ZIP, including in compare mode.
 Search moves the camera only after a valid lookup; it does not own the outline. Closing

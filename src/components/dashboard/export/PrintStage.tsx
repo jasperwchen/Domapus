@@ -36,6 +36,35 @@ const HAIRLINE = "#D8DEE7";
 const PANEL = "#FFFFFF";
 const MAP_BACKDROP = "#F8FAFC";
 const LINK = "#0C82A5";
+const COMPASS = { w: 48, h: 72, margin: 20 };
+
+// All export maps are non-interactive and north-up. Share the drawing so the
+// preview and both download formats use exactly the same mark.
+function drawCompass(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = MUTED;
+  ctx.beginPath();
+  ctx.moveTo(17, 45);
+  ctx.lineTo(24, 65);
+  ctx.lineTo(31, 45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#DC2626";
+  ctx.beginPath();
+  ctx.moveTo(24, 23);
+  ctx.lineTo(17, 45);
+  ctx.lineTo(31, 45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = INK;
+  ctx.font = font(12, "600");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("N", 24, 10);
+  ctx.restore();
+}
 
 const L = {
   pad: 32,
@@ -217,6 +246,7 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   includeLegend, includeTitle, showCities = false, onReady, onLoading, onError, zhviPeriod: releasePeriod,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const compassRef = useRef<HTMLCanvasElement>(null);
   const mainMapRef = useRef<HTMLDivElement>(null);
   const alaskaMapRef = useRef<HTMLDivElement>(null);
   const hawaiiMapRef = useRef<HTMLDivElement>(null);
@@ -237,6 +267,11 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
   const [fetchedPeriod, setZhviPeriod] = useState<string | null>(null);
   const zhviPeriod = releasePeriod === undefined ? fetchedPeriod : releasePeriod;
   const [insetScales, setInsetScales] = useState<{ alaska?: number; hawaii?: number }>({});
+
+  useEffect(() => {
+    const ctx = compassRef.current?.getContext("2d");
+    if (ctx) drawCompass(ctx, 0, 0, EXPORT_SCALE);
+  }, []);
 
   // City labels are offered below the national view only. At national extent
   // Positron's place labels stack into noise over the choropleth, so the control
@@ -468,6 +503,8 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
     if (mainGl) ctx.drawImage(mainGl, p(g.mapLeft), p(g.mapTop), p(g.mapW), p(g.mapH));
     hair();
     ctx.strokeRect(p(g.mapLeft), p(g.mapTop), p(g.mapW), p(g.mapH));
+
+    drawCompass(ctx, p(g.mapRight - COMPASS.margin - COMPASS.w), p(g.mapTop + COMPASS.margin), S);
 
     if (config.regionScope === "national") {
       const { w, h, labelH, gap, margin } = L.inset;
@@ -971,6 +1008,18 @@ export const PrintStage = forwardRef<PrintStageRef, PrintStageProps>(({
           }}
         >
           <div ref={mainMapRef} style={{ position: "absolute", inset: 0 }} />
+
+          <canvas
+            ref={compassRef}
+            role="img"
+            aria-label="Compass: north is up"
+            width={COMPASS.w * EXPORT_SCALE}
+            height={COMPASS.h * EXPORT_SCALE}
+            style={{
+              position: "absolute", top: COMPASS.margin - 1, right: COMPASS.margin - 1,
+              width: COMPASS.w, height: COMPASS.h, pointerEvents: "none",
+            }}
+          />
 
           {regionScope === "national" && (
             <div

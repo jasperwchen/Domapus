@@ -579,9 +579,8 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
                       role="note"
                       className="absolute left-0 top-full z-20 mt-1 w-60 space-y-1.5 rounded-md border bg-popover p-3 text-xs font-normal leading-snug text-popover-foreground shadow-md"
                     >
-                      <p>National uses the main map&apos;s colors, so a color means the same value in every export.</p>
-                      <p>State or Metro sets the colors from that area&apos;s own ZIP codes. Differences inside it show up better, but the colors no longer compare with other exports. The key names the scale used.</p>
-                      {!scaleEnabled && <p className="text-muted-foreground">Pick a state or metro to use its own scale.</p>}
+                      <p><strong>National:</strong> Based on national values, true across U.S.</p>
+                      <p><strong>{areaWord}:</strong> Based on {areaWord} values, shows differences within the selected area.</p>
                     </div>
                   )}
                 </div>

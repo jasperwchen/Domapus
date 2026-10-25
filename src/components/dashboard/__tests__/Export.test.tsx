@@ -273,6 +273,12 @@ beforeEach(() => {
       fillText: vi.fn(),
       strokeRect: vi.fn(),
       drawImage: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      translate: vi.fn(),
+      scale: vi.fn(),
+      arc: vi.fn(),
+      closePath: vi.fn(),
       beginPath: vi.fn(),
       moveTo: vi.fn(),
       lineTo: vi.fn(),
@@ -381,7 +387,8 @@ describe("ExportSidebar", () => {
       const onClose = vi.fn();
       render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={onClose} />);
       fireEvent.click(screen.getByRole("button", { name: /about the color scale/i }));
-      expect(screen.getByRole("note")).toHaveTextContent(/same value in every export/i);
+      expect(screen.getByRole("note")).toHaveTextContent(/National:.*national values/i);
+      expect(screen.getByRole("note")).toHaveTextContent(/Local:.*selected area/i);
       fireEvent.keyDown(document, { key: "Escape" });
       expect(screen.queryByRole("note")).toBeNull();
       expect(onClose).not.toHaveBeenCalled();
