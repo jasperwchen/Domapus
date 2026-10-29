@@ -32,8 +32,9 @@ if CLASSES > MAX_CLASSES:
     )
 MAX_LEGAL_BYTE = (3 << 4) | CLASSES
 
-# Listing-side metrics the client must not fade by a sales statistic. Mirrors
-# paint-table.ts. Months of supply derives from sales, so it is not exempt.
+# Historical: the client no longer fades on the reliability nibble. Kept so the
+# paint inventory's fade_exempt flag (and therefore the release digest) does not
+# flip without a real content change. active_listings stays true for continuity.
 FADE_EXEMPT = ("active_listings",)
 
 

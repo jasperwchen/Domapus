@@ -76,9 +76,11 @@ function storeFor(zips: string[], values: (number | null)[], scale = 1): ZipTabl
 function fakeMap() {
   const state = new Map<string, Record<string, unknown>>();
   const paintWrites: Array<[string, string, unknown]> = [];
+  let featureStateWrites = 0;
   return {
     state,
     paintWrites,
+    get featureStateWrites() { return featureStateWrites; },
     getLayer: () => ({}),
     getSource: () => ({}),
     isStyleLoaded: () => true,
@@ -86,6 +88,7 @@ function fakeMap() {
     setFeatureState: (
       target: { id: string }, value: Record<string, unknown>,
     ) => {
+      featureStateWrites++;
       state.set(target.id, { ...(state.get(target.id) ?? {}), ...value });
     },
     setPaintProperty: (layer: string, prop: string, value: unknown) => {
@@ -260,14 +263,10 @@ describe("ChoroplethPainter", () => {
     }
   });
 
-  it("applies a reliability change even when the class is unchanged", () => {
-    // The regression this guards against, which shipped and was caught in the
-    // browser: the write-skip cache keyed on the class index alone, because
-    // reliability used to be the same for every metric. It is not any more —
-    // ACTIVE_LISTINGS is exempt from the fade and expresses that by reporting
-    // every ZIP as tier 3 — so a ZIP whose class happened to match under both
-    // metrics kept the previous metric's tier and stayed faded on a map that
-    // must not fade anything.
+  it("skips the feature-state write when the class is unchanged", () => {
+    // Fade no longer reads feature-state.rel, so the cache keys on class alone.
+    // Same values under two tables with different reliability nibbles must not
+    // force a rewrite.
     const data = makeData(20, (i) => ({ zhvi: 100_000 + i * 10_000 }));
     const map = fakeMap();
     const painter = new ChoroplethPainter(map as never);
@@ -275,20 +274,20 @@ describe("ChoroplethPainter", () => {
     const values = Object.fromEntries(
       Object.entries(data).map(([zip, r]) => [zip, r.zhvi as number]),
     );
-    // Same values, so IDENTICAL classes; only the tier differs.
     const low = encodePaint(values, 0);
     const high = encodePaint(values, 3);
     const zips = Object.keys(data);
 
     painter.schedule(new PaintTableSource(low.table, low.breaks, zips));
     drain();
-    expect(map.state.get(zips[0])!.rel).toBe(0);
     const classBefore = map.state.get(zips[0])!.k;
+    const writesBefore = map.featureStateWrites;
 
     painter.schedule(new PaintTableSource(high.table, high.breaks, zips));
     drain();
-    expect(map.state.get(zips[0])!.k).toBe(classBefore); // class really is unchanged
-    expect(map.state.get(zips[0])!.rel).toBe(3);         // ...and the tier still updated
+    expect(map.state.get(zips[0])!.k).toBe(classBefore);
+    expect(map.state.get(zips[0])!.rel).toBeUndefined();
+    expect(map.featureStateWrites).toBe(writesBefore);
   });
 
   it("paints no-data ZIPs grey rather than transparent", () => {

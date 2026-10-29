@@ -3,7 +3,7 @@
 // painter rewrites the full ZIP set, so modes never leave stale colours.
 
 import type * as maplibregl from "maplibre-gl";
-import { FADE_EXEMPT, type PaintTable } from "./paint-table";
+import type { PaintTable } from "./paint-table";
 import { span } from "./perf";
 import { fitBreaks } from "./classing";
 import { WIRE_OF, type ZipTable } from "./zip-table";
@@ -11,8 +11,6 @@ import { WIRE_OF, type ZipTable } from "./zip-table";
 export interface ClassSource {
   /** 0..K-1, or -1 for no data. */
   classOf(zip: string): number;
-  /** 0..3, or -1. Written to feature-state as `rel`. */
-  reliabilityOf(zip: string): number;
   /** Bumped whenever `classOf` would answer differently. */
   readonly epoch: number;
   /** Every ZIP this source can answer for. Stable identity per epoch. */
@@ -38,26 +36,18 @@ export class PaintTableSource implements ClassSource {
   readonly zips: readonly string[];
   readonly breaks: readonly number[];
 
-  private readonly faded: boolean;
-
   constructor(
     private readonly table: PaintTable,
     breaks: readonly number[] | undefined,
     zips: readonly string[],
-    metric?: string,
+    _metric?: string,
   ) {
     this.breaks = breaks ?? [];
     this.zips = zips;
-    this.faded = !metric || !FADE_EXEMPT.has(metric);
   }
 
   classOf(zip: string): number {
     return this.table.classOf(zip);
-  }
-
-  reliabilityOf(zip: string): number {
-    // Fade exemption lives here, not in the paint expression, which must stay constant.
-    return this.faded ? this.table.reliabilityOf(zip) : 3;
   }
 }
 
@@ -77,7 +67,7 @@ export interface ClassingSpec {
  * Both must match the pipeline or the toggle changes more than the sample: plain quantiles
  * moved 28.6% of ZIPs into the two darkest zhvi classes vs 6.0% fixed, and an ungated sample
  * gave zhvi 26,262 voters vs the pipeline's 9,452. ZIPs outside the view answer -1. When no
- * honest cut exists it defers to the national table. Reliability always comes from the table.
+ * honest cut exists it defers to the national table.
  */
 export class ViewportClassSource implements ClassSource {
   readonly epoch = nextEpoch++;
@@ -89,7 +79,7 @@ export class ViewportClassSource implements ClassSource {
   constructor(
     store: ZipTable,
     private readonly table: PaintTable,
-    private readonly metric: string,
+    metric: string,
     visibleRows: Int32Array,
     spec: ClassingSpec = {},
   ) {
@@ -127,10 +117,6 @@ export class ViewportClassSource implements ClassSource {
   classOf(zip: string): number {
     if (this.deferred) return this.table.classOf(zip);
     return this.classes.get(zip) ?? -1;
-  }
-
-  reliabilityOf(zip: string): number {
-    return FADE_EXEMPT.has(this.metric) ? 3 : this.table.reliabilityOf(zip);
   }
 }
 

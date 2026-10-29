@@ -122,9 +122,9 @@ median-sale-price tier, a property of the transaction sample rather than of
 whatever is painted. That is what lets `paint.py` assert the paint table and the
 snapshot agree, and it is why `reliabilityOf` takes no metric.
 
-`FADE_EXEMPT` in `paint-table.ts` and the same set in `paint.py` must not drift.
-Both are currently inert with respect to opacity (§5) and are retained for the
-texture layer.
+The client no longer reads the nibble for paint. `manifest.assets.paint.*.fade_exempt`
+remains a published field for digest stability; texture striping over low-sample
+ZIPs was considered and declined (map already busy).
 
 ---
 
@@ -193,9 +193,8 @@ cheaper (median $275,953 against $394,885). Both errors pointed the same way. Ti
 0 is 72% of ZIPs and **78.5% of the drawn land area**.
 
 Where reliability lives now: the hover popup, the detail panel, and the legend's
-statement of which population set the scale. The intended fill-side channel is a
-**texture overlay gated to zoom ≥ 6** — texture is orthogonal to lightness, which
-is the property that made opacity unusable. Deferred, not cancelled.
+share of ZIPs that clear the sales threshold. A texture overlay was declined: the
+map already reads as busy, and stripes add another pattern on top.
 
 ---
 

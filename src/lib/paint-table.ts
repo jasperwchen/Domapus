@@ -7,9 +7,6 @@ import { ZIP_SPACE } from "./snapshot";
 
 const EXPECTED_BYTES = ZIP_SPACE;
 
-/** Listing-side metrics that must not be faded by a sales statistic. Mirrors paint.FADE_EXEMPT. */
-export const FADE_EXEMPT: ReadonlySet<string> = new Set(["active_listings"]);
-
 export class PaintTable {
   private constructor(
     private readonly t: Uint8Array,

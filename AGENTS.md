@@ -158,9 +158,10 @@ keys its bytes by LONG metric name and `snapshot_50.json` keys its breaks by SHO
 swapping them reads as an empty fixture rather than an error.
 
 **The reliability nibble is metric-invariant.** It always carries the ZIP's median-sale-price
-tier, a property of the transaction sample rather than of whatever is being painted. Listing-
-side metrics are exempt from the fade; fading a listings map by a sales statistic would be
-wrong exactly where there were no sales.
+tier, a property of the transaction sample rather than of whatever is being painted. The nibble
+stays in the paint byte for wire agreement with the snapshot; the map no longer fades on it
+(opacity is always full). Precision is shown as a number in the popup, detail panel, and
+legend share line. `fade_exempt` in the paint inventory is unused and left for digest stability.
 
 **A LISA hold expires after one release, and only `manifest.spatial.held` can prove it.**
 The hold keeps a ZIP's significant class for one month when Moran's I drops it to `ns`, so

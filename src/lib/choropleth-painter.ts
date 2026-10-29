@@ -74,16 +74,10 @@ export class ChoroplethPainter {
   private onPainted: (() => void) | undefined;
   private afterRender: (() => void) | null = null;
   /**
-   * Last (k, rel) written per ZIP, so an unchanged ZIP costs nothing. Keyed on both fields:
-   * keying on k alone left the fade on when switching to a fade-exempt metric. Assumes
-   * nothing else clears feature state; clear this on any future style reload.
+   * Last class written per ZIP, so an unchanged ZIP costs nothing. Opacity no longer
+   * carries reliability, so the cache keys on `k` alone. Clear on any future style reload.
    */
   private lastWritten = new Map<string, number>();
-
-  /** `k` is -1..13, `rel` 0..3. */
-  private static pack(k: number, rel: number): number {
-    return (k + 1) * 4 + rel;
-  }
 
   constructor(private readonly map: maplibregl.Map) {}
 
@@ -144,15 +138,12 @@ export class ChoroplethPainter {
     for (let i = this.cursor; i < end; i++) {
       const zip = zips[i];
       const k = src.classOf(zip);
-      const raw = src.reliabilityOf(zip);
-      const rel = raw < 0 ? 3 : raw;
-      const packed = ChoroplethPainter.pack(k, rel);
-      if (this.lastWritten.get(zip) === packed) {
+      if (this.lastWritten.get(zip) === k) {
         this.skipped++;
         continue;
       }
-      map.setFeatureState({ source: SOURCE, sourceLayer: SOURCE_LAYER, id: zip }, { k, rel });
-      this.lastWritten.set(zip, packed);
+      map.setFeatureState({ source: SOURCE, sourceLayer: SOURCE_LAYER, id: zip }, { k });
+      this.lastWritten.set(zip, k);
       this.writes++;
     }
     this.cursor = end;
