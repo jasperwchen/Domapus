@@ -9,6 +9,7 @@ import { dataUrl } from "@/lib/data-url";
 import { BASEMAP_STYLE, withoutTransportation } from "@/lib/basemap";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
 import { trackError } from "@/lib/analytics";
+import { toast } from "@/hooks/use-toast";
 import { Fullscreen } from "lucide-react";
 import {
   ChoroplethPainter, classOpacityExpression, classPaintExpression, outlierColorExpression,
@@ -489,7 +490,16 @@ export function MapLibreMap({
       const props = features[0].properties ?? {};
       const zipCode = (props.ZCTA5CE20 || props.zip || props.zipCode || props.id) as string;
       const { store: currentStore, onZipSelect: currentOnSelect } = propsRef.current;
-      const row = zipCode ? currentStore?.get(zipCode) : null;
+      if (!currentStore) {
+        // Paint can colour the map before the snapshot lands; search already
+        // explains this, clicks used to fail silently.
+        toast({
+          title: "Still loading ZIP details",
+          description: "The map is ready but the data behind it is not. Try again in a moment.",
+        });
+        return;
+      }
+      const row = zipCode ? currentStore.get(zipCode) : null;
       if (row) currentOnSelect(row);
     };
 
