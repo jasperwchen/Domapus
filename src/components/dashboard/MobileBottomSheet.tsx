@@ -4,6 +4,8 @@ import { Modal } from "@/components/ui/modal";
 interface MobileBottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Fires after the close animation finishes and the sheet unmounts. */
+  onExited?: () => void;
   children: ReactNode;
 }
 
@@ -13,7 +15,7 @@ const SNAP_FULL = 100;
 const VELOCITY_THRESHOLD = 0.5;
 const DRAG_THRESHOLD = 10;
 
-export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomSheetProps) {
+export function MobileBottomSheet({ isOpen, onClose, onExited, children }: MobileBottomSheetProps) {
   const dragRef = useRef({
     isDragging: false,
     startY: 0,
@@ -30,6 +32,8 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
   const [isVisible, setIsVisible] = useState(false);
   const [maxSheetHeightPx, setMaxSheetHeightPx] = useState(0);
   const [bottomOffset, setBottomOffset] = useState(0);
+  const onExitedRef = useRef(onExited);
+  onExitedRef.current = onExited;
 
   useEffect(() => {
     const updateLayout = () => {
@@ -85,7 +89,10 @@ export function MobileBottomSheet({ isOpen, onClose, children }: MobileBottomShe
       });
     } else {
       setSheetHeight(SNAP_CLOSED);
-      const timer = setTimeout(() => setIsVisible(false), 300);
+      const timer = setTimeout(() => {
+        setIsVisible(false);
+        onExitedRef.current?.();
+      }, 300);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);

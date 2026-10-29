@@ -260,11 +260,17 @@ describe("HousingDashboard", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByTestId("map").dataset.painted).toBe("yes");
   });
-  it("ignores a ?metric= that is not a painted metric", async () => {
+  it("ignores a ?metric= that is not a painted metric and clears it from the URL", async () => {
     await mount("?metric=__proto__");
     expect(screen.getByTestId("metric").textContent).toBe("zhvi");
+    await waitFor(() =>
+      expect(new URLSearchParams(screen.getByTestId("where").textContent!).get("metric")).toBe("zhvi"),
+    );
     await mount("?metric=zhvi_yoy");
     expect(screen.getAllByTestId("metric").at(-1)!.textContent).toBe("zhvi");
+    await waitFor(() =>
+      expect(new URLSearchParams(screen.getAllByTestId("where").at(-1)!.textContent!).get("metric")).toBe("zhvi"),
+    );
   });
 
   it("recovers from a stale manifest by refetching it past the cache", async () => {

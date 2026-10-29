@@ -47,6 +47,8 @@ export function HousingDashboard() {
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>((initialUrlState.metric as MetricType) || "zhvi");
   const [selectedZip, setSelectedZip] = useState<ZipData | null>(null);
+  // Sheet body lags selectedZip by one close animation so the slide-down is not empty.
+  const [sheetZip, setSheetZip] = useState<ZipData | null>(null);
   // Compare mode lives here, not in `Sidebar`: a map click in compare mode must set the
   // comparison ZIP rather than replace the primary one, and closing the panel must reset it.
   const [mode, setMode] = useState<"detail" | "compare">("detail");
@@ -75,6 +77,14 @@ export function HousingDashboard() {
   const hasUserInteractedRef = useRef(false);
 
   const { processData, isLoading, progress } = useDataWorker();
+
+  // Invalid ?metric= falls back to zhvi in state; rewrite the URL so the bar matches.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("metric");
+    if (raw != null && !Object.prototype.hasOwnProperty.call(PAINTED_METRICS, raw)) {
+      setUrlState({ metric: selectedMetric });
+    }
+  }, [selectedMetric, setUrlState]);
 
   // --- The paint path: manifest + one 100,000-byte table ---------------------
   // The manifest in use, and the metric the table on the map belongs to.
@@ -146,6 +156,7 @@ export function HousingDashboard() {
     let alive = true;
     setStore(null);
     setSelectedZip(null);
+    setSheetZip(null);
     setCompareZip(null);
     setDetailsError(false);
 
@@ -198,6 +209,7 @@ export function HousingDashboard() {
       return;
     }
     setSelectedZip(zip);
+    setSheetZip(zip);
     setUrlState({ zip: zip.zipCode, metric: selectedMetric });
   }, [mode, selectedZip, selectedMetric, setUrlState]);
 
@@ -231,6 +243,7 @@ export function HousingDashboard() {
 
   // Closing the panel ends compare mode. The next ZIP the user clicks opens on
   // its details, which is what closing a panel means everywhere else.
+  // selectedZip clears now (outline/URL); sheetZip clears after the mobile close animation.
   const handleSidebarClose = useCallback(() => {
     initialLoadRef.current = true;
     setSidebarOpen(false);
@@ -239,7 +252,12 @@ export function HousingDashboard() {
     setMode("detail");
     setCompareZip(null);
     setUrlState({ zip: undefined });
-  }, [setUrlState]);
+    if (!isMobile) setSheetZip(null);
+  }, [setUrlState, isMobile]);
+
+  const handleSheetExited = useCallback(() => {
+    setSheetZip(null);
+  }, []);
 
   const handleModeChange = useCallback((next: "detail" | "compare") => {
     setMode(next);
@@ -264,6 +282,7 @@ export function HousingDashboard() {
       const row = /^\d{1,5}$/.test(initialZip) ? store.get(initialZip) : null;
       if (row) {
         setSelectedZip(row);
+        setSheetZip(row);
         setSidebarOpen(true);
         setSearchZip(row.zipCode);
         setSearchTrigger(prev => prev + 1);
@@ -386,7 +405,8 @@ export function HousingDashboard() {
         selectedMetric={selectedMetric}
         onMetricChange={handleMetricChange}
         onSearch={handleSearch}
-        hideMobileControls={isMobile && (sidebarOpen || isExportMode)}
+        // Sheet open still needs metric + search; only export owns the screen.
+        hideMobileControls={isMobile && isExportMode}
       >
         <MapExport
           store={store}
@@ -416,10 +436,14 @@ export function HousingDashboard() {
       )}
       <div className="flex flex-1 relative min-h-[400px] overflow-hidden">
         {isMobile && (
-          <MobileBottomSheet isOpen={sidebarOpen} onClose={handleSidebarClose}>
+          <MobileBottomSheet
+            isOpen={sidebarOpen}
+            onClose={handleSidebarClose}
+            onExited={handleSheetExited}
+          >
             <Sidebar
-              isOpen={sidebarOpen}
-              zipData={selectedZip}
+              isOpen={sidebarOpen || !!sheetZip}
+              zipData={sheetZip}
               store={store}
               onClose={handleSidebarClose}
               selectedMetric={selectedMetric}
@@ -465,7 +489,7 @@ export function HousingDashboard() {
               initialZoom={initialUrlState.zoom}
             />
           </div>
-          {!isExportMode && !(isMobile && sidebarOpen) && (
+          {!isExportMode && (
             <div className={`absolute ${isMobile ? 'top-4 left-4' : 'bottom-4 right-4'} ${isMobile ? 'w-auto' : 'w-64'} z-[10] pointer-events-auto`}>
               <Legend
                 selectedMetric={selectedMetric}

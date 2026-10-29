@@ -64,10 +64,13 @@ export function Legend({
     [hasBreaks, breaks, selectedMetric],
   );
 
-  // Mobile
+  // Mobile: same toggles as desktop, compressed so the map still shows.
   if (isMobile) {
     return (
-      <div className="bg-card/95 backdrop-blur-sm shadow-lg border border-border rounded-lg p-3 w-[155px]">
+      <div className="bg-card/95 backdrop-blur-sm shadow-lg border border-border rounded-lg p-3 w-[168px]">
+        <h3 className="text-[11px] font-semibold mb-2 text-foreground leading-tight truncate">
+          {getMetricLabel(selectedMetric)}
+        </h3>
         <div className="flex items-stretch gap-2 h-20">
           <div
             className="w-3 rounded-sm border border-border"
@@ -100,22 +103,63 @@ export function Legend({
           <span>No data reported</span>
         </div>
 
-        {onAutoScaleChange && (
-          <label className="mt-3 flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={!!autoScale}
-              onChange={(e) => onAutoScaleChange(e.target.checked)}
-              className="h-3.5 w-3.5 shrink-0 accent-primary"
-            />
-            <span className="text-[10px] font-medium leading-none text-muted-foreground">
-              Adjust Contrast to View
-            </span>
-          </label>
+        {emptyCount > 0 && (
+          <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+            {emptyCount === 1 ? "One class" : `${emptyCount} classes`} empty
+            (drawn thin).
+          </p>
         )}
 
-        <div className="mt-3 text-[10px] text-muted-foreground text-center italic">
-          Tap a ZIP code for details
+        <div className="mt-2.5 pt-2 border-t border-border/60 space-y-2">
+          {onAutoScaleChange && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!autoScale}
+                onChange={(e) => onAutoScaleChange(e.target.checked)}
+                className="h-3.5 w-3.5 shrink-0 accent-primary"
+              />
+              <span className="text-[10px] font-medium leading-none text-muted-foreground">
+                Adjust Contrast to View
+              </span>
+            </label>
+          )}
+
+          {onShowLisaChange && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!showLisa}
+                onChange={(e) => onShowLisaChange(e.target.checked)}
+                className="h-3.5 w-3.5 shrink-0 accent-primary"
+              />
+              <span className="text-[10px] font-medium leading-snug text-muted-foreground">
+                {outliers
+                  ? `Highlight ${outliers.total} Outliers`
+                  : "Highlight Outliers"}
+              </span>
+            </label>
+          )}
+
+          {showLisa && onShowLisaChange && (
+            <div className="space-y-1" aria-live="polite">
+              <OutlierKey color={OUTLIER_COLORS.LH} label="Cheap nearby" />
+              <OutlierKey color={OUTLIER_COLORS.HL} label="Expensive nearby" />
+            </div>
+          )}
+
+          {reliability && (
+            <p className="text-[10px] leading-snug text-muted-foreground pt-0.5">
+              {Math.round(reliability.rankableShare * 100)}% of ZIPs clear ~
+              {reliability.impliedN} sales.{" "}
+              <Link
+                to={`/methodology${search}`}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Methodology
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     );
@@ -246,13 +290,12 @@ export function Legend({
           </div>
         )}
 
-        {/* No reliability key: fading low-sample ZIPs moved lightness on a ramp that
-            encodes value in lightness (up to 3.90 class steps of error), so the numbers
-            live in the popup and the detail panel instead. */}
+        {/* Precision is a number in the popup/panel, not a fade on the ramp.
+            The share that clears the sales threshold is the legend's one cue. */}
         {reliability && (
           <p className="text-[11px] leading-snug text-muted-foreground pt-0.5">
-            {/* Same tab: the query string carries metric, ZIP and viewport, so
-                returning restores the map. */}
+            {Math.round(reliability.rankableShare * 100)}% of reporting ZIPs have
+            roughly {reliability.impliedN}+ sales (precision for colour breaks).{" "}
             <Link
               to={`/methodology${search}`}
               className="underline underline-offset-2 hover:text-foreground"

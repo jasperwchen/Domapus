@@ -2,6 +2,38 @@ import { act, fireEvent, render, screen, cleanup } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileBottomSheet } from "../MobileBottomSheet";
 
+describe("close animation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it("calls onExited after the close animation, not when close starts", () => {
+    const onClose = vi.fn();
+    const onExited = vi.fn();
+    const { rerender } = render(
+      <MobileBottomSheet isOpen onClose={onClose} onExited={onExited}>
+        <div>ZIP 30309 details</div>
+      </MobileBottomSheet>,
+    );
+    act(() => vi.advanceTimersByTime(50));
+    expect(screen.getByText("ZIP 30309 details")).toBeVisible();
+
+    rerender(
+      <MobileBottomSheet isOpen={false} onClose={onClose} onExited={onExited}>
+        <div>ZIP 30309 details</div>
+      </MobileBottomSheet>,
+    );
+    expect(onExited).not.toHaveBeenCalled();
+    expect(screen.getByText("ZIP 30309 details")).toBeVisible();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(onExited).toHaveBeenCalledOnce();
+    expect(screen.queryByText("ZIP 30309 details")).toBeNull();
+  });
+});
+
 describe("sheet drag velocity", () => {
   beforeEach(() => {
     vi.useFakeTimers();
