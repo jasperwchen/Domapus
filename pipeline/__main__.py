@@ -187,11 +187,13 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
     _require("s3_assemble")
     live_manifest = _live_manifest()
     live_coverage = live_manifest.get("coverage")
+    # File on disk but empty decode = corrupt/stale format; fail closed (see gate.live_expected).
     gate_report = gate.gate(
         records, live, gate.load_thresholds(GATE_BASELINE),
         coverage={k: coverage[k] for k in serialize.COVERAGE},
         live_coverage=live_coverage,
         override=override_gate, reason=override_reason,
+        live_expected=LIVE_SNAPSHOT.exists(),
     )
     _report("s4_gate", "ok", **gate_report)
 

@@ -146,3 +146,17 @@ def test_override_requires_a_written_reason(thresholds):
 def test_no_live_snapshot_skips_rather_than_failing(thresholds):
     report = gate.gate(_snapshot(10, 400_000), {}, thresholds)
     assert report["skipped"]
+
+
+def test_unreadable_live_snapshot_fails_closed(thresholds):
+    """A zip-data.json on disk that decode cannot use must not skip the gate."""
+    with pytest.raises(PipelineError, match="could not be decoded"):
+        gate.gate(_snapshot(10, 400_000), {}, thresholds, live_expected=True)
+
+    report = gate.gate(
+        _snapshot(10, 400_000), {}, thresholds,
+        live_expected=True, override=True,
+        reason="rebuilding after a format bump with no readable baseline",
+    )
+    assert report["overridden"] is True
+    assert report["skipped"] == "unreadable live snapshot"

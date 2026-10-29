@@ -60,12 +60,42 @@ def load_thresholds(path: Path) -> dict:
 
 def gate(new: dict, live: dict, thresholds: dict, coverage: dict | None = None,
          live_coverage: dict | None = None, override: bool = False,
-         reason: str = "") -> dict:
-    """Compare against the live snapshot. Raises unless overridden with a non-empty reason."""
+         reason: str = "", *, live_expected: bool = False) -> dict:
+    """Compare against the live snapshot. Raises unless overridden with a non-empty reason.
+
+    `live_expected` is True when a live snapshot file is on disk. An empty `live`
+    then means decode failed (corrupt or wrong format) and the gate fails closed
+    rather than publishing without a month-over-month check. Skip only when no
+    live artifact exists at all (first publish).
+    """
     failures: list[str] = []
     observed: dict[str, dict] = {}
 
     if not live:
+        if live_expected:
+            msg = (
+                "live snapshot is on disk but could not be decoded into a baseline"
+            )
+            if not override:
+                raise PipelineError(
+                    f"Diff gate FAILED: {msg}. Refusing to publish without a "
+                    "month-over-month check. Fix or remove public/data/zip-data.json, "
+                    "or pass --override-diff-gate with a written reason after "
+                    "confirming the new build is intentional."
+                )
+            if not reason.strip():
+                raise PipelineError(
+                    "override_diff_gate requires a non-empty override_reason. The reason "
+                    "is recorded verbatim in the manifest; an unexplained override is "
+                    "indistinguishable from a broken gate."
+                )
+            log.warning("Gate OVERRIDDEN (%s): %s", reason, msg)
+            return {
+                "failures": [msg],
+                "overridden": True,
+                "reason": reason,
+                "skipped": "unreadable live snapshot",
+            }
         log.warning("No live snapshot to compare against — gate cannot run")
         return {"failures": [], "overridden": False, "reason": "", "skipped": "no live snapshot"}
 
