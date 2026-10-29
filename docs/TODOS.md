@@ -16,20 +16,51 @@ Size is a rough guess: small is under an hour, medium is a few hours, large is a
 
 ## 1. Decide
 
-### 1c. Stripe the ZIPs whose numbers are mostly noise (deferred)
+### 1d. Visual cue for unreliable ZIP data (small–medium)
 
-Four metrics (days on market, months of supply, homes sold, active listings) are unreliable
-for ZIPs with a handful of sales, and the map colours them as confidently as busy ZIPs. The
-proposal was diagonal stripes over low-sample ZIPs at zoom 6 and up. **Deferred 2026-09-24:**
-the map already reads as busy, and stripes add texture on top. 3i waits on this.
+Reliability still lives in the paint byte and in popup/panel/legend numbers. The map fill
+does not encode it (opacity fade was removed on purpose). Stripes were declined 2026-09-24
+because the map already reads as busy. If sparse-ZIP overconfidence shows up in use, pick a
+channel that is not lightness (texture, hatch, border) and gate it to closer zooms.
 
 ---
 
 ## 3. Just needs doing
 
-### 3i. Leftover code from the removed ZIP fading (small)
+### 3j. Sync dashboard state from URL on back/forward (small)
 
-ZIPs used to fade when their data was unreliable. The fade was removed, but the code feeding
-it still runs: every ZIP still gets a reliability value written onto the map, and a list of
-"metrics exempt from fading" still exists on both the pipeline and the site. **Waits on 1c,
-which is deferred.** If the stripes are built they reuse this; if not, delete it.
+Invalid `?metric=` is rewritten to the painted fallback. Metric/zip/view are still read once
+on mount; `useUrlState` only writes. Browser back/forward (or a shared link change without
+remount) can leave the address bar and React state disagreeing. Subscribe to search params or
+remount when they change. (Audit P2, 2026-10-29.)
+
+### 3k. Tie ZHVI acquire to the S0 probe; harden `--skip-probe` (medium)
+
+S0 fingerprints ZHVI; the full GET is not checked against that fingerprint in-run.
+`--skip-probe` can publish empty fingerprints and skip Redfin size/MD5 checks. Fail or warn
+loudly on those paths so a local/CI publish cannot wipe probe continuity. (Audit P2.)
+
+### 3l. Fail or warn when DOM/MOS YoY feed scale is undetermined (small)
+
+`changes._derive_scale` can return `scale: None` when no ZIP clears the discriminating floor;
+the run can still pass if ratio-family reconcile succeeds. Treat an undetermined
+difference-family scale as a loud warn or a hard fail. (Audit P2.)
+
+---
+
+## Noted (not open work — do not “improve” without a new decision)
+
+From the 2026-10-29 audit. Left here so they are not forgotten or reopened casually.
+
+- **Touch map preview.** Hover/popup is `mousemove`-only; tap selects with no preview.
+  Acceptable for a choropleth; long-press or first-tap preview is optional polish only.
+- **City / metro search on the main map.** ZIP-only today; export already has metro
+  typeahead. Product feature, not a bug.
+- **Cold-load performance.** Under pinned slow4g the cost is mostly network + tiles +
+  snapshot, not choropleth apply (~20 ms metric switch). Measure later if needed: full-set
+  feature-state writes, z11–z12 tile bytes, export/jsPDF split. Do not reintroduce
+  snapshot-gated colour.
+- **Committed PMTiles.** Stay in git unless you explicitly reopen that decision.
+- **Opacity fade on the lightness ramp.** Do not restore.
+- **Second class cutter beside `fitBreaks`.** Do not reintroduce.
+- **County layer / Realtor.com.** Large product bets from old CHANGES notes, not bugfixes.

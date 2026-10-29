@@ -3904,3 +3904,19 @@ The production build and lint pass, with only existing unrelated lint warnings. 
 documentation edits consolidate the change history, remove completed todos, and document
 the pipeline's price-quality handling. Ignored verification scripts and screenshots remain
 local. ZIP highlighting and search fixes are committed separately.
+
+## 2026-10-29: audit follow-through (mobile, fade cleanup, gate, a11y)
+
+Closed the deferred striping/fade todos without restoring opacity fade: feature-state no
+longer writes `rel`, `FADE_EXEMPT` left the client, and the legend shows the rankable share
+plus implied sales instead. Paint bytes still carry the reliability nibble for snapshot
+agreement; `fade_exempt` in the inventory stays for digest stability.
+
+Mobile legend now has LISA, empty-class note, and methodology; metric/search stay available
+while the detail sheet is open; the sheet keeps its last ZIP body until `onExited` after the
+close animation. Map clicks before the snapshot lands toast the same "still loading" copy as
+search. Diff gate fails closed when `zip-data.json` exists but cannot decode (override still
+allowed with a reason). Invalid `?metric=` is rewritten to the fallback; ErrorBoundary uses
+`role="alert"`, focus move, and theme tokens.
+
+Verified: 204 vitest, 75 pytest (gate + pipeline). No data republish.
