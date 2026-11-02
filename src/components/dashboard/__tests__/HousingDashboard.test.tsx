@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import type { ZipData } from "../map/types";
 import { SearchBox } from "../SearchBox";
 
@@ -36,16 +36,18 @@ vi.mock("@/hooks/useDataWorker", () => ({
 vi.mock("@/hooks/use-toast", () => ({ toast: m.toast }));
 vi.mock("@/hooks/use-mobile", () => ({ useIsMobile: () => m.isMobile }));
 vi.mock("../MapLibreMap", () => ({
-  MapLibreMap: ({ classSource, onMapMove, selectedZip, searchZip, searchTrigger, onZipSelect }: {
+  MapLibreMap: ({ classSource, onMapMove, selectedZip, searchZip, searchTrigger, onZipSelect, navigationView }: {
     classSource: unknown;
     selectedZip?: string;
     searchZip?: string;
     searchTrigger?: number;
+    navigationView?: object;
     onZipSelect: (zip: ZipData) => void;
     onMapMove: (loaded: () => string[], bounds: null, view: object, reset: boolean) => void;
   }) => (
     <div data-testid="map" data-painted={classSource ? "yes" : "no"}
-      data-selected={selectedZip ?? ""} data-search={searchZip} data-trigger={searchTrigger}>
+      data-selected={selectedZip ?? ""} data-search={searchZip} data-trigger={searchTrigger}
+      data-navigation={JSON.stringify(navigationView)}>
       {["00501", "10001", "90210"].map(zip => (
         <button key={zip} onClick={() => onZipSelect({ zipCode: zip } as ZipData)}>map {zip}</button>
       ))}
@@ -99,7 +101,12 @@ const manifest = (tag: string) => ({
 const buffer = (tag: string) => Object.assign(new ArrayBuffer(1), { tag });
 
 function Where() {
-  return <span data-testid="where">{useLocation().search}</span>;
+  const navigate = useNavigate();
+  return <><span data-testid="where">{useLocation().search}</span>
+    <button onClick={() => navigate('/?metric=homes_sold&zip=90210&lat=34&lng=-118&zoom=9')}>shared navigation</button>
+    <button onClick={() => navigate(-1)}>back</button>
+    <button onClick={() => navigate(1)}>forward</button>
+  </>;
 }
 
 async function mount(search = "") {
@@ -139,6 +146,29 @@ function expectSelection(zip: string) {
 }
 
 describe("HousingDashboard", () => {
+  it("synchronizes metric and selection on navigation, Back and Forward, cancelling an old pan", async () => {
+    m.processData.mockResolvedValue(snapshot());
+    m.fetchPaint.mockResolvedValue(buffer("homes_sold"));
+    await mount("?metric=zhvi&zip=00501");
+    await waitFor(() => expectSelection("00501"));
+    fireEvent.click(screen.getByText("map 00501"));
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText("pan map"));
+    await act(async () => { fireEvent.click(screen.getByText("shared navigation")); });
+    expectSelection("90210");
+    expect(screen.getByTestId("metric")).toHaveTextContent("homes_sold");
+    expect(JSON.parse(screen.getByTestId("map").dataset.navigation!)).toEqual({ lat: 34, lng: -118, zoom: 9 });
+    expect(screen.getByTestId("map").dataset.search).toBe("");
+    act(() => vi.advanceTimersByTime(600));
+    expect(screen.getByTestId("where")).toHaveTextContent("lat=34&lng=-118&zoom=9");
+    await act(async () => { fireEvent.click(screen.getByText("back")); });
+    expectSelection("00501");
+    expect(screen.getByTestId("metric")).toHaveTextContent("zhvi");
+    expect(JSON.parse(screen.getByTestId("map").dataset.navigation!)).toEqual({});
+    await act(async () => { fireEvent.click(screen.getByText("forward")); });
+    expectSelection("90210");
+    expect(screen.getByTestId("metric")).toHaveTextContent("homes_sold");
+  });
   it("moves the highlight from the searched ZIP to the clicked detail ZIP", async () => {
     m.processData.mockResolvedValue(snapshot());
     await mount();

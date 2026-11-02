@@ -1,5 +1,5 @@
-import { useSearchParams } from 'react-router-dom';
-import { useCallback, useEffect, useRef } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface UrlState {
   zip?: string;
@@ -23,12 +23,27 @@ export function parseView(params: URLSearchParams): Pick<UrlState, "lat" | "lng"
 }
 
 export function useUrlState() {
+  const location = useLocation();
+  const [navigation, setNavigation] = useState(location);
+  const ownSearchRef = useRef<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const paramsRef = useRef(searchParams);
   const writerRef = useRef(setSearchParams);
   paramsRef.current = searchParams;
   writerRef.current = setSearchParams;
   const debounceTimerRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (ownSearchRef.current === location.search) {
+      ownSearchRef.current = null;
+      return;
+    }
+    ownSearchRef.current = null;
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setNavigation(location);
+  }, [location]);
   useEffect(() => () => {
     if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
   }, []);
@@ -46,6 +61,7 @@ export function useUrlState() {
         }
       });
       paramsRef.current = newParams;
+      ownSearchRef.current = newParams.size ? `?${newParams}` : '';
       writerRef.current(newParams, { replace: true });
     };
 
@@ -63,5 +79,5 @@ export function useUrlState() {
     }
   }, []);
 
-  return { setUrlState };
+  return { setUrlState, navigation };
 }

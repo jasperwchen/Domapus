@@ -28,8 +28,8 @@ import { PAINTED_METRICS } from "@/lib/metrics";
 import { MobileBottomSheet } from "./MobileBottomSheet";
 import { beginMetricSwitch } from "@/lib/perf";
 
-function getInitialUrlParams() {
-  const params = new URLSearchParams(window.location.search);
+function readUrlParams(search: string) {
+  const params = new URLSearchParams(search);
   return {
     zip: params.get('zip') || undefined,
     // Unvalidated, a real but unpainted metric labelled the ZHVI fallback table with its name.
@@ -42,8 +42,12 @@ function getInitialUrlParams() {
 
 export function HousingDashboard() {
   const isMobile = useIsMobile();
-  const { setUrlState } = useUrlState();
-  const [initialUrlState] = useState(getInitialUrlParams);
+  const { setUrlState, navigation } = useUrlState();
+  const [initialUrlState] = useState(() => readUrlParams(navigation.search));
+  const navigationState = useMemo(() => readUrlParams(navigation.search), [navigation]);
+  const initialNavigation = useRef(navigation);
+  const navigationView = useMemo(() => navigation === initialNavigation.current
+    ? undefined : parseView(new URLSearchParams(navigation.search)), [navigation]);
 
   const [selectedMetric, setSelectedMetric] = useState<MetricType>((initialUrlState.metric as MetricType) || "zhvi");
   const [selectedZip, setSelectedZip] = useState<ZipData | null>(null);
@@ -78,13 +82,18 @@ export function HousingDashboard() {
 
   const { processData, isLoading, progress } = useDataWorker();
 
-  // Invalid ?metric= falls back to zhvi in state; rewrite the URL so the bar matches.
+  // Only external navigation restores state; our own pan writes must not move the camera.
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("metric");
+    initialLoadRef.current = false;
+    hasUserInteractedRef.current = false;
+    setSelectedMetric((navigationState.metric as MetricType) || "zhvi");
+    setMode("detail");
+    setCompareZip(null);
+    const raw = new URLSearchParams(navigation.search).get("metric");
     if (raw != null && !Object.prototype.hasOwnProperty.call(PAINTED_METRICS, raw)) {
-      setUrlState({ metric: selectedMetric });
+      setUrlState({ metric: "zhvi" });
     }
-  }, [selectedMetric, setUrlState]);
+  }, [navigation, navigationState, setUrlState]);
 
   // --- The paint path: manifest + one 100,000-byte table ---------------------
   // The manifest in use, and the metric the table on the map belongs to.
@@ -274,24 +283,32 @@ export function HousingDashboard() {
   const autoScaleRef = useRef(autoScale);
   useEffect(() => { autoScaleRef.current = autoScale; }, [autoScale]);
 
-  // Auto-load ZIP from URL once the snapshot exists.
+  // A navigation may arrive before the snapshot. Restore its ZIP once details exist.
   useEffect(() => {
-    const initialZip = initialUrlState.zip;
-    if (!initialLoadRef.current && store && initialZip) {
+    const initialZip = navigationState.zip;
+    if (!initialLoadRef.current && store) {
       initialLoadRef.current = true;
-      const row = /^\d{1,5}$/.test(initialZip) ? store.get(initialZip) : null;
+      const row = initialZip && /^\d{1,5}$/.test(initialZip) ? store.get(initialZip) : null;
       if (row) {
         setSelectedZip(row);
         setSheetZip(row);
         setSidebarOpen(true);
-        setSearchZip(row.zipCode);
-        setSearchTrigger(prev => prev + 1);
+        if (navigationState.lat === undefined && navigationState.zoom === undefined) {
+          setSearchZip(row.zipCode);
+          setSearchTrigger(prev => prev + 1);
+        } else {
+          setSearchZip("");
+        }
         setUrlState({ zip: row.zipCode });
       } else {
-        setUrlState({ zip: undefined });
+        setSelectedZip(null);
+        setSheetZip(null);
+        setSidebarOpen(false);
+        setSearchZip("");
+        if (initialZip) setUrlState({ zip: undefined });
       }
     }
-  }, [store, initialUrlState.zip, setUrlState]);
+  }, [store, navigationState, setUrlState]);
 
   // Viewport rows from real polygon bounds; a flat scan (~0.1 ms), no index.
   const recomputeVisible = useCallback((
@@ -487,6 +504,7 @@ export function HousingDashboard() {
               showLisa={showLisa}
               initialCenter={initialUrlState.lng !== undefined && initialUrlState.lat !== undefined ? [initialUrlState.lng, initialUrlState.lat] : undefined}
               initialZoom={initialUrlState.zoom}
+              navigationView={navigationView}
             />
           </div>
           {!isExportMode && (

@@ -49,6 +49,7 @@ interface MapProps {
   showLisa?: boolean;
   initialCenter?: [number, number];
   initialZoom?: number;
+  navigationView?: { lat?: number; lng?: number; zoom?: number };
 }
 
 /** The ZIP layers need nothing from Carto, so a basemap that fails or hangs past this
@@ -121,6 +122,7 @@ export function MapLibreMap({
   showLisa = false,
   initialCenter,
   initialZoom,
+  navigationView,
 }: MapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -375,6 +377,20 @@ export function MapLibreMap({
       interactionsSetup.current = false;
     };
   }, [createAndInitializeMap, recoverMapView]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isMapReady || !map || !navigationView) return;
+    const { lat, lng, zoom } = navigationView;
+    const center: [number, number] | undefined = lat !== undefined && lng !== undefined ? [lng, lat] : undefined;
+    if (!center || zoom === undefined) {
+      const padding = mapContainer.current ? getDynamicPadding(mapContainer.current) : 40;
+      map.fitBounds(DEFAULT_BOUNDS, { padding, duration: 0 }, { reset: true });
+    }
+    if (center || zoom !== undefined) {
+      map.jumpTo({ ...(center ? { center } : {}), ...(zoom !== undefined ? { zoom } : {}) });
+    }
+  }, [isMapReady, navigationView, getDynamicPadding]);
 
   const onMapMoveRef = useRef(onMapMove);
   useEffect(() => {

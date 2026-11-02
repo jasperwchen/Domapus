@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
     layers = new Map<string, { id: string; paint?: Record<string, unknown> }>();
     setFeatureState = vi.fn();
     flyTo = vi.fn();
+    jumpTo = vi.fn();
     fitBounds = vi.fn();
     paintWrites = vi.fn();
     setPaintProperty = this.paintWrites;
@@ -217,6 +218,20 @@ describe("MapLibreMap", () => {
     rerender(<MapLibreMap {...props} searchTrigger={2} />);
     expect(map.flyTo).toHaveBeenCalledTimes(2);
     expect(map.setFeatureState).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores navigated views without rebuilding the map", async () => {
+    const { rerender } = render(<MapLibreMap {...selectionProps} />);
+    await act(async () => { vi.runAllTimers(); });
+    const map = mocks.MockMap.lastInstance!;
+    rerender(<MapLibreMap {...selectionProps} navigationView={{ lat: 40, lng: -75, zoom: 8 }} />);
+    expect(map.jumpTo).toHaveBeenLastCalledWith({ center: [-75, 40], zoom: 8 });
+    rerender(<MapLibreMap {...selectionProps} navigationView={{ zoom: 6 }} />);
+    expect(map.fitBounds).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ duration: 0 }), { reset: true });
+    expect(map.jumpTo).toHaveBeenLastCalledWith({ zoom: 6 });
+    rerender(<MapLibreMap {...selectionProps} navigationView={{}} />);
+    expect(map.fitBounds).toHaveBeenCalledTimes(2);
+    expect(mocks.MockMap.lastInstance).toBe(map);
   });
 
   it("removes roads before the basemap loads, without waiting for ZIP data", () => {
