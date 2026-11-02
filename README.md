@@ -56,13 +56,28 @@
    npm install
    ```
 
-3. **Start the development server**
+3. **Restore history and enable repository hooks**
+
+   Install GitHub CLI (`gh`) and authenticate with `gh auth login`, then run:
+
+   ```bash
+   npm run data:sync
+   git config core.hooksPath .githooks
+   ```
+
+   History files are not stored in git. The sync command restores the release named
+   by the manifest; a production build rejects missing or mismatched history.
+   The post-merge hook repeats this sync after pulls. The pre-commit hook regenerates
+   the file tree and checks workflow YAML; it requires the Python development dependencies
+   described below.
+
+4. **Start the development server**
 
    ```bash
    npm run dev
    ```
 
-4. **Open your browser**
+5. **Open your browser**
 
    Navigate to `http://localhost:3677`.
 
@@ -114,6 +129,9 @@ See the [Methodology](https://jasperwchen.github.io/Domapus/methodology) page fo
 ## Data Pipeline
 
 A Python pipeline runs monthly via GitHub Actions. It downloads the latest Redfin and Zillow files, computes all statistics, and writes a set of static files that the site consumes at runtime. Releases are rejected if month-over-month changes exceed thresholds that would indicate a broken upstream file.
+
+Remote downloads are checked against the initial source probe. For an offline run,
+`--skip-probe` requires both `--redfin-csv` and `--zhvi-csv` local files.
 
 To run the pipeline locally (requires Python 3.14):
 

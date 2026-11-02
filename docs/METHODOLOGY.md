@@ -43,6 +43,14 @@ The build stages versioned snapshot/history paths; browser readers check the sha
 
 Both source calendars must contain consecutive month ends before positional lag
 calculations. Explicit local CSVs bypass the unchanged-probe early exit.
+Remote downloads must match the probe's ETag, byte length and prefix hash before
+ingestion. Multipart ETags are opaque identity tokens, not body MD5s. `--skip-probe`
+requires both CSVs locally; local inputs never inherit upstream fingerprints.
+
+The diff gate requires usable overlapping prices for every protected metric.
+Baseline decoding validates required fields, column lengths and positive finite
+scales. An invalid baseline fails the gate unless deliberately overridden with a
+written reason; only a genuine first publication skips the comparison.
 
 Redfin prices outside the existing `contracts.RANGES` bounds, including non-finite
 values, become null at ingestion along with their feed YoY. This applies to all
@@ -77,10 +85,10 @@ methodology page goes stale.
 | `CLASSES` | `classify.py` and `choropleth.generated.ts` | **measured, not chosen** | 14. The count is the largest that keeps the separable span/classes ratio no worse than the old 7-class ramp gave; 13 and 15 fail. The paint byte imposes a second ceiling of 15 (the class field is the low nibble holding `class + 1`), which `paint.py` raises on. **Both must agree** — `PaintTable.from` refuses to construct when `manifest.classes` and the ramp length disagree. Re-run `derive_ramp.mjs` and the byte check before moving it. |
 | `SCHEMES` | `classify.py` | chosen per metric family | log-equal for prices, quantile for counts, equal-anchored-100 for shares. |
 | `COUNT_METRICS` | `classify.py` | chosen, justified | The metrics exempt from the rankable gate on their break population. See §4. |
-| Colour ramp | `choropleth.generated.ts` | **derived at build time** | `scripts/palette/derive_ramp.mjs`. Refuses to emit a ramp whose L\* is not monotone or whose minimum adjacent dE76 under simulated CVD falls below 10. Never hand-edit. |
+| Colour ramp | `choropleth.generated.ts` | **derived by script** | `scripts/palette/derive_ramp.mjs`. Checks monotone L\* and the separable span: how many classes apart colors must be to reach dE76 10 under every simulated CVD mode. The span/classes ratio must be no worse than the old 7-class ramp's 14.3%; at 14 classes the span is 2. Never hand-edit. |
 | `FULL_OPACITY` | `choropleth-painter.ts` | chosen, measured | `1`. Any value below it reintroduces the lightness confound in §5. |
 | `MAX_BBOX_SPAN_DEG` | `zip-table.ts` / `geom.py` | chosen, measured | `10`. The widest real ZCTA is 99503 (Anchorage) at 8.3966°. |
-| Feed YoY scale | `changes.py` | **derived per release** | Which of `SCALE_CANDIDATES` (1, 100) Redfin's own `median_dom_yoy` / `months_of_supply_yoy` column is on, voted against our lag-12 level difference. Published as `changes.reconciliation.feed_scale`. Derived rather than declared because Redfin moved DOM from x100 under a "(%)" header to x1 under "(DAYS)" for the 2026-08 release. Months of supply is still x100. |
+| Feed YoY scale | `changes.py` | **derived per release** | Which of `SCALE_CANDIDATES` (1, 100) Redfin's own `median_dom_yoy` / `months_of_supply_yoy` column is on, voted against our lag-12 level difference. Published as `changes.reconciliation.feed_scale`. Missing or inconclusive evidence records `status: undetermined` per metric and logs the reason and comparison count; contradictory evidence fails. Derived rather than declared because Redfin moved DOM from x100 under a "(%)" header to x1 under "(DAYS)" for the 2026-08 release. Months of supply is still x100. |
 
 ---
 
@@ -89,9 +97,11 @@ methodology page goes stale.
 **`SNAPSHOT_COLUMNS` in `pipeline/serialize.py` and `FIELD_OF` in
 `src/lib/zip-table.ts` are one format in two halves. Change them together.**
 
-The format is **positional**: the frontend reads `f` and indexes `d` by position,
-so inserting a name in the middle silently shifts every column after it. Add at
-the end, or change both sides in one commit.
+The envelope aligns each field name `f[j]` with its data column `d[j]`. The worker
+keys the resulting buffers by field name, and the frontend maps wire names to
+application fields through `FIELD_OF`. Reordering names and their columns together
+is safe; misaligning them is not. New or renamed application fields must keep the
+pipeline and frontend mappings consistent.
 
 Three properties, each of which was a real bug:
 
@@ -112,7 +122,7 @@ One byte per ZIP, indexed by the ZIP read as a base-10 integer:
 ```
 byte = (reliability_tier << 4) | (class_index + 1)
 
-  bits 0-3   class index + 1, in 1..7.  0 => no data for this ZIP
+  bits 0-3   class index + 1, in 1..14 today (capacity 15).  0 => no data
   bits 4-5   reliability tier 0..3
   bits 6-7   reserved, always 0
 ```
@@ -209,7 +219,7 @@ map already reads as busy, and stripes add another pattern on top.
 | Publish decision is a digest, never a count | `manifest.content_digest`, `update_data.yml` | The old gate compared a key with no wire column, so it could never say "unchanged". A missing digest means CHANGED. |
 | `map:sourceReload` == 0 | `countZipPaintRewrites`, and the bench asserts it | Rewriting a data-driven paint value reloads every tile: 3375 ms per metric switch. |
 | Bbox decodes to a sane span | `geom.assert_bbox_scale` (pipeline), `ZipTable.checkBounds` (client) | See below. |
-| Metric keys match `KEY_ORDER` | positional wire format; golden fixtures on both sides | A wrong name silently reads the neighbouring column. |
+| Field names and data columns align; wire names map to application fields | `SNAPSHOT_COLUMNS`, worker name-keyed buffers, `FIELD_OF`; golden fixtures on both sides | Misaligned `f`/`d` pairs mislabel values; a missing name mapping loses the application field. |
 | A LISA hold lasts one release | `spatial._apply_hysteresis` reads `manifest.spatial.held`; `spatial.hysteresis_inputs` keeps a same-period rebuild from treating the live release as last month; three-release and same-month tests | The published `lisa` column cannot tell a held class from a real one, so the hold comes back as `previous` next month and holds itself again. A ZIP that stopped being an outlier is drawn as one forever. |
 
 ### The bbox scale bug, recorded because both failure modes look identical

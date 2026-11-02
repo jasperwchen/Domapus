@@ -3920,3 +3920,36 @@ allowed with a reason). Invalid `?metric=` is rewritten to the fallback; ErrorBo
 `role="alert"`, focus move, and theme tokens.
 
 Verified: 204 vitest, 75 pytest (gate + pipeline). No data republish.
+
+## 2026-11-01: accepted October audit fixes
+
+Implemented AUD-01/02/03/04/05/07/09/10 locally. The user rejected AUD-06 (mobile
+empty-class legend) and AUD-08 (export basemap credits); neither was implemented.
+The implementation decisions and verification are recorded below.
+
+The publication gate now rejects protected price metrics with no usable overlapping
+comparisons. Decoding also rejects incomplete or misaligned baseline columns and invalid
+scales, routing them through the existing fail-closed and written-override behavior.
+A genuine first publication still skips comparison. Remote downloads must match the
+probe's ETag, byte length and prefix hash so the published source identity describes
+the input actually processed. Multipart ETags remain opaque. Skip-probe now requires
+both local CSVs; mixed-input integration tests preserve remote fingerprints only for
+remote inputs. An undetermined DOM/MOS feed scale now warns with its reason and
+comparison count instead of being buried under successful checks of other metrics.
+
+Mobile details use a nonmodal portal because a native modal makes visible background
+controls inert. The sheet reserves space above the bottom controls, including after
+returning from export, which remains modal. Comparison labels have their own row on
+phones. Normal close restores opener focus before the portal disappears, while leaving
+focus already moved to search alone. Browser navigation restores metric, ZIP and camera;
+internal pan writes stay separate, and external navigation cancels stale delayed writes.
+Essential ZIP-source failures show an error and retry; individual ZIP and background
+tile errors remain recoverable so one failed tile does not hide a working housing map.
+
+Verification: 213 frontend tests and 150 Python 3.14 tests pass. Chrome exercised
+320/390px comparisons, native 200% browser zoom, focus/Escape, core controls and direct
+map comparison, export return, Back/Forward, failed geometry and retry, and ten blocked
+background tiles without a housing-layer error. Production build passes; lint has zero
+errors and four existing warnings. Documentation now describes current palette, byte and
+field-mapping contracts and fresh-checkout history restoration. No data republish or
+deployment. Physical iOS/Safari and screen-reader acceptance were not performed.
