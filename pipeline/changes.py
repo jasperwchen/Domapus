@@ -209,8 +209,9 @@ def _derive_scale(metric: str, now: dict, before: dict) -> dict:
     tol = SCALE_TOL[metric]
     floor = SCALE_DISCRIMINATING * tol
     agree = dict.fromkeys(SCALE_CANDIDATES, 0)
-    votes = 0
+    votes = compared = 0
     for _zip, published, ours, _base in _pairs(metric, now, before):
+        compared += 1
         if abs(ours) < floor:
             continue
         votes += 1
@@ -219,14 +220,16 @@ def _derive_scale(metric: str, now: dict, before: dict) -> dict:
                 agree[scale] += 1
 
     if not votes:
-        return {"scale": None, "votes": 0,
-                "reason": f"no ZIP moved more than {floor} to discriminate on"}
+        return {"scale": None, "votes": 0, "compared": compared, "status": "undetermined",
+                "reason": (f"no ZIP moved more than {floor} to discriminate on" if compared
+                           else "no usable pairs from the optional feed change column and lag-12 levels")}
 
     shares = {s: agree[s] / votes for s in SCALE_CANDIDATES}
     best = max(shares, key=shares.get)
     runner_up = max((s for s in SCALE_CANDIDATES if s != best), key=shares.get, default=None)
     second = shares[runner_up] if runner_up is not None else 0.0
-    evidence = {"votes": votes, "agreement": {str(s): round(v, 4) for s, v in shares.items()},
+    evidence = {"votes": votes, "compared": compared, "status": "established",
+                "agreement": {str(s): round(v, 4) for s, v in shares.items()},
                 "tolerance": tol, "discriminating_floor": floor}
 
     dominant = second == 0.0 or shares[best] / second >= SCALE_MIN_MARGIN
@@ -255,7 +258,14 @@ def _reconcile(panel_path, all_periods: list[str], latest_index: int) -> dict:
     """CONTRACT: recomputed YoY matches Redfin's published column on the SECOND-newest period
     (the newest carries a revision uplift on counts). Catches lag and units errors."""
     if latest_index < LAG + 1:
-        return {"checked": False, "reason": "not enough history behind the newest period"}
+        reason = "not enough history behind the newest period"
+        metrics = {}
+        for metric in RECONCILE_DIFFERENCE:
+            metrics[metric] = {"status": "undetermined", "compared": 0, "skipped": reason}
+            log.warning("Changes: %s feed scale undetermined: %s; 0 comparisons, 0 votes",
+                        metric, reason)
+        return {"checked": False, "reason": reason, "metrics": metrics,
+                "feed_scale": {m: None for m in RECONCILE_DIFFERENCE}}
 
     period = all_periods[latest_index - 1]
     base_period = all_periods[latest_index - 1 - LAG]
@@ -299,7 +309,10 @@ def _reconcile(panel_path, all_periods: list[str], latest_index: int) -> dict:
         scales[metric] = evidence
         scale = evidence["scale"]
         if scale is None:
-            out[metric] = {"compared": 0, "skipped": evidence["reason"]}
+            out[metric] = {"status": "undetermined", "compared": evidence["compared"],
+                           "skipped": evidence["reason"]}
+            log.warning("Changes: %s feed scale undetermined: %s; %d comparisons, %d votes",
+                        metric, evidence["reason"], evidence["compared"], evidence["votes"])
             continue
 
         tol = SCALE_TOL[metric]
@@ -322,6 +335,7 @@ def _reconcile(panel_path, all_periods: list[str], latest_index: int) -> dict:
             "max_abs_gap": round(worst, 4),
             "worst_zip": worst_zip,
             "feed_scale": scale,
+            "status": "checked",
         }
         if share > RECONCILE_MAX_SHARE:
             failures.append(
@@ -332,7 +346,7 @@ def _reconcile(panel_path, all_periods: list[str], latest_index: int) -> dict:
 
     # Losing every check is not a clean release. One metric degrading is survivable; all of
     # them means the detector is gone and a units change would ship unseen.
-    live = [m for m, r in out.items() if r.get("compared")]
+    live = [m for m, r in out.items() if r.get("compared") and r.get("status") != "undetermined"]
     if not live:
         raise PipelineError(
             f"changes: no metric could be reconciled against Redfin's published columns on "

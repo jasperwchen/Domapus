@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from pipeline import gate, serialize, sources
+from pipeline import changes, gate, serialize, sources
 from pipeline import __main__ as driver
 from pipeline.contracts import PipelineError
 
@@ -110,3 +110,25 @@ def test_skip_probe_requires_both_local_inputs(monkeypatch, tmp_path, redfin, zh
     monkeypatch.setattr(driver, "BUILD", tmp_path)
     with pytest.raises(PipelineError, match="skip-probe.*local"):
         driver.run(redfin, zhvi, skip_probe=True)
+
+
+@pytest.mark.parametrize("published", [None, 0.0])
+def test_undetermined_scale_warns_with_comparison_count(monkeypatch, caplog, published):
+    now = {"10001": {"median_sale_price": 100000, "median_sale_price_yoy": 0,
+                     "median_dom": 10, "median_dom_yoy": published}}
+    before = {"10001": {"median_sale_price": 100000, "median_dom": 10}}
+    monkeypatch.setattr(changes, "_period_map", lambda path, period, cols: now if period == "12" else before)
+    report = changes._reconcile(None, [str(i) for i in range(14)], 13)
+    result = report["metrics"]["median_dom"]
+    assert result["status"] == "undetermined"
+    assert result["compared"] == (0 if published is None else 1)
+    assert "median_dom" in caplog.text and "undetermined" in caplog.text
+    assert result["skipped"] in caplog.text
+
+
+def test_short_history_records_each_missing_scale_check(caplog):
+    report = changes._reconcile(None, [str(i) for i in range(13)], 12)
+    for metric in ("median_dom", "months_of_supply"):
+        assert report["metrics"][metric]["status"] == "undetermined"
+        assert report["metrics"][metric]["compared"] == 0
+        assert metric in caplog.text
