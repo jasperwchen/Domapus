@@ -181,7 +181,6 @@ export function MapLibreMap({
   }, [store, selectedMetric, onZipSelect]);
   const hasData = useMemo(() => (store?.n ?? 0) > 0, [store]);
   const recoverMapView = useCallback((map: maplibregl.Map) => {
-    setError(null);
     requestAnimationFrame(() => {
       map.resize();
       map.triggerRepaint();
@@ -235,8 +234,13 @@ export function MapLibreMap({
     );
 
     map.on("error", (e) => {
-      const mapError = e as { error?: { message?: string }; sourceId?: string };
+      const mapError = e as { error?: { message?: string }; sourceId?: string; tile?: unknown };
       const errMsg = mapError?.error?.message ?? "Map internal error";
+      if (mapError.sourceId === "zips" && !mapError.tile) {
+        trackError("pmtiles_load_failed", errMsg);
+        setError("Could not load ZIP shapes. The housing map is unavailable. Retry to load it again.");
+        return;
+      }
       const normalizedErr = errMsg.toLowerCase();
       const isDecodingError = normalizedErr.includes('decoding') || normalizedErr.includes('decode');
       const isContextLossError =

@@ -262,6 +262,38 @@ describe("MapLibreMap", () => {
     expect(mocks.mockSetStyle.mock.calls.filter(([style]) => isFallback(style))).toHaveLength(0);
   });
 
+  it.each(["Failed to fetch", "decoding failed"])("explains failed ZIP geometry: %s", async (message) => {
+    renderMap();
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => {
+      mocks.MockMap.lastInstance?.emit("error", { sourceId: "zips", error: { message } });
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(/ZIP shapes/i);
+    expect(screen.getByRole("button", { name: "Retry map" })).toBeVisible();
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => { vi.runAllTimers(); });
+    expect(screen.getByRole("alert")).toHaveTextContent(/ZIP shapes/i);
+  });
+
+  it("keeps housing usable when a background tile fails", async () => {
+    renderMap();
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => {
+      mocks.MockMap.lastInstance?.emit("error", { sourceId: "carto", error: { message: "Failed to fetch" } });
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset map to default view" })).toBeVisible();
+  });
+
+  it("keeps the housing layer visible when an individual ZIP tile fails", async () => {
+    renderMap();
+    await act(async () => { vi.runAllTimers(); });
+    await act(async () => {
+      mocks.MockMap.lastInstance?.emit("error", { sourceId: "zips", tile: {}, error: { message: "Failed to fetch" } });
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("suppresses recoverable context-loss errors", async () => {
     render(
       <MapLibreMap
