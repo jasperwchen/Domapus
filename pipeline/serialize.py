@@ -14,6 +14,7 @@ import hashlib
 import itertools
 import json
 import logging
+import math
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -275,10 +276,36 @@ def decode_live(payload: dict | None, keys=None) -> tuple[str | None, dict]:
                     payload.get("format"), payload.get("version"), FORMAT, VERSION)
         return ts, {}
 
-    fields, zips, data = payload["f"], payload["z"], payload["d"]
+    fields, zips, data = (payload.get(k) for k in ("f", "z", "d"))
     sentinel = payload.get("null_sentinel", NULL_SENTINEL)
     scales = payload.get("scales", {})
     dicts = payload.get("dicts", {})
+
+    required = set(keys) if keys is not None else set(SOURCE_OF.values())
+    valid = (
+        isinstance(fields, list) and all(isinstance(f, str) for f in fields)
+        and len(fields) == len(set(fields))
+        and isinstance(zips, list) and all(isinstance(z, str) for z in zips)
+        and len(zips) == len(set(zips))
+        and isinstance(data, list) and len(data) == len(fields)
+        and all(isinstance(col, list) and len(col) == len(zips) for col in data)
+        and isinstance(scales, dict) and isinstance(dicts, dict)
+        and required <= {SOURCE_OF.get(f, f) for f in fields}
+    )
+    if valid:
+        for short, col in zip(fields, data):
+            scale = scales.get(short)
+            if (not isinstance(scale, (int, float)) or isinstance(scale, bool)
+                    or not math.isfinite(scale) or scale <= 0
+                    or any(not isinstance(v, (int, float)) or not math.isfinite(v)
+                           for v in col)
+                    or (short in dicts and (not isinstance(dicts[short], list)
+                                           or any(not isinstance(v, int) for v in col)))):
+                valid = False
+                break
+    if not valid:
+        log.warning("Live snapshot has invalid columns, lengths or scales; no baseline for the gate")
+        return ts, {}
 
     out: dict[str, dict] = {z: {} for z in zips}
     for j, short in enumerate(fields):
@@ -291,7 +318,7 @@ def decode_live(payload: dict | None, keys=None) -> tuple[str | None, dict]:
             for i, z in enumerate(zips):
                 out[z][key] = _dict_at(col[i], table)
             continue
-        scale = scales.get(short, 1) or 1
+        scale = scales[short]
         for i, z in enumerate(zips):
             v = col[i]
             out[z][key] = None if v == sentinel else (v if scale == 1 else v / scale)

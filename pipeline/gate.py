@@ -41,7 +41,7 @@ def moved_fraction(new: dict, live: dict, metric: str) -> tuple[float, int]:
         if old is None:
             continue
         a, b = row.get(metric), old.get(metric)
-        if a is None or b is None or not b:
+        if any(v is None or not math.isfinite(v) or v <= 0 for v in (a, b)):
             continue
         comparable += 1
         if abs(a / b - 1.0) > MOVE:
@@ -103,6 +103,8 @@ def gate(new: dict, live: dict, thresholds: dict, coverage: dict | None = None,
         limit = thresholds.get(metric, {}).get("moved_gt_25pct")
         frac, n = moved_fraction(new, live, metric)
         observed[metric] = {"moved_gt_25pct": round(frac, 5), "comparable": n}
+        if not n:
+            failures.append(f"{metric}: no usable overlapping price comparisons")
         if limit is not None and frac > limit:
             failures.append(
                 f"{metric}: {frac:.1%} of {n:,} comparable ZIPs moved >25% (limit {limit:.1%})"
