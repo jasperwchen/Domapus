@@ -1,5 +1,5 @@
-import { useRef, useEffect, useCallback, useState, type ReactNode } from "react";
-import { Modal } from "@/components/ui/modal";
+import { useRef, useEffect, useLayoutEffect, useCallback, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface MobileBottomSheetProps {
   isOpen: boolean;
@@ -32,29 +32,31 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
   const [isVisible, setIsVisible] = useState(false);
   const [maxSheetHeightPx, setMaxSheetHeightPx] = useState(0);
   const [bottomOffset, setBottomOffset] = useState(0);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   const onExitedRef = useRef(onExited);
   onExitedRef.current = onExited;
 
   useEffect(() => {
     const updateLayout = () => {
       const header = document.querySelector<HTMLElement>('[data-top-bar]');
+      const controls = document.querySelector<HTMLElement>('[data-mobile-controls]');
       const vv = window.visualViewport;
       const layoutH = window.innerHeight;
       const keyboardGap = vv
         ? Math.max(0, layoutH - (vv.offsetTop + vv.height))
         : 0;
-      setBottomOffset(keyboardGap);
+      const controlsTop = controls?.getBoundingClientRect().top ?? layoutH;
+      setBottomOffset(Math.max(keyboardGap, layoutH - controlsTop));
 
       const topBarBottom = header
         ? header.getBoundingClientRect().bottom
         : 0;
-
-
       const availableBottom = vv
         ? vv.offsetTop + vv.height
         : layoutH;
 
-      const available = Math.max(0, availableBottom - topBarBottom);
+      const available = Math.max(0, Math.min(availableBottom, controlsTop) - topBarBottom);
       setMaxSheetHeightPx(available);
     };
 
@@ -64,10 +66,12 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
     window.visualViewport?.addEventListener('scroll', updateLayout);
 
     const header = document.querySelector<HTMLElement>('[data-top-bar]');
-    const observer = header ? new ResizeObserver(updateLayout) : null;
+    const controls = document.querySelector<HTMLElement>('[data-mobile-controls]');
+    const observer = new ResizeObserver(updateLayout);
     if (header && observer) {
       observer.observe(header);
     }
+    if (controls) observer.observe(controls);
 
     return () => {
       window.removeEventListener('resize', updateLayout);
@@ -192,52 +196,53 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
     snapTo(closest);
   }, [getClosestSnap, snapTo]);
 
-  const handleOverlayClick = useCallback(() => {
-    snapTo(SNAP_CLOSED);
-  }, [snapTo]);
-
   useEffect(() => {
     if (!isVisible) return;
-    if (bottomOffset > 50 && sheetHeight < SNAP_FULL) {
+    const viewport = window.visualViewport;
+    const keyboardGap = viewport ? window.innerHeight - viewport.offsetTop - viewport.height : 0;
+    if (keyboardGap > 50 && sheetHeight < SNAP_FULL) {
       setSheetHeight(SNAP_FULL);
     }
   }, [bottomOffset, isVisible, sheetHeight]);
 
-  useEffect(() => {
-    if (!isVisible || sheetHeight <= 5) return;
-
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.overscrollBehavior = 'none';
-
+  useLayoutEffect(() => {
+    if (!isVisible) return;
+    const sheet = sheetRef.current;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    openerRef.current = opener;
+    sheet?.focus({ preventScroll: true });
     return () => {
-      document.body.style.overflow = previousBodyOverflow;
-      document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+      if (sheet?.contains(document.activeElement) && opener?.isConnected) opener.focus({ preventScroll: true });
     };
-  }, [isVisible, sheetHeight]);
+  }, [isVisible]);
+
+  useLayoutEffect(() => {
+    if (!isOpen && sheetRef.current?.contains(document.activeElement) && openerRef.current?.isConnected) {
+      openerRef.current.focus({ preventScroll: true });
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
+      event.preventDefault();
+      onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
 
   if (!isVisible) return null;
 
-  const overlayOpacity = Math.min(sheetHeight / SNAP_PEEK, 1) * 0.4;
   const sheetHeightPx = (sheetHeight / 100) * maxSheetHeightPx;
 
-  return (
-    <Modal label="ZIP details" onClose={onClose} className="bg-transparent overflow-hidden">
-      {/* Backdrop overlay */}
+  return createPortal(
       <div
-        className="fixed inset-0 z-40 bg-black"
-        style={{
-          opacity: overlayOpacity,
-          transition: isDragging ? 'none' : 'opacity 300ms ease',
-          pointerEvents: sheetHeight > 5 ? 'auto' : 'none',
-        }}
-        onClick={handleOverlayClick}
-      />
-
-      {/* Bottom sheet */}
-      <div
+        ref={sheetRef}
+        role="dialog"
+        aria-label="ZIP details"
+        tabIndex={-1}
         className="fixed left-0 right-0 z-50 bg-dashboard-panel rounded-t-[14px] flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.15)]"
         style={{
           bottom: `${bottomOffset}px`,
@@ -270,7 +275,6 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
         <div className="flex-1 overflow-hidden min-h-0">
           {children}
         </div>
-      </div>
-    </Modal>
+      </div>, document.body,
   );
 }

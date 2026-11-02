@@ -9,6 +9,53 @@ describe("close animation", () => {
   });
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
+  it("keeps details nonmodal and closes with Escape without stealing focus from search", () => {
+    const onClose = vi.fn();
+    const { rerender } = render(<>
+      <input aria-label="Search ZIP" />
+      <MobileBottomSheet isOpen onClose={onClose}>Details</MobileBottomSheet>
+    </>);
+    act(() => vi.advanceTimersByTime(50));
+    const sheet = screen.getByRole("dialog", { name: "ZIP details" });
+    expect(sheet).not.toHaveAttribute("aria-modal", "true");
+    expect(sheet).toHaveFocus();
+    const search = screen.getByRole("textbox");
+    search.focus();
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+    rerender(<>
+      <input aria-label="Search ZIP" />
+      <MobileBottomSheet isOpen={false} onClose={onClose}>Details</MobileBottomSheet>
+    </>);
+    act(() => vi.advanceTimersByTime(300));
+    expect(search).toHaveFocus();
+  });
+
+  it("returns focus to the opener when closing from the sheet", () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = render(<MobileBottomSheet isOpen onClose={() => {}}>Details</MobileBottomSheet>);
+    act(() => vi.advanceTimersByTime(50));
+    expect(screen.getByRole("dialog")).toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it("returns focus to the opener after the normal close animation", () => {
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    opener.focus();
+    const { rerender } = render(<MobileBottomSheet isOpen onClose={() => {}}>Details</MobileBottomSheet>);
+    act(() => vi.advanceTimersByTime(50));
+    expect(screen.getByRole("dialog")).toHaveFocus();
+    rerender(<MobileBottomSheet isOpen={false} onClose={() => {}}>Details</MobileBottomSheet>);
+    act(() => vi.advanceTimersByTime(300));
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
   it("calls onExited after the close animation, not when close starts", () => {
     const onClose = vi.fn();
     const onExited = vi.fn();

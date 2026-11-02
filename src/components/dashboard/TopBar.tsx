@@ -239,8 +239,10 @@ export function TopBar({
       )}
 
       {/* === Mobile Bottom Bar === */}
-      {isMobile && !hideMobileControls && (
+      {isMobile && (
         <div
+          data-mobile-controls
+          hidden={hideMobileControls}
           className="fixed left-4 right-4 z-[1001] bg-dashboard-panel border border-dashboard-border rounded-lg p-3 shadow-lg"
           style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
         >

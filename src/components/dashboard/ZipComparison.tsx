@@ -136,11 +136,9 @@ function Group({
         {rows.map(({ m, av, bv }) => {
           const rel = relative(av, bv, m.format as FormatType);
           return (
-            <div key={m.key as string} className="flex items-baseline gap-2 px-3 py-2">
-              {/* Keep truncated metric names available in the title. */}
+            <div key={m.key as string} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-3 py-2">
               <span
-                className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-                title={m.label}
+                className="w-full min-w-0 text-xs text-muted-foreground md:w-auto md:flex-1"
               >
                 {m.label}
               </span>
