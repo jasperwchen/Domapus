@@ -20,7 +20,7 @@ def test_local_input_survives_matching_probes(tmp_path, monkeypatch, local):
     monkeypatch.setattr(driver.sources, "probe_header", lambda *a: [])
     monkeypatch.setattr(driver.units, "resolve", lambda *a: Mock(aliased={}, missing_yoy=[]))
     monkeypatch.setattr(driver.sources, "download", lambda url, dest, *a, **kw: dest.write_bytes(b"csv"))
-    monkeypatch.setattr(driver.sources, "fetch_bytes", lambda *a: b"csv")
+    monkeypatch.setattr(driver.sources, "fetch_bytes", lambda *a, **kw: b"csv")
     ingest = Mock(side_effect=PipelineError("reached ingestion"))
     monkeypatch.setattr(driver.redfin, "ingest", ingest)
     csv = tmp_path / "local.csv"

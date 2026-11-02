@@ -91,13 +91,23 @@ def probe_header(info: dict) -> list[str]:
     return next(csv.reader([info["header"]]), [])
 
 
+def _verify_identity(headers, body_prefix: bytes, size: int, expected: dict, label: str) -> None:
+    if expected.get("etag") and (headers.get("ETag") or "").strip('"') != expected["etag"]:
+        raise PipelineError(f"{label}: GET identity differs from the probe ETag")
+    if expected.get("content_length") and size != expected["content_length"]:
+        raise PipelineError(f"{label}: downloaded {size:,} bytes, probe said {expected['content_length']:,}")
+    if expected.get("probe_sha256") != hashlib.sha256(body_prefix).hexdigest():
+        raise PipelineError(f"{label}: downloaded prefix differs from the probe identity")
+
+
 def download(url: str, dest: Path, label: str, expect_bytes: int | None = None,
-             verify_md5: str | None = None) -> dict:
+             verify_md5: str | None = None, *, expected_probe: dict | None = None) -> dict:
     """Stream to disk with a total-elapsed watchdog and a throughput floor."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     md5 = hashlib.md5()
     start = time.monotonic()
     got = 0
+    prefix = bytearray()
 
     with requests.get(url, stream=True, timeout=300) as r:
         r.raise_for_status()
@@ -108,6 +118,8 @@ def download(url: str, dest: Path, label: str, expect_bytes: int | None = None,
                     continue
                 f.write(chunk)
                 md5.update(chunk)
+                if expected_probe and len(prefix) < PROBE_BYTES:
+                    prefix.extend(chunk[:PROBE_BYTES - len(prefix)])
                 got += len(chunk)
                 elapsed = time.monotonic() - start
                 if elapsed > MAX_ELAPSED_S:
@@ -120,6 +132,8 @@ def download(url: str, dest: Path, label: str, expect_bytes: int | None = None,
                         f"(floor {MIN_THROUGHPUT_BPS / 1000:.0f} kB/s) — connection stalled"
                     )
 
+    if expected_probe is not None:
+        _verify_identity(r.headers, prefix, got, expected_probe, label)
     digest = md5.hexdigest()
     if expect_bytes is not None and got != expect_bytes:
         raise PipelineError(
@@ -137,11 +151,13 @@ def download(url: str, dest: Path, label: str, expect_bytes: int | None = None,
     return {"bytes": got, "md5": digest, "seconds": round(time.monotonic() - start, 1)}
 
 
-def fetch_bytes(url: str, label: str) -> bytes:
+def fetch_bytes(url: str, label: str, *, expected_probe: dict | None = None) -> bytes:
     """Whole-body GET for the small source. No MD5 contract — see module docstring."""
     r = requests.get(url, timeout=600)
     r.raise_for_status()
     _check_host(r.url, label)
+    if expected_probe is not None:
+        _verify_identity(r.headers, r.content[:PROBE_BYTES], len(r.content), expected_probe, label)
     if len(r.content) < 1000:
         raise PipelineError(f"{label}: body is only {len(r.content)} bytes")
     return r.content

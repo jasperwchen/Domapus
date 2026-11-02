@@ -11,6 +11,7 @@ K = 0.6; and every feed YoY computed from the published levels in the feed's own
 """
 
 import csv
+import hashlib
 import json
 import shutil
 from datetime import date, timedelta
@@ -325,9 +326,35 @@ def test_a_local_file_never_carries_upstreams_fingerprint(site, release, monkeyp
     it made the next scheduled run believe it already had the current release."""
     fingerprints = _fake_upstream(monkeypatch, release["header"])
     zhvi_bytes = release["current"]["zhvi"].read_bytes()
-    monkeypatch.setattr(sources, "fetch_bytes", lambda url, label: zhvi_bytes)
+    monkeypatch.setattr(sources, "fetch_bytes", lambda url, label, **kwargs: zhvi_bytes)
     (site / "public" / "data" / "manifest.json").write_text(
         json.dumps({"fingerprints": {"redfin": "older", "zhvi": "older"}}), encoding="utf-8")
 
     assert main.run(release["current"]["redfin"], None, skip_probe=False) == 0
     assert _built(site)[0]["fingerprints"] == {"zhvi": fingerprints["zhvi"]}
+
+
+@pytest.mark.parametrize("local", [set(), {"redfin"}, {"zhvi"}, {"redfin", "zhvi"}])
+def test_acquired_release_identity_matches_only_remote_inputs(site, release, monkeypatch, local):
+    from test_audit_pipeline import Response
+
+    bodies = {label: release["current"][label].read_bytes() for label in ("redfin", "zhvi")}
+    probes = {label: {"etag": f"{label}-2", "content_length": len(body),
+                      "probe_sha256": hashlib.sha256(body[:sources.PROBE_BYTES]).hexdigest(),
+                      "header": body.split(b"\n", 1)[0].decode(), "first_row": ""}
+              for label, body in bodies.items()}
+    monkeypatch.setattr(sources, "probe", lambda url, label: probes[label])
+
+    def get(url, **kwargs):
+        label = "redfin" if url == sources.REDFIN_URL else "zhvi"
+        assert label not in local
+        response = Response(bodies[label], f'"{label}-2"')
+        response.url = url
+        return response
+
+    monkeypatch.setattr(sources.requests, "get", get)
+    assert main.run(release["current"]["redfin"] if "redfin" in local else None,
+                    release["current"]["zhvi"] if "zhvi" in local else None, False) == 0
+    assert _built(site)[0]["fingerprints"] == {
+        label: sources.fingerprint(probe) for label, probe in probes.items() if label not in local
+    }

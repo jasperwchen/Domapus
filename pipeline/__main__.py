@@ -75,6 +75,8 @@ def _live_fingerprints() -> dict:
 def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
         override_gate: bool = False, override_reason: str = "",
         force: bool = False) -> int:
+    if skip_probe and (redfin_csv is None or zhvi_csv is None):
+        raise PipelineError("--skip-probe requires both --redfin-csv and --zhvi-csv local inputs")
     BUILD.mkdir(parents=True, exist_ok=True)
     # Receipts must describe only this run.
     for old in BUILD.glob("*_report.json"):
@@ -125,6 +127,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
                 expect_bytes=p.get("content_length") or None,
                 # A single-part ETag is the body MD5; a multipart one is not.
                 verify_md5=None if sources.is_multipart_etag(etag) else (etag or None),
+                expected_probe=p,
             )
         else:
             redfin_csv = Path(redfin_csv)
@@ -133,7 +136,7 @@ def run(redfin_csv: Path | None, zhvi_csv: Path | None, skip_probe: bool,
 
         zhvi_bytes = (
             Path(zhvi_csv).read_bytes() if zhvi_csv
-            else sources.fetch_bytes(sources.ZHVI_URL, "Zillow")
+            else sources.fetch_bytes(sources.ZHVI_URL, "Zillow", expected_probe=probes["zhvi"])
         )
         _report("s1_acquire", "ok",
                 redfin_bytes=redfin_csv.stat().st_size, zhvi_bytes=len(zhvi_bytes))
@@ -355,7 +358,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="python -m pipeline")
     ap.add_argument("--redfin-csv", help="local all_zips.csv; skips the 1.33 GB download")
     ap.add_argument("--zhvi-csv", help="local ZHVI csv; skips the download")
-    ap.add_argument("--skip-probe", action="store_true", help="no network HEAD (offline runs)")
+    ap.add_argument("--skip-probe", action="store_true", help="offline run; requires both local CSV inputs")
     ap.add_argument("--override-diff-gate", action="store_true",
                     help="publish despite gate failures; requires --override-reason")
     ap.add_argument("--override-reason", default="",
