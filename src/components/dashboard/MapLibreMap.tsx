@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import * as maplibregl from 'maplibre-gl';
 import type { MapMouseEvent, LayerSpecification, StyleSpecification } from 'maplibre-gl';
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -21,12 +22,20 @@ import { mark, metricSwitchTicket, finishMetricSwitch } from "@/lib/perf";
 import type { ProgressData } from "@/workers/worker-types";
 
 
+export interface MetroHighlight {
+  name: string;
+  zips: readonly string[];
+  bounds: [[number, number], [number, number]] | null;
+}
+
 interface MapProps {
   selectedMetric: string;
   onZipSelect: (zipData: ZipData) => void;
   selectedZip?: string;
   searchZip?: string;
   searchTrigger?: number;
+  /** A searched metro to outline and fit. A new object refits even for the same metro. */
+  metroHighlight?: MetroHighlight | null;
   /** Null until the snapshot lands. The map still paints without it — the paint
    *  table colours the fill — so nothing here may block on it. */
   store: ZipTable | null;
@@ -113,6 +122,7 @@ export function MapLibreMap({
   selectedZip,
   searchZip,
   searchTrigger,
+  metroHighlight,
   store,
   isLoading,
   loadingProgress,
@@ -126,6 +136,11 @@ export function MapLibreMap({
 }: MapProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  // The reset button is the fourth button INSIDE MapLibre's zoom/compass group, portaled into
+  // the NavigationControl's own container. It used to be an absolutely positioned sibling with a
+  // hard-coded `top`, and on phones it drifted away from the zoom buttons at a different size.
+  // Inside the group it inherits their size, divider and position from MapLibre's CSS. Keep it there.
+  const [navGroupEl, setNavGroupEl] = useState<HTMLElement | null>(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const interactionsSetup = useRef(false);
@@ -213,7 +228,18 @@ export function MapLibreMap({
     });
 
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
+    const nav = new maplibregl.NavigationControl();
+    map.addControl({
+      onAdd: (m) => {
+        const el = nav.onAdd(m);
+        setNavGroupEl(el);
+        return el;
+      },
+      onRemove: () => {
+        setNavGroupEl(null);
+        nav.onRemove();
+      },
+    }, "top-right");
 
     let styleLoaded = false;
     // Cleared when the style arrives, not on `load`: `load` also waits for the first ZIP
@@ -583,6 +609,46 @@ export function MapLibreMap({
         }
       }, beforeId);
 
+      // Metro outline, outermost edge only. Every member ZIP strokes its own edge, then the mask
+      // repaints those ZIPs' own fill on top. An interior edge has a member on both sides, so
+      // both halves of its stroke are covered; an outer edge keeps the half that falls outside.
+      // Widths are double the ZIP highlight's because only half survives. Feature-state only.
+      const inMetro: maplibregl.ExpressionSpecification = ["boolean", ["feature-state", "metro"], false];
+      map.addLayer({
+        id: "zips-metro-halo",
+        type: "line",
+        source: "zips",
+        "source-layer": "us_zip_codes",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 8, 6, 10, 10, 12, 12, 14],
+          "line-opacity": ["case", inMetro, 1, 0],
+        },
+      }, beforeId);
+      map.addLayer({
+        id: "zips-metro-line",
+        type: "line",
+        source: "zips",
+        "source-layer": "us_zip_codes",
+        paint: {
+          "line-color": "#0086B3",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 4, 6, 6, 10, 8, 12, 10],
+          "line-opacity": ["case", inMetro, 1, 0],
+        },
+      }, beforeId);
+      map.addLayer({
+        id: "zips-metro-mask",
+        type: "fill",
+        source: "zips",
+        "source-layer": "us_zip_codes",
+        paint: {
+          "fill-color": classPaintExpression() as never,
+          "fill-opacity": ["case", inMetro, 1, 0],
+          // Antialiased edges let a sliver of the stroke through every interior seam.
+          "fill-antialias": false,
+        },
+      }, beforeId);
+
       // Point sources for labels and outlier markers. A polygon clipped across tiles gets one
       // symbol per piece (duplicate labels), and 47 outlier polygons are invisible at national zoom.
       map.addSource(LABEL_SOURCE, { type: "geojson", data: EMPTY_FC });
@@ -842,6 +908,21 @@ export function MapLibreMap({
   }, [isMapReady, pmtilesLoaded, searchZip, searchTrigger, store]);
 
 
+  const metroZipsRef = useRef<readonly string[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isMapReady || !map || !pmtilesLoaded || !map.getSource("zips")) return;
+    const target = { source: "zips", sourceLayer: "us_zip_codes" };
+    for (const id of metroZipsRef.current) map.setFeatureState({ ...target, id }, { metro: false });
+    const zips = metroHighlight?.zips ?? [];
+    for (const id of zips) map.setFeatureState({ ...target, id }, { metro: true });
+    metroZipsRef.current = zips;
+    if (metroHighlight?.bounds) {
+      const padding = mapContainer.current ? getDynamicPadding(mapContainer.current) : 40;
+      map.fitBounds(metroHighlight.bounds, { padding, duration: 1500, maxZoom: 11 });
+    }
+  }, [isMapReady, pmtilesLoaded, metroHighlight, getDynamicPadding]);
+
   const handleResetBounds = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -863,32 +944,19 @@ export function MapLibreMap({
           Interactive map showing ZIP-code level housing data. Use the search box to find specific ZIP codes.
         </span>
       </div>
-      {/* Reset to default bounds button */}
-      {isMapReady && !error && (
+      {isMapReady && !error && navGroupEl && createPortal(
         <button
+          type="button"
           onClick={handleResetBounds}
-          className="map-reset-control"
-          style={{
-            position: 'absolute',
-            right: '10px',
-            zIndex: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f2f2f2'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff'}
+          // Inline: maplibre-gl.css sets `display: block` on control buttons at higher
+          // specificity than a Tailwind class, which left the icon on the text baseline.
+          style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
           aria-label="Reset map to default view"
           title="Reset to default view"
         >
           <Fullscreen style={{ width: '18px', height: '18px', color: '#333' }} />
-        </button>
+        </button>,
+        navGroupEl,
       )}
       {/* Only while there is nothing to look at: `isLoading` also goes true for the
           background full-data refresh, over an already-working map. */}

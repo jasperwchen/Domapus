@@ -135,7 +135,7 @@ function snapshot() {
 }
 
 function search(zip: string) {
-  fireEvent.change(screen.getByRole("textbox", { name: "Search for ZIP code" }), { target: { value: zip } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Search for ZIP code or metro" }), { target: { value: zip } });
   fireEvent.click(screen.getByRole("button", { name: "Search" }));
 }
 

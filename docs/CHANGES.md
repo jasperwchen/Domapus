@@ -3953,3 +3953,34 @@ background tiles without a housing-layer error. Production build passes; lint ha
 errors and four existing warnings. Documentation now describes current palette, byte and
 field-mapping contracts and fresh-checkout history restoration. No data republish or
 deployment. Physical iOS/Safari and screen-reader acceptance were not performed.
+
+## 2026-11-08: mobile controls, collapsible legend, metro search
+
+The phone reset-view button had drifted below the zoom stack at a different size. It was
+an absolutely positioned sibling with a hard-coded `top` (134 px on phones) and its own
+40 px size, while the zoom buttons rendered at 29 px: the mobile 40 px rule used the same
+one-class selector as maplibre-gl.css, which loads later and won. The button is now
+portaled from React into the NavigationControl's own container as the group's fourth
+button, and the mobile rule uses two classes so all four buttons are 40 px. Its centring
+is inline because maplibre-gl.css sets `display: block` on control buttons above a
+Tailwind class. Measured at 375 px wide: zoom in, zoom out, compass and reset all 40x40
+in one group with no gap, icon 11 px from each edge.
+
+The mobile legend collapses to its title, and drops the reliability share and
+methodology link (desktop keeps both).
+
+Search accepts metro names on every device. The metro list comes from the snapshot's
+`me` column, ranked by homes sold like the export picker. Outlining the metro's outer edge
+needed a boundary we do not publish. Rejected: highlighting every member ZIP (draws every
+interior border), dissolving `querySourceFeatures` geometry in the browser (only loaded
+tiles, tile-clipped pieces, a polygon library), and a pipeline-built metro outline file
+(new artifact and pipeline stage for one highlight). Chosen: stroke each member ZIP's edge,
+then repaint those ZIPs' own fill on top with the same constant paint expression, opacity
+driven by a `metro` feature-state. Interior edges are covered from both sides; outer
+edges keep their outside half. Antialiasing is off on the mask because partial-alpha edges
+let a sliver of the stroke through every seam. No `setPaintProperty`, so the
+`map:sourceReload` tripwire is unaffected. Checked on Denver (138 ZIPs) at desktop width
+and San Jose at 375 px: outer edge only, no interior seams, camera fits the metro.
+
+Verification: 215 frontend tests pass, `tsc -b` clean, lint has no new warnings.
+Not deployed.

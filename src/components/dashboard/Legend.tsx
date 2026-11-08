@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { HelpCircle } from "lucide-react";
+import { ChevronDown, HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getMetricLabel } from "@/lib/metrics";
 import { formatLegendValue, tickAt } from "@/lib/legend-format";
@@ -34,6 +34,7 @@ export function Legend({
 }: LegendProps) {
   const isMobile = useIsMobile();
   const { search } = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
 
   const gradient = `linear-gradient(to right, ${CHOROPLETH_GRADIENT_STOPS})`;
   const verticalGradient = `linear-gradient(to top, ${CHOROPLETH_GRADIENT_STOPS})`;
@@ -64,103 +65,107 @@ export function Legend({
     [hasBreaks, breaks, selectedMetric],
   );
 
-  // Mobile: same toggles as desktop, compressed so the map still shows.
+  // Mobile: same toggles as desktop, compressed so the map still shows, and collapsible to
+  // its title. The reliability share and methodology link are desktop-only for space.
   if (isMobile) {
     return (
       <div className="bg-card/95 backdrop-blur-sm shadow-lg border border-border rounded-lg p-3 w-[168px]">
-        <h3 className="text-[11px] font-semibold mb-2 text-foreground leading-tight truncate">
-          {getMetricLabel(selectedMetric)}
-        </h3>
-        <div className="flex items-stretch gap-2 h-20">
-          <div
-            className="w-3 rounded-sm border border-border"
-            style={{ background: verticalGradient }}
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand legend" : "Collapse legend"}
+          className={`flex w-full items-center gap-1 text-left ${collapsed ? "" : "mb-2"}`}
+        >
+          <h3 className="flex-1 text-[11px] font-semibold text-foreground leading-tight truncate">
+            {getMetricLabel(selectedMetric)}
+          </h3>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${collapsed ? "" : "rotate-180"}`}
             aria-hidden="true"
           />
-          {/* Each label sits at the height of the boundary it names, so the key
-              describes the scale the map paints. */}
-          {mobileTicks && (
-            <div className="relative flex-1 text-[11px] font-medium tabular-nums text-muted-foreground">
-              {mobileTicks.map(({ i, label }) => (
-                <span
-                  key={i}
-                  className="absolute left-0 translate-y-1/2 whitespace-nowrap"
-                  style={{ bottom: `${((i + 1) / CHOROPLETH_COLORS.length) * 100}%` }}
-                >
-                  {label}
-                </span>
-              ))}
+        </button>
+        {!collapsed && (
+          <>
+            <div className="flex items-stretch gap-2 h-20">
+              <div
+                className="w-3 rounded-sm border border-border"
+                style={{ background: verticalGradient }}
+                aria-hidden="true"
+              />
+              {/* Each label sits at the height of the boundary it names, so the key
+                  describes the scale the map paints. */}
+              {mobileTicks && (
+                <div className="relative flex-1 text-[11px] font-medium tabular-nums text-muted-foreground">
+                  {mobileTicks.map(({ i, label }) => (
+                    <span
+                      key={i}
+                      className="absolute left-0 translate-y-1/2 whitespace-nowrap"
+                      style={{ bottom: `${((i + 1) / CHOROPLETH_COLORS.length) * 100}%` }}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-[2px] border border-border"
-            style={{ background: NO_DATA_COLOR }}
-            aria-hidden="true"
-          />
-          <span>No data reported</span>
-        </div>
+            <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-[2px] border border-border"
+                style={{ background: NO_DATA_COLOR }}
+                aria-hidden="true"
+              />
+              <span>No data reported</span>
+            </div>
 
-        {emptyCount > 0 && (
-          <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
-            {emptyCount === 1 ? "One class" : `${emptyCount} classes`} empty
-            (drawn thin).
-          </p>
+            {emptyCount > 0 && (
+              <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+                {emptyCount === 1 ? "One class" : `${emptyCount} classes`} empty
+                (drawn thin).
+              </p>
+            )}
+
+            <div className="mt-3 space-y-2">
+              {onAutoScaleChange && (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!autoScale}
+                    onChange={(e) => onAutoScaleChange(e.target.checked)}
+                    className="h-3.5 w-3.5 shrink-0 accent-primary"
+                  />
+                  <span className="text-[10px] font-medium leading-none text-muted-foreground">
+                    Adjust Contrast to View
+                  </span>
+                </label>
+              )}
+
+              {onShowLisaChange && (
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!showLisa}
+                    onChange={(e) => onShowLisaChange(e.target.checked)}
+                    className="h-3.5 w-3.5 shrink-0 accent-primary"
+                  />
+                  <span className="text-[10px] font-medium leading-snug text-muted-foreground">
+                    {outliers
+                      ? `Highlight ${outliers.total} Outliers`
+                      : "Highlight Outliers"}
+                  </span>
+                </label>
+              )}
+
+              {showLisa && onShowLisaChange && (
+                <div className="space-y-1" aria-live="polite">
+                  <OutlierKey color={OUTLIER_COLORS.LH} label="Cheap nearby" />
+                  <OutlierKey color={OUTLIER_COLORS.HL} label="Expensive nearby" />
+                </div>
+              )}
+            </div>
+          </>
         )}
-
-        <div className="mt-2.5 pt-2 border-t border-border/60 space-y-2">
-          {onAutoScaleChange && (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!!autoScale}
-                onChange={(e) => onAutoScaleChange(e.target.checked)}
-                className="h-3.5 w-3.5 shrink-0 accent-primary"
-              />
-              <span className="text-[10px] font-medium leading-none text-muted-foreground">
-                Adjust Contrast to View
-              </span>
-            </label>
-          )}
-
-          {onShowLisaChange && (
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!!showLisa}
-                onChange={(e) => onShowLisaChange(e.target.checked)}
-                className="h-3.5 w-3.5 shrink-0 accent-primary"
-              />
-              <span className="text-[10px] font-medium leading-snug text-muted-foreground">
-                {outliers
-                  ? `Highlight ${outliers.total} Outliers`
-                  : "Highlight Outliers"}
-              </span>
-            </label>
-          )}
-
-          {showLisa && onShowLisaChange && (
-            <div className="space-y-1" aria-live="polite">
-              <OutlierKey color={OUTLIER_COLORS.LH} label="Cheap nearby" />
-              <OutlierKey color={OUTLIER_COLORS.HL} label="Expensive nearby" />
-            </div>
-          )}
-
-          {reliability && (
-            <p className="text-[10px] leading-snug text-muted-foreground pt-0.5">
-              {Math.round(reliability.rankableShare * 100)}% of ZIPs clear ~
-              {reliability.impliedN} sales.{" "}
-              <Link
-                to={`/methodology${search}`}
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                Methodology
-              </Link>
-            </p>
-          )}
-        </div>
       </div>
     );
   }
@@ -294,8 +299,6 @@ export function Legend({
             The share that clears the sales threshold is the legend's one cue. */}
         {reliability && (
           <p className="text-[11px] leading-snug text-muted-foreground pt-0.5">
-            {Math.round(reliability.rankableShare * 100)}% of reporting ZIPs have
-            roughly {reliability.impliedN}+ sales (precision for colour breaks).{" "}
             <Link
               to={`/methodology${search}`}
               className="underline underline-offset-2 hover:text-foreground"

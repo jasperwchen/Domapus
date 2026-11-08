@@ -155,6 +155,8 @@ interface TopBarProps {
   selectedMetric: MetricType;
   onMetricChange: (metric: MetricType) => void;
   onSearch: (zipCode: string, trigger: number) => void;
+  metros?: readonly string[];
+  onMetroSearch?: (metro: string | null) => void;
   hideMobileControls?: boolean;
   children?: React.ReactNode; // Optional buttons like <MapExport />
 }
@@ -163,6 +165,8 @@ export function TopBar({
   selectedMetric,
   onMetricChange,
   onSearch,
+  metros,
+  onMetroSearch,
   hideMobileControls = false,
   children,
   dates,
@@ -210,7 +214,7 @@ export function TopBar({
           <>
             {!isMobile && (
               <div className="w-full max-w-[260px] min-w-[104px] flex-shrink">
-                <SearchBox onSearch={onSearch} />
+                <SearchBox onSearch={onSearch} metros={metros} onMetroSearch={onMetroSearch} />
               </div>
             )}
             {/* The only date on screen until a ZIP is opened, so it stays down to xl, where it still leaves the search box its width. */}
@@ -248,7 +252,7 @@ export function TopBar({
         >
           <div className="space-y-2.5">
             <MetricSelector selectedMetric={selectedMetric} onMetricChange={onMetricChange} />
-            <SearchBox onSearch={onSearch} />
+            <SearchBox onSearch={onSearch} metros={metros} onMetroSearch={onMetroSearch} dropUp />
           </div>
         </div>
       )}

@@ -27,6 +27,8 @@ import { formatPeriod, formatRedfinWindow } from "@/lib/data-dates";
 import { PAINTED_METRICS } from "@/lib/metrics";
 import { MobileBottomSheet } from "./MobileBottomSheet";
 import { beginMetricSwitch } from "@/lib/perf";
+import { buildMetroIndex, metroBounds } from "@/lib/metros";
+import type { MetroHighlight } from "./MapLibreMap";
 
 function readUrlParams(search: string) {
   const params = new URLSearchParams(search);
@@ -221,6 +223,20 @@ export function HousingDashboard() {
     setSheetZip(zip);
     setUrlState({ zip: zip.zipCode, metric: selectedMetric });
   }, [mode, selectedZip, selectedMetric, setUrlState]);
+
+  const metroIndex = useMemo(() => (store ? buildMetroIndex(store) : null), [store]);
+  const [metroHighlight, setMetroHighlight] = useState<MetroHighlight | null>(null);
+
+  // A fresh object per pick, so picking the same metro again refits the camera.
+  const handleMetroSearch = useCallback((metro: string | null) => {
+    const zips = metro && store ? metroIndex?.zipsOf.get(metro) : undefined;
+    if (!metro || !zips || !store) {
+      setMetroHighlight(null);
+      return;
+    }
+    hasUserInteractedRef.current = true;
+    setMetroHighlight({ name: metro, zips, bounds: metroBounds(store, zips) });
+  }, [store, metroIndex]);
 
   const handleSearch = useCallback((zip: string) => {
     hasUserInteractedRef.current = true;
@@ -422,6 +438,8 @@ export function HousingDashboard() {
         selectedMetric={selectedMetric}
         onMetricChange={handleMetricChange}
         onSearch={handleSearch}
+        metros={metroIndex?.names}
+        onMetroSearch={handleMetroSearch}
         // Sheet open still needs metric + search; only export owns the screen.
         hideMobileControls={isMobile && isExportMode}
       >
@@ -495,6 +513,7 @@ export function HousingDashboard() {
               selectedZip={sidebarOpen ? selectedZip?.zipCode : undefined}
               searchZip={searchZip}
               searchTrigger={searchTrigger}
+              metroHighlight={metroHighlight}
               store={store}
               isLoading={isLoading}
               loadingProgress={progress}

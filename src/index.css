@@ -120,20 +120,10 @@ html:has(body.app-scroll-locked) {
   background: white;
 }
 
-/* Mobile optimizations */
-.map-reset-control {
-  top: 101px;
-  width: 29px;
-  height: 29px;
-}
-
 @media (max-width: 768px) {
-  .map-reset-control {
-    top: 134px;
-    width: 40px;
-    height: 40px;
-  }
-  .maplibregl-ctrl-group button {
+  /* Two classes so this outranks maplibre-gl.css, which loads later with the same one-class
+     selector and silently kept every phone button at 29px. Covers zoom, compass and reset alike. */
+  .maplibregl-ctrl.maplibregl-ctrl-group button {
     width: 40px;
     height: 40px;
   }

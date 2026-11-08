@@ -415,6 +415,13 @@ Search moves the camera only after a valid lookup; it does not own the outline. 
 details clears the selection and URL ZIP. External URL navigation restores metric, ZIP and camera, cancelling stale viewport writes. Mobile details are nonmodal so core map controls remain usable; export stays modal. Delayed viewport writes merge with the latest URL
 so they cannot restore a closed or previous selection.
 
+Metro search outlines only the metro's outer edge with no extra data: every member ZIP
+strokes its own edge (`zips-metro-halo`/`zips-metro-line`), then `zips-metro-mask` repaints
+those ZIPs' own fill over it, so interior edges are covered from both sides. The mask must
+keep the fill's paint expression and `fill-antialias: false`. The map reset button is
+portaled into the NavigationControl's own group as its fourth button, not a positioned
+sibling, so it keeps the zoom buttons' size and divider on every screen.
+
 **Hooks.** `useDataWorker` (worker lifecycle), `useUrlState` (synchronizes metric, selected ZIP and camera with the
 query string), `use-mobile` (768 px breakpoint), `use-toast`.
 

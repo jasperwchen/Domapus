@@ -56,7 +56,10 @@ const mocks = vi.hoisted(() => {
       (this.handlers[event] || []).forEach((cb) => cb(payload));
     }
 
-    addControl() {}
+    addControl(control: { onAdd?: (map: unknown) => HTMLElement }) {
+      const el = control.onAdd?.(this);
+      if (el) document.body.appendChild(el);
+    }
     getCenter() {
       return { lat: 0, lng: 0 };
     }
@@ -146,7 +149,7 @@ vi.mock("maplibre-gl", () => {
     Map: mocks.MockMap,
     Popup: mocks.MockPopup,
     AttributionControl: class {},
-    NavigationControl: class {},
+    NavigationControl: class { onAdd() { return document.createElement("div"); } onRemove() {} },
     setWorkerUrl: () => undefined,
     addProtocol: () => undefined,
     __getLastMap: () => mocks.MockMap.lastInstance,
@@ -218,6 +221,28 @@ describe("MapLibreMap", () => {
     rerender(<MapLibreMap {...props} searchTrigger={2} />);
     expect(map.flyTo).toHaveBeenCalledTimes(2);
     expect(map.setFeatureState).toHaveBeenCalledTimes(1);
+  });
+
+  it("outlines a searched metro through feature-state, fits it, and clears it", async () => {
+    const bounds: [[number, number], [number, number]] = [[-106, 38], [-103, 40]];
+    const { rerender } = render(
+      <MapLibreMap {...selectionProps} metroHighlight={{ name: "Denver, CO", zips: ["80202", "80203"], bounds }} />,
+    );
+    await act(async () => { vi.runAllTimers(); });
+    const map = mocks.MockMap.lastInstance!;
+    expect(map.setFeatureState.mock.calls).toEqual([
+      [expect.objectContaining({ id: "80202" }), { metro: true }],
+      [expect.objectContaining({ id: "80203" }), { metro: true }],
+    ]);
+    expect(map.fitBounds).toHaveBeenLastCalledWith(bounds, expect.objectContaining({ duration: 1500 }));
+    expect(map.layers.get("zips-metro-mask")?.paint?.["fill-color"]).toEqual(map.layers.get("zips-fill")?.paint?.["fill-color"]);
+    map.setFeatureState.mockClear();
+    rerender(<MapLibreMap {...selectionProps} metroHighlight={null} />);
+    expect(map.setFeatureState.mock.calls).toEqual([
+      [expect.objectContaining({ id: "80202" }), { metro: false }],
+      [expect.objectContaining({ id: "80203" }), { metro: false }],
+    ]);
+    expect(map.paintWrites).not.toHaveBeenCalled();
   });
 
   it("restores navigated views without rebuilding the map", async () => {

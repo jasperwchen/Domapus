@@ -5,7 +5,7 @@ import { SearchBox } from "../SearchBox";
 describe("SearchBox", () => {
   it("selects the existing ZIP on focus and on a click while already focused", () => {
     render(<SearchBox onSearch={vi.fn()} />);
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole("combobox") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "10001" } });
     fireEvent.focus(input);
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 5]);
@@ -22,9 +22,27 @@ describe("SearchBox", () => {
     const submit = screen.getByRole("button", { name: "Search" });
     fireEvent.click(submit);
     expect(onSearch).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "501" } });
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "501" } });
     fireEvent.click(submit);
     fireEvent.click(submit);
     expect(onSearch.mock.calls).toEqual([["00501", 1], ["00501", 2]]);
+  });
+
+  it("suggests metros for text, picks one, and clears it when emptied", () => {
+    const onSearch = vi.fn();
+    const onMetroSearch = vi.fn();
+    render(
+      <SearchBox onSearch={onSearch} onMetroSearch={onMetroSearch}
+        metros={["New York, NY", "Denver, CO", "Dover, DE"]} />,
+    );
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "de" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Denver, CO", "Dover, DE"]);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.submit(input.closest("form")!);
+    expect(onMetroSearch).toHaveBeenLastCalledWith("Dover, DE");
+    expect(onSearch).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "" } });
+    expect(onMetroSearch).toHaveBeenLastCalledWith(null);
   });
 });

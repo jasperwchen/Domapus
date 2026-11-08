@@ -302,7 +302,7 @@ so verify a Deploy job actually appears in the run graph rather than that the YA
 ## Scope decisions
 
 - AUD-06 (mobile empty-class legend) and AUD-08 (export basemap credits) were rejected by the user on 2026-11-01. Do not reopen them without a new request.
-- Main-map search is ZIP-only, and tapping a ZIP selects it without a hover preview. City/metro search, touch previews, county layers and Realtor.com are product additions, not outstanding bug fixes.
+- Main-map search takes a ZIP or a metro name (added 2026-11-08 on request). Tapping a ZIP selects it without a hover preview. City search, touch previews, county layers and Realtor.com are product additions, not outstanding bug fixes.
 
 ## Docs
 
@@ -403,6 +403,13 @@ transposes it into typed arrays, and transfers them to `src/lib/zip-table.ts`.
 GL + PMTiles), `Legend`, `MetricSelector`, `SearchBox`, `Sidebar` (the detail panel),
 `ZipComparison`, `TopBar`, `MobileBottomSheet`, and the export pair
 `export/ExportSidebar.tsx` + `export/PrintStage.tsx` (PNG via canvas, PDF via jsPDF).
+
+Metro search outlines only the metro's outer edge with no extra data: every member ZIP
+strokes its own edge (`zips-metro-halo`/`zips-metro-line`), then `zips-metro-mask` repaints
+those ZIPs' own fill over it, so interior edges are covered from both sides. The mask must
+keep the fill's paint expression and `fill-antialias: false`. The map reset button is
+portaled into the NavigationControl's own group as its fourth button, not a positioned
+sibling, so it keeps the zoom buttons' size and divider on every screen.
 
 **Hooks.** `useDataWorker` (worker lifecycle), `useUrlState` (synchronizes metric, selected ZIP and camera with the
 query string), `use-mobile` (768 px breakpoint), `use-toast`.
