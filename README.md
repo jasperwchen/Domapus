@@ -41,6 +41,56 @@
 
 ---
 
+## How it works
+
+A Python pipeline turns two monthly source files into a few static files. The site reads those files directly; there is no server. The map's colours come from a paint table, one byte per ZIP, so the map can colour itself before the full dataset arrives.
+
+```mermaid
+flowchart LR
+  subgraph SRC["Sources"]
+    R["Redfin market tracker<br/>1.34 GB, 4.99 M rows"]
+    Z["Zillow ZHVI<br/>124 MB, 321 months"]
+  end
+  subgraph PIPE["Monthly pipeline: Python on GitHub Actions"]
+    direction LR
+    P["Probe<br/>0.2 s, stops if nothing changed"] --> I["Ingest<br/>Parquet panels"]
+    I --> A["Assemble and validate<br/>33,771 ZIPs x 49 columns"]
+    A --> G{"Change gate"}
+    G --> S["Statistics<br/>noise, forecast, spatial outliers"]
+    S --> C["Classify and paint<br/>14 classes, 8 metrics"]
+  end
+  subgraph PUB["Published files"]
+    PT["Paint tables<br/>1 byte per ZIP"]
+    SN["Snapshot<br/>2.7 MB compressed"]
+    H["History<br/>about 6,100 buckets"]
+  end
+  subgraph WEB["Browser"]
+    M["Map colours"]
+    D["Hover, search, details, export"]
+    SP["Price history chart"]
+  end
+  R --> P
+  Z --> P
+  C --> PT --> M
+  C --> SN --> D
+  C --> H --> SP
+```
+
+| Figure | Value |
+|---|---|
+| ZIP codes published | 33,771, 49 columns each |
+| Source read each month | 1.34 GB Redfin (4,990,738 rows, 175 months), 124 MB Zillow (321 months) |
+| Data downloaded before the map shows colour | 33 KB (was 2.67 MB) |
+| Switching metric | 22 ms (was 3,375 ms) |
+| Page weight | 5.6 MB (first version: 221 MB) |
+| Browser memory | 29 MB (first version: 649 MB) |
+| ZIPs with a 12-month forecast | 26,258 |
+| Automated tests | 100 pipeline, 219 frontend |
+
+Data figures are from the 2026-09 release. Browser figures are median cold loads on throttled slow 4G with a 4x CPU slowdown at 1440x900 (5 runs each, 3 for the first version); the runs are checked in under `bench/results/`.
+
+---
+
 ## Quick Start
 
 1. **Clone the repository**
@@ -57,8 +107,6 @@
    ```
 
 3. **Restore history and enable repository hooks**
-
-   Install GitHub CLI (`gh`) and authenticate with `gh auth login`, then run:
 
    ```bash
    npm run data:sync

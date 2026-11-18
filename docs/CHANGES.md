@@ -3985,6 +3985,46 @@ and San Jose at 375 px: outer edge only, no interior seams, camera fits the metr
 Verification: 215 frontend tests pass, `tsc -b` clean, lint has no new warnings.
 Not deployed.
 
+## 2026-11-14: usage events, embed mode, landing pages, README numbers, write-up drafts
+
+**Usage events.** The site already loaded Tag Manager but sent only `app_error`, so there was
+no way to tell which metrics, searches or entry points people use. `track` pushes named
+events to `dataLayer` and clears every key it does not set: the data layer keeps a key's last
+value, so without the clear a `zip_select` after a `metric_change` reported the earlier
+metric. Checked in the dev server by reading `window.dataLayer` after each interaction:
+`map_first_colour`, ZIP and metro `search` (hit and miss), `zip_select` with method `search`,
+`auto_scale_toggle`, `metric_change`, and one `embed_view` per embedded frame. Forwarding to
+GA4 is a Tag Manager change, listed in TODOS 2a.
+
+**Embed mode.** `?embed=1` strips the chrome so other sites can iframe the map, with a credit
+chip that links back. At phone-width frames the legend sits top-left, so the chip moves to the
+bottom; the first try at `bottom-3` covered the OSM/CARTO attribution, which the licence
+requires, so it sits above it (chip bottom 360 px, attribution top 366 px in a 600x400 frame).
+Checked at 600x400, 1000x520 and 375x600 iframes, and the top bar with the extra button at
+800 px wide. `isEmbed`/`embedCode` moved to `src/lib/embed.ts` so the component file only
+exports components.
+
+**Landing pages.** Search Console showed near-zero impressions because the site had two
+indexable pages. `scripts/build-pages.mjs` writes one static page per metro (568, those with at
+least 10 ZIPs that have data, out of 869) and per state (51), plus a generated sitemap, from
+the Vite build so the base path matches PR previews. Decisions: no metro-wide median (a median
+of ZIP medians is not the metro's median); ranked lists only among rankable ZIPs; no per-ZIP
+pages (Zillow and Redfin own those searches); real files rather than routes, so no 404 bounce.
+Run as a Vite plugin hook rather than a separate step in `npm run build`, because the preview
+workflow calls `vite build` directly with its own `--base`. Adds about 9 MB to `dist/`
+(218 MB total against the 300 MB guard). Checked: Denver page at desktop and 375 px (no
+horizontal scroll, embedded map loads), Georgia state page.
+
+**README.** "How it works" section with the pipeline diagram and measured figures, re-read
+from `manifest.json` and `bench/results/`. The first-version bench ran 3 times, not 5, and the
+caption says so.
+
+**Write-ups.** Four drafts in `docs/posts/`: the paint table, the 14-class count, the publish
+digest, and the Redfin column rename.
+
+Verification: 219 frontend tests (4 new) and 6 node tests pass, `tsc -b` clean, lint has no new
+warnings, production build succeeds. Not deployed.
+
 ## 2026-11-18: Redfin brought back IS SEASONALLY ADJUSTED
 
 The scheduled 2026-11 run stopped at ingest: `IS SEASONALLY ADJUSTED` was back in the

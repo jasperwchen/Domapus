@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { readFileSync } from "fs";
 import path from "path";
 import { stagePublic } from "./scripts/stage-public.mjs";
+import { writePages } from "./scripts/build-pages.mjs";
 
 // Inline hashed paint filenames so paint and manifest requests start together.
 function paintMap(): string {
@@ -22,6 +23,8 @@ function paintMap(): string {
 
 export default defineConfig(({ mode, command }) => {
   const base = mode === "production" ? "/Domapus/" : "/";
+  // The CLI's --base (PR previews) overrides `base`; the landing pages must use the final one.
+  let resolvedBase = base;
 
   // Derived from `base` rather than set in a .env file so the path is not duplicated.
   process.env.VITE_DATA_BASE = process.env.VITE_DATA_BASE || `${base}data/`;
@@ -52,7 +55,9 @@ export default defineConfig(({ mode, command }) => {
       name: "stage-public",
       async writeBundle(options) {
         await stagePublic(options.dir ?? "dist", /^https?:/.test(process.env.VITE_DATA_BASE ?? ""));
+        console.log(`[vite] wrote ${await writePages(options.dir ?? "dist", resolvedBase)} landing pages`);
       },
+      configResolved(config) { resolvedBase = config.base; },
       configureServer(server) {
         server.middlewares.use((req, _res, next) => {
           const match = req.url?.match(/^\/data\/releases\/([a-f0-9]{64})\/(.*)$/);

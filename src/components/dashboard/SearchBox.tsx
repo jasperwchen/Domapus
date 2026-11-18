@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { matchMetros } from "@/lib/metros";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { track } from "@/lib/analytics";
 
 interface SearchBoxProps {
   onSearch: (zipCode: string, trigger: number) => void;
@@ -59,14 +60,18 @@ export function SearchBox({ onSearch, metros = [], onMetroSearch, dropUp = false
     if (!value) return;
     if (!isZip) {
       if (suggestions.length > 0) pickMetro(suggestions[Math.min(active, suggestions.length - 1)]);
-      else toast({ title: `No metro matches "${value}"`, description: "Try a city name, or a 5-digit ZIP code." });
+      else {
+        toast({ title: `No metro matches "${value}"`, description: "Try a city name, or a 5-digit ZIP code." });
+        // The typed text says what search should learn next. Anything with a digit may be a street address, so it is not sent.
+        track("search", { search_type: "metro", found: false, search_term: /\d/.test(value) ? undefined : value.slice(0, 40) });
+      }
       return;
     }
     onMetroSearch?.(null);
     // Increment trigger to force flyTo even if same ZIP
     const newTrigger = searchTrigger + 1;
     setSearchTrigger(newTrigger);
-    // "501" means 00501: ZIPs are strings, and New England's lose their zeros when typed.
+    // "501" means 00501: ZIPs are strings to prevent losing 0s.
     onSearch(value.padStart(5, "0"), newTrigger);
   }, [searchValue, isZip, suggestions, active, pickMetro, onMetroSearch, searchTrigger, onSearch]);
 

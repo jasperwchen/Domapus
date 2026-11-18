@@ -176,7 +176,7 @@ export default function Methodology() {
     const prevTitle = document.title;
     const prevHref = canonical?.href;
     document.title = "Methodology | Domapus";
-    if (canonical) canonical.href = "https://jasperwchen.github.io/Domapus/methodology";
+    if (canonical) canonical.href = "https://jasperwchen.github.io/Domapus/methodology/";
     return () => {
       document.title = prevTitle;
       if (canonical && prevHref) canonical.href = prevHref;

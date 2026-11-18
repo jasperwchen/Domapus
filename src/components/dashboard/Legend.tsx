@@ -300,7 +300,7 @@ export function Legend({
         {reliability && (
           <p className="text-[11px] leading-snug text-muted-foreground pt-0.5">
             <Link
-              to={`/methodology${search}`}
+              to={`/methodology/${search}`}
               className="underline underline-offset-2 hover:text-foreground"
             >
               Methodology

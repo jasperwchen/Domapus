@@ -86,7 +86,7 @@ export function TopBarShell({
               <MapIcon className="h-4 w-4" />
             </IconLink>
           ) : (
-            <IconLink to={`/methodology${search}`} label="Methodology">
+            <IconLink to={`/methodology/${search}`} label="Methodology">
               <BookOpen className="h-4 w-4" />
             </IconLink>
           )}

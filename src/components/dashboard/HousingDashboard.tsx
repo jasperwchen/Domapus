@@ -29,6 +29,9 @@ import { MobileBottomSheet } from "./MobileBottomSheet";
 import { beginMetricSwitch } from "@/lib/perf";
 import { buildMetroIndex, metroBounds } from "@/lib/metros";
 import type { MetroHighlight } from "./MapLibreMap";
+import { track, trackOnce } from "@/lib/analytics";
+import { EmbedButton, EmbedCredit } from "./Embed";
+import { isEmbed } from "@/lib/embed";
 
 function readUrlParams(search: string) {
   const params = new URLSearchParams(search);
@@ -46,6 +49,7 @@ export function HousingDashboard() {
   const isMobile = useIsMobile();
   const { setUrlState, navigation } = useUrlState();
   const [initialUrlState] = useState(() => readUrlParams(navigation.search));
+  const [embed] = useState(() => isEmbed(navigation.search));
   const navigationState = useMemo(() => readUrlParams(navigation.search), [navigation]);
   const initialNavigation = useRef(navigation);
   const navigationView = useMemo(() => navigation === initialNavigation.current
@@ -83,6 +87,20 @@ export function HousingDashboard() {
   const hasUserInteractedRef = useRef(false);
 
   const { processData, isLoading, progress } = useDataWorker();
+
+  useEffect(() => {
+    if (embed) {
+      let host: string | undefined;
+      try { host = document.referrer ? new URL(document.referrer).hostname : undefined; } catch { /* opaque referrer */ }
+      trackOnce("embed_view", { metric: initialUrlState.metric ?? "zhvi", embed_host: host });
+      return;
+    }
+    const { zip, metric, lat, zoom } = initialUrlState;
+    const hasView = lat !== undefined || zoom !== undefined;
+    if (zip || metric || hasView) {
+      trackOnce("deep_link_open", { metric: metric ?? "zhvi", has_zip: !!zip, has_view: hasView });
+    }
+  }, [embed, initialUrlState]);
 
   // Only external navigation restores state; our own pan writes must not move the camera.
   useEffect(() => {
@@ -211,13 +229,16 @@ export function HousingDashboard() {
   // A map click in compare mode means "compare against this one", not "switch to
   // this one". The URL keeps naming the primary ZIP: it is what the panel is
   // about, and a shared link should reopen on it.
-  const handleZipSelect = useCallback((zip: ZipData) => {
+  const handleZipSelect = useCallback((zip: ZipData, method: "map" | "search" = "map") => {
     initialLoadRef.current = true;
     hasUserInteractedRef.current = true;
     setSidebarOpen(true);
     if (mode === "compare" && zip.zipCode !== selectedZip?.zipCode) {
       setCompareZip(zip);
       return;
+    }
+    if (zip.zipCode !== selectedZip?.zipCode) {
+      track("zip_select", { state: zip.state ?? undefined, metro: zip.metro ?? undefined, method });
     }
     setSelectedZip(zip);
     setSheetZip(zip);
@@ -235,6 +256,7 @@ export function HousingDashboard() {
       return;
     }
     hasUserInteractedRef.current = true;
+    track("search", { search_type: "metro", search_term: metro, found: true });
     setMetroHighlight({ name: metro, zips, bounds: metroBounds(store, zips) });
   }, [store, metroIndex]);
 
@@ -243,10 +265,11 @@ export function HousingDashboard() {
 
     // Search selects like a map click, obeying the same compare-mode rule.
     const row = store?.get(zip);
+    if (store) track("search", { search_type: "zip", found: !!row });
     if (row) {
       setSearchZip(row.zipCode);
       setSearchTrigger(prev => prev + 1);
-      handleZipSelect(row);
+      handleZipSelect(row, "search");
       return;
     }
 
@@ -287,14 +310,23 @@ export function HousingDashboard() {
   const handleModeChange = useCallback((next: "detail" | "compare") => {
     setMode(next);
     if (next === "detail") setCompareZip(null);
+    else track("compare_open");
   }, []);
 
   const handleMetricChange = useCallback((metric: MetricType) => {
-    if (metric !== selectedMetric) beginMetricSwitch(metric);
+    if (metric !== selectedMetric) {
+      beginMetricSwitch(metric);
+      track("metric_change", { metric });
+    }
     setSelectedMetric(metric);
     hasUserInteractedRef.current = true;
     setUrlState({ metric, zip: selectedZip?.zipCode });
   }, [selectedZip, selectedMetric, setUrlState]);
+
+  const handleAutoScaleChange = useCallback((enabled: boolean) => {
+    setAutoScale(enabled);
+    track("auto_scale_toggle", { enabled });
+  }, []);
 
   const autoScaleRef = useRef(autoScale);
   useEffect(() => { autoScaleRef.current = autoScale; }, [autoScale]);
@@ -306,6 +338,7 @@ export function HousingDashboard() {
       initialLoadRef.current = true;
       const row = initialZip && /^\d{1,5}$/.test(initialZip) ? store.get(initialZip) : null;
       if (row) {
+        track("zip_select", { state: row.state ?? undefined, metro: row.metro ?? undefined, method: "link" });
         setSelectedZip(row);
         setSheetZip(row);
         setSidebarOpen(true);
@@ -431,7 +464,7 @@ export function HousingDashboard() {
 
       {/* Sponsor banner, off for now and kept on purpose: do not remove. See SponsorBanner.tsx. */}
       {/* {showSponsorBanner && <SponsorBanner onClose={() => setShowSponsorBanner(false)} />} */}
-      <TopBar
+      {!embed && <TopBar
         dates={{ last_updated_utc: manifest?.generated_utc ?? null,
           period_end: manifest?.redfin.period_end ?? null,
           zhvi_period_end: manifest?.zhvi.period_end ?? null }}
@@ -451,8 +484,9 @@ export function HousingDashboard() {
           classing={manifest?.classing?.[selectedMetric] ?? null}
           onExportModeChange={setIsExportMode}
         />
-      </TopBar>
-      {manifest && (
+        {!isMobile && <EmbedButton metric={selectedMetric} />}
+      </TopBar>}
+      {manifest && !embed && (
         <details className="xl:hidden bg-dashboard-panel px-3 py-1 text-xs border-b">
           <summary className="cursor-pointer">
             {selectedMetric.startsWith("zhvi") ? "Zillow" : "Redfin"}: {formatPeriod(
@@ -526,13 +560,20 @@ export function HousingDashboard() {
               navigationView={navigationView}
             />
           </div>
+          {embed && (
+            <EmbedCredit
+              label={PAINTED_METRICS[selectedMetric]?.label ?? selectedMetric}
+              source={selectedMetric.startsWith("zhvi") ? "Zillow" : "Redfin"}
+              bottom={isMobile}
+            />
+          )}
           {!isExportMode && (
             <div className={`absolute ${isMobile ? 'top-4 left-4' : 'bottom-4 right-4'} ${isMobile ? 'w-auto' : 'w-64'} z-[10] pointer-events-auto`}>
               <Legend
                 selectedMetric={selectedMetric}
                 breaks={classSource?.breaks ?? null}
                 autoScale={autoScale}
-                onAutoScaleChange={setAutoScale}
+                onAutoScaleChange={handleAutoScaleChange}
                 showLisa={showLisa}
                 onShowLisaChange={store ? setShowLisa : undefined}
                 reliability={manifest ? {
