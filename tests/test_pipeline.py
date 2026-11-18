@@ -110,6 +110,30 @@ def test_zip_without_leading_zero_is_rejected(tmp_path):
         redfin.ingest(bad, tmp_path / "p.parquet")
 
 
+def _with_sa_column(tmp_path, value_of_row):
+    header, *rows = SAMPLE.read_text(encoding="utf-8").splitlines()
+    out = tmp_path / "sa.csv"
+    out.write_text("\n".join([header + ",IS SEASONALLY ADJUSTED",
+                              *(f"{r},{value_of_row(i)}" for i, r in enumerate(rows))]),
+                   encoding="utf-8")
+    return out
+
+
+def test_seasonally_adjusted_column_holding_false_is_accepted(tmp_path):
+    """The 2026-11 file brought the column back with one value; the panel must not change."""
+    import pyarrow.parquet as pq
+    report, _ = redfin.ingest(_with_sa_column(tmp_path, lambda i: "false"), tmp_path / "p.parquet")
+    plain, _ = redfin.ingest(SAMPLE, tmp_path / "q.parquet")
+    assert report["rows"] == plain["rows"]
+    assert pq.read_table(tmp_path / "p.parquet").equals(pq.read_table(tmp_path / "q.parquet"))
+
+
+def test_seasonally_adjusted_true_row_is_rejected(tmp_path):
+    csv = _with_sa_column(tmp_path, lambda i: "true" if i == 3 else "false")
+    with pytest.raises(PipelineError, match="IS SEASONALLY ADJUSTED"):
+        redfin.ingest(csv, tmp_path / "p.parquet")
+
+
 def test_property_type_column_reappearing_is_rejected():
     with pytest.raises(PipelineError, match="REAPPEARED"):
         assert_columns_absent(["PERIOD END", "PROPERTY TYPE"], "test")
@@ -235,8 +259,14 @@ def test_both_header_generations_bind_to_the_same_keys():
 
     assert old.yoy["median_dom"] == "MEDIAN DAYS ON MARKET YOY (%)"
     assert new.yoy["median_dom"] == "MEDIAN DAYS ON MARKET YOY (DAYS)"
-    assert not new.aliased, "the newest spelling must be listed first in YOY_HEADERS"
-    assert old.aliased == {"median_dom_yoy": "MEDIAN DAYS ON MARKET YOY (%)"}
+    # 2026-11 renamed MONTHS OF SUPPLY YOY to "(MONTHS)", so the 2026-08 file is one behind.
+    assert new.aliased == {"months_of_supply_yoy": "MONTHS OF SUPPLY YOY (%)"}
+    assert old.aliased == {"median_dom_yoy": "MEDIAN DAYS ON MARKET YOY (%)",
+                           "months_of_supply_yoy": "MONTHS OF SUPPLY YOY (%)"}
+    current = [c.replace("MONTHS OF SUPPLY YOY (%)", "MONTHS OF SUPPLY YOY (MONTHS)")
+               for c in _header_of(SAMPLE_2026_08)]
+    assert not resolve(current, PipelineError).aliased, \
+        "the newest spelling must be listed first in YOY_HEADERS"
     for b in (old, new):
         assert set(b.level) == set(METRICS)
         assert not b.missing_yoy

@@ -230,7 +230,7 @@ difference over `SCALE_CANDIDATES`, requires a dominant winner, and records the 
 `manifest.changes.reconciliation.feed_scale`. Redfin shipped `MEDIAN DAYS ON MARKET YOY` as
 `(now - before) * 100` under a "(%)" header through the 2026-07 release and as a plain
 whole-day difference under "(DAYS)" from 2026-08, rewriting the whole column's history;
-`MONTHS OF SUPPLY YOY` is still x100 under "(%)". A declared divisor lived in `units.coerce`,
+`MONTHS OF SUPPLY YOY` made the same move, "(%)" x100 to "(MONTHS)" x1, in 2026-11. A declared divisor lived in `units.coerce`,
 was dead in the production path because `recompute` overwrote its output, and so was wrong
 about `median_dom_yoy` for a release with no test or contract able to see it. `coerce` now
 corrects no scales at all. `_reconcile` covers those two as well as the four prices, which is

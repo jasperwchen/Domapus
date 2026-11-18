@@ -38,8 +38,15 @@ CONSTANTS = {
     "REGION TYPE": {"Zip"},
 }
 
-# Their return means a breakout dimension is back and the key above is no longer unique.
-CONSTANTS_ABSENT = ["PROPERTY TYPE", "IS SEASONALLY ADJUSTED"]
+# Constant when present. IS SEASONALLY ADJUSTED came back in the 2026-11 file holding only
+# "false" (88,484 rows sampled across all 2.04 GB, no repeated ZIP-month); a "true" row
+# would be a second series under the same key.
+OPTIONAL_CONSTANTS = {
+    "IS SEASONALLY ADJUSTED": {"false"},
+}
+
+# Its return means a breakout dimension is back and the key above is no longer unique.
+CONSTANTS_ABSENT = ["PROPERTY TYPE"]
 
 ZIP_RE = re.compile(r"^\d{5}$")
 
@@ -87,7 +94,8 @@ def assert_unique_key(tbl: pa.Table, keys, name: str, sample: int = 5) -> None:
 
 def assert_constants(tbl: pa.Table, name: str) -> None:
     """Every CONSTANTS column holds exactly one of its allowed values."""
-    for col, allowed in CONSTANTS.items():
+    optional = {c: a for c, a in OPTIONAL_CONSTANTS.items() if c in tbl.column_names}
+    for col, allowed in (CONSTANTS | optional).items():
         if col not in tbl.column_names:
             raise PipelineError(f"{name}: constant column {col!r} is missing — schema drift")
         seen = set(pc.unique(tbl[col]).to_pylist())

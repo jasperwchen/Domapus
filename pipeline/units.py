@@ -26,7 +26,7 @@ LEVEL_HEADERS = {
     "off_market_in_two_weeks": ("PERCENT OFF MARKET IN TWO WEEKS (%)",),
 }
 
-# `median_dom`'s two spellings are the same quantity on two different scales, which is why
+# `median_dom`'s and `months_of_supply`'s two spellings are the same quantity on two different scales, which is why
 # `changes` derives the scale from the data instead of trusting the header text.
 YOY_HEADERS = {
     "homes_sold": ("HOMES SOLD YOY (%)",),
@@ -41,7 +41,7 @@ YOY_HEADERS = {
     "median_list_price": ("MEDIAN NEW LISTING PRICE YOY (%)",),
     "median_list_ppsf": ("MEDIAN NEW LISTING PRICE PER SQ.FT. YOY (%)",),
     "median_ppsf": ("MEDIAN SALE PRICE PER SQ.FT. YOY (%)",),
-    "months_of_supply": ("MONTHS OF SUPPLY YOY (%)",),
+    "months_of_supply": ("MONTHS OF SUPPLY YOY (MONTHS)", "MONTHS OF SUPPLY YOY (%)"),
     "off_market_in_two_weeks": ("PERCENT OFF MARKET IN TWO WEEKS YOY (PPTS)",),
 }
 
