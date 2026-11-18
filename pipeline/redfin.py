@@ -14,6 +14,7 @@ import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 
 from .contracts import (
+    OPTIONAL_CONSTANTS,
     GRAINS,
     PipelineError,
     RANGES,
@@ -159,9 +160,10 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
             len(binding.missing_yoy), binding.missing_yoy,
         )
 
+    optional = [c for c in OPTIONAL_CONSTANTS if c in header]
     convert = pacsv.ConvertOptions(
-        include_columns=binding.read_columns,
-        column_types=FORCED_TYPES,
+        include_columns=binding.read_columns + optional,
+        column_types=FORCED_TYPES | {c: pa.string() for c in optional},
         null_values=["NA", ""],
         strings_can_be_null=True,
     )
@@ -186,6 +188,7 @@ def ingest(csv_path: Path, panel_path: Path) -> tuple[dict, list[dict]]:
                     continue
                 tbl = pa.Table.from_batches([batch])
                 assert_constants(tbl, "redfin_raw")
+                tbl = tbl.drop_columns(optional)
                 last_updated.update(pc.unique(tbl["LAST UPDATED"]).to_pylist())
                 # Verbatim for the UI label; the real window is 89-92 days.
                 frequency.update(pc.unique(tbl["FREQUENCY"]).to_pylist())

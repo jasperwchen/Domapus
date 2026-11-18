@@ -3984,3 +3984,21 @@ and San Jose at 375 px: outer edge only, no interior seams, camera fits the metr
 
 Verification: 215 frontend tests pass, `tsc -b` clean, lint has no new warnings.
 Not deployed.
+
+## 2026-11-18: Redfin brought back IS SEASONALLY ADJUSTED
+
+The scheduled 2026-11 run stopped at ingest: `IS SEASONALLY ADJUSTED` was back in the
+header, and its absence was a contract because a second value would mean two rows per
+(ZIP, period). The file also grew from 1.33 GB to 2.04 GB, which looked like exactly that.
+It was not. The header went from 50 to 87 columns (new share-at-list, age-of-inventory,
+over-60-days and off-market-in-one-week families), and 88,484 rows sampled from 120 ranges
+spread over the whole file, 2012 to 2026, held only `"false"` with no repeated ZIP-period.
+
+The column moved from `CONSTANTS_ABSENT` to `OPTIONAL_CONSTANTS`: read when present,
+required to hold only `"false"`, dropped before the panel. A `"true"` row stops the run at
+ingest with the column named, ahead of the generic uniqueness check after the panel is
+written. `PROPERTY TYPE` stays forbidden.
+
+The same release renamed `MONTHS OF SUPPLY YOY (%)` to `(MONTHS)` and changed it from
+x100 to a plain difference, as days on market did in 2026-08. The new spelling is listed
+first; `_derive_scale` measured `months_of_supply=x1` on the full file.
