@@ -4,14 +4,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import NotFound from "./pages/NotFound";
 import { trackError } from './lib/analytics';
+import { routerBasename } from './lib/router-basename';
 
 // Lazy: the methodology page is a reference document, not part of the map's
 // critical path, and it should not sit in the bundle every visitor downloads.
 const Methodology = lazy(() => import("./pages/Methodology"));
 const Index = lazy(() => import("./pages/Index"));
 
-// "/Domapus" in production, "/Domapus/pr-preview/pr-N" in a preview, "/" in dev.
-const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+const basename = routerBasename(import.meta.env.BASE_URL);
 
 const App = () => {
   useEffect(() => {

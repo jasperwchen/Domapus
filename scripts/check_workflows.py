@@ -34,11 +34,28 @@ nothing in requirements.txt pulled PyYAML in. It is pinned in requirements-dev.t
 """
 
 import os
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
+
+# Text a caller controls, expanded straight into a shell script. A reason
+# containing $(...) once executed through `--override-reason ${{ toJSON(...) }}`.
+# Pass these through `env:` and quote the variable instead.
+UNTRUSTED_IN_RUN = re.compile(r"\$\{\{[^}]*\b(inputs|github\.event)\.")
+
+
+def untrusted_expansions(doc: dict) -> list[str]:
+    found = []
+    for job_name, job in (doc.get("jobs") or {}).items():
+        for i, step in enumerate((job or {}).get("steps") or []):
+            run = step.get("run") if isinstance(step, dict) else None
+            if isinstance(run, str) and UNTRUSTED_IN_RUN.search(run):
+                label = step.get("name") or f"step {i + 1}"
+                found.append(f"job '{job_name}', {label}")
+    return found
 
 
 def main() -> int:
@@ -75,9 +92,15 @@ def main() -> int:
             continue
         if not isinstance(doc, dict) or "jobs" not in doc:
             failures.append(f"{path.relative_to(ROOT)}: parsed, but has no 'jobs' mapping")
+            continue
+        for where in untrusted_expansions(doc):
+            failures.append(
+                f"{path.relative_to(ROOT)}: {where} expands inputs.* or github.event.* "
+                "inside run:. Pass it through env: and quote the variable."
+            )
 
     if failures:
-        print("Workflow YAML is invalid:", file=sys.stderr)
+        print("Workflow check failed:", file=sys.stderr)
         for f in failures:
             print(f"  {f}", file=sys.stderr)
         print(

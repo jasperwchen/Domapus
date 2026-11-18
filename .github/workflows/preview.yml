@@ -35,8 +35,9 @@ jobs:
           # Read production data instead of publishing a copy. Previews each carried
           # their own 92 MB tileset, which put gh-pages at 800 MiB of a 1 GiB limit.
           VITE_DATA_BASE: https://jasperwchen.github.io/Domapus/data/
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          npx vite build --base /Domapus/pr-preview/pr-${{ github.event.number }}/
+          npx vite build --base "/Domapus/pr-preview/pr-${PR_NUMBER}/"
           node scripts/prune-dist.mjs dist --preview
           # Data URLs point at production, so the local copy is dead weight.
           rm -rf dist/data
@@ -57,7 +58,7 @@ jobs:
           fi
 
       - name: Deploy / clean up preview
-        uses: rossjrw/pr-preview-action@v1
+        uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976 # v1.8.2
         with:
           source-dir: dist
           preview-branch: gh-pages

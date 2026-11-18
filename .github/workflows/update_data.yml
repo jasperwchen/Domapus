@@ -6,7 +6,11 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 0 18 * *' # Runs at 00:00 UTC on the 18th of every month
+    # Daily from the 18th to the 28th. S0 exits in ~0.2 s when nothing moved, so the
+    # extra nights are free, and a fix pushed after a failed run on the 18th is
+    # picked up the next night without anyone remembering to dispatch. The 2026-09
+    # and 2026-10 runs both failed on the 18th and waited a week for a manual one.
+    - cron: '0 0 18-28 * *'
   workflow_dispatch:
     inputs:
       override_diff_gate:
