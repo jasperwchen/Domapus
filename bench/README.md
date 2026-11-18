@@ -107,6 +107,10 @@ not present in a clone; `docs/CHANGES.md` carries the decisions that came out of
   On 2026-09-24, same build and conditions: `pan.z4` dropped 60 frames in software and 1 on
   an integrated AMD Radeon. The two are not comparable, and `compare.mjs` says so.
 
+- After a Playwright version bump the headless shell is missing until reinstalled, and
+  `run.mjs` stops with "Executable doesn't exist ... chrome-headless-shell". Run
+  `npx playwright install chromium-headless-shell`, or pass `--channel chrome`.
+
 - A local server is not GitHub Pages: no Fastly CDN, no real RTT variance. Fine
   for **relative** comparison when the harness is identical on both sides; the
   headline before/after should come from prod vs a PR preview, which share a CDN.

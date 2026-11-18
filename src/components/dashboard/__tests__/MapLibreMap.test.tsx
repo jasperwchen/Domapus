@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
     static autoLoad = true;
     handlers: Record<string, Array<(payload?: unknown) => void>> = {};
     sources = new Map<string, { setData: ReturnType<typeof vi.fn> }>();
-    layers = new Map<string, { id: string; paint?: Record<string, unknown> }>();
+    layers = new Map<string, { id: string; source?: string; paint?: Record<string, unknown> }>();
     setFeatureState = vi.fn();
     flyTo = vi.fn();
     jumpTo = vi.fn();
@@ -102,7 +102,7 @@ const mocks = vi.hoisted(() => {
     getSource(id: string) {
       return this.sources.get(id);
     }
-    addLayer(layer: { id: string; paint?: Record<string, unknown> }) {
+    addLayer(layer: { id: string; source?: string; paint?: Record<string, unknown> }) {
       this.layers.set(layer.id, layer);
     }
     getLayer(id: string) {
@@ -201,8 +201,22 @@ describe("MapLibreMap", () => {
     );
     expect(map.flyTo).not.toHaveBeenCalled();
     expect(map.paintWrites).not.toHaveBeenCalled();
-    expect(map.layers.get("zips-border")?.paint?.["line-color"]).toContain("#0086B3");
+    expect(map.layers.get("zips-highlight")?.paint?.["line-color"]).toContain("#0086B3");
     expect(map.layers.get("zips-selection-halo")?.paint?.["line-color"]).toBe("#ffffff");
+  });
+
+  it("keeps every highlight flag off the source the classes are written to", async () => {
+    // A feature-state layer on the class source is re-evaluated for every class write:
+    // five of them made a metric switch take 3-4 s at 4x CPU (audit 2026-11-16, P0).
+    render(<MapLibreMap {...selectionProps} />);
+    await act(async () => { vi.runAllTimers(); });
+    const map = mocks.MockMap.lastInstance!;
+    const onClassSource = [...map.layers.values()].filter((l) => l.source === "zips");
+    expect(onClassSource.map((l) => l.id).sort()).toEqual(["zips-border", "zips-fill"]);
+    for (const layer of onClassSource) {
+      const states = JSON.stringify(layer.paint).match(/"feature-state","([^"]+)"/g) ?? [];
+      expect(states.every((s) => s.endsWith('"k"'))).toBe(true);
+    }
   });
 
   it("flies again on a repeated search without changing the primary highlight", async () => {
@@ -236,6 +250,7 @@ describe("MapLibreMap", () => {
     ]);
     expect(map.fitBounds).toHaveBeenLastCalledWith(bounds, expect.objectContaining({ duration: 1500 }));
     expect(map.layers.get("zips-metro-mask")?.paint?.["fill-color"]).toEqual(map.layers.get("zips-fill")?.paint?.["fill-color"]);
+    expect(map.setFeatureState.mock.calls.every(([t]) => t.source === "zips-hl")).toBe(true);
     map.setFeatureState.mockClear();
     rerender(<MapLibreMap {...selectionProps} metroHighlight={null} />);
     expect(map.setFeatureState.mock.calls).toEqual([

@@ -9,7 +9,7 @@ import { ZipData } from "./map/types";
 import { dataUrl } from "@/lib/data-url";
 import { BASEMAP_STYLE, withoutTransportation } from "@/lib/basemap";
 import { addPMTilesProtocol } from "@/lib/pmtiles-protocol";
-import { trackError } from "@/lib/analytics";
+import { trackError, trackOnce } from "@/lib/analytics";
 import { toast } from "@/hooks/use-toast";
 import { Fullscreen } from "lucide-react";
 import {
@@ -72,6 +72,17 @@ const FALLBACK_STYLE: StyleSpecification = {
   layers: [{ id: "background", type: "background", paint: { "background-color": "#fafaf8" } }],
 };
 
+/**
+ * The same tileset again, for every layer that reads a highlight flag. MapLibre re-evaluates
+ * each feature-state layer on a source for every ZIP whose state changed, whichever key
+ * changed. On one source, writing ~33,000 classes re-ran five highlight layers that draw
+ * nothing: a metric switch took 3.2-4.3 s at 4x CPU against 0.45 s for the fill alone
+ * (audit of 2026-11-16, P0). Class writes go to ZIP_SOURCE only; hover, selection and metro
+ * flags go here, plus the class of metro members for the mask.
+ */
+const ZIP_SOURCE = "zips";
+const HL_SOURCE = "zips-hl";
+const SOURCE_LAYER = "us_zip_codes";
 const LABEL_SOURCE = "zip-labels";
 const OUTLIER_SOURCE = "zip-outliers";
 const OUTLIER_LAYER = "zip-outliers-dots";
@@ -444,7 +455,7 @@ export function MapLibreMap({
     const clearHover = () => {
       if (hoveredZipRef.current === null) return;
       map.setFeatureState(
-        { source: "zips", sourceLayer: "us_zip_codes", id: hoveredZipRef.current },
+        { source: HL_SOURCE, sourceLayer: SOURCE_LAYER, id: hoveredZipRef.current },
         { hovered: false },
       );
       hoveredZipRef.current = null;
@@ -494,7 +505,7 @@ export function MapLibreMap({
           // acknowledged the pointer and the map read as unresponsive.
           clearHover();
           map.setFeatureState(
-            { source: "zips", sourceLayer: "us_zip_codes", id: zipCode },
+            { source: HL_SOURCE, sourceLayer: SOURCE_LAYER, id: zipCode },
             { hovered: true },
           );
           hoveredZipRef.current = zipCode;
@@ -579,16 +590,18 @@ export function MapLibreMap({
     if (!isMapReady || !mapRef.current) return;
     const map = mapRef.current;
 
-    if (map.getSource("zips")) return;
+    if (map.getSource(ZIP_SOURCE)) return;
 
     try {
       const pmtilesUrl = dataUrl("us_zip_codes.pmtiles");
 
-      map.addSource("zips", {
-        type: "vector",
-        url: `pmtiles://${pmtilesUrl}`,
-        promoteId: "ZCTA5CE20"
-      });
+      for (const id of [ZIP_SOURCE, HL_SOURCE]) {
+        map.addSource(id, {
+          type: "vector",
+          url: `pmtiles://${pmtilesUrl}`,
+          promoteId: "ZCTA5CE20"
+        });
+      }
 
       const layers = map.getStyle().layers;
       const stateBoundaryLayer = layers.find((l: LayerSpecification) => l.id === "boundary_state");
@@ -601,8 +614,8 @@ export function MapLibreMap({
       map.addLayer({
         id: "zips-fill",
         type: "fill",
-        source: "zips",
-        "source-layer": "us_zip_codes",
+        source: ZIP_SOURCE,
+        "source-layer": SOURCE_LAYER,
         paint: {
           "fill-color": classPaintExpression() as never,
           "fill-opacity": classOpacityExpression() as never,
@@ -612,13 +625,14 @@ export function MapLibreMap({
       // Metro outline, outermost edge only. Every member ZIP strokes its own edge, then the mask
       // repaints those ZIPs' own fill on top. An interior edge has a member on both sides, so
       // both halves of its stroke are covered; an outer edge keeps the half that falls outside.
-      // Widths are double the ZIP highlight's because only half survives. Feature-state only.
+      // Widths are double the ZIP highlight's because only half survives. Feature-state only,
+      // on HL_SOURCE, so the mask's class is copied there for the metro's members.
       const inMetro: maplibregl.ExpressionSpecification = ["boolean", ["feature-state", "metro"], false];
       map.addLayer({
         id: "zips-metro-halo",
         type: "line",
-        source: "zips",
-        "source-layer": "us_zip_codes",
+        source: HL_SOURCE,
+        "source-layer": SOURCE_LAYER,
         paint: {
           "line-color": "#ffffff",
           "line-width": ["interpolate", ["linear"], ["zoom"], 3, 8, 6, 10, 10, 12, 12, 14],
@@ -628,8 +642,8 @@ export function MapLibreMap({
       map.addLayer({
         id: "zips-metro-line",
         type: "line",
-        source: "zips",
-        "source-layer": "us_zip_codes",
+        source: HL_SOURCE,
+        "source-layer": SOURCE_LAYER,
         paint: {
           "line-color": "#0086B3",
           "line-width": ["interpolate", ["linear"], ["zoom"], 3, 4, 6, 6, 10, 8, 12, 10],
@@ -639,8 +653,8 @@ export function MapLibreMap({
       map.addLayer({
         id: "zips-metro-mask",
         type: "fill",
-        source: "zips",
-        "source-layer": "us_zip_codes",
+        source: HL_SOURCE,
+        "source-layer": SOURCE_LAYER,
         paint: {
           "fill-color": classPaintExpression() as never,
           "fill-opacity": ["case", inMetro, 1, 0],
@@ -661,63 +675,52 @@ export function MapLibreMap({
       // against a production build, which is the only build worth checking.
       (window as unknown as Record<string, unknown>).__map = map;
 
+      const isSelected: maplibregl.ExpressionSpecification = ["boolean", ["feature-state", "highlighted"], false];
+      const isHovered: maplibregl.ExpressionSpecification = ["boolean", ["feature-state", "hovered"], false];
       map.addLayer({
         id: "zips-selection-halo",
         type: "line",
-        source: "zips",
-        "source-layer": "us_zip_codes",
+        source: HL_SOURCE,
+        "source-layer": SOURCE_LAYER,
         paint: {
           "line-color": "#ffffff",
           "line-width": ["interpolate", ["linear"], ["zoom"], 3, 5, 6, 6, 10, 7, 12, 8],
-          "line-opacity": ["case", ["boolean", ["feature-state", "highlighted"], false], 1, 0],
+          "line-opacity": ["case", isSelected, 1, 0],
         },
       }, beforeId);
 
-      // Border layer
+      // Every ZIP's edge. Constant paint, so class writes on its source never touch it.
       map.addLayer({
         id: "zips-border",
         type: "line",
-        source: "zips",
-        "source-layer": "us_zip_codes",
+        source: ZIP_SOURCE,
+        "source-layer": SOURCE_LAYER,
         paint: {
-          // Priority: selected ZIP, hovered ZIP, everything else. Feature-state, never a paint rewrite.
-          "line-color": [
-            "case",
-            ["boolean", ["feature-state", "highlighted"], false], "#0086B3",
-            ["boolean", ["feature-state", "hovered"], false], "#1f2937",
-            "rgba(0,0,0,0.15)"
-          ],
-          "line-width": [
-            "interpolate", ["linear"], ["zoom"],
-            3, ["case",
-                ["boolean", ["feature-state", "highlighted"], false], 2,
-                ["boolean", ["feature-state", "hovered"], false], 1.2, 0.3],
-            6, ["case",
-                ["boolean", ["feature-state", "highlighted"], false], 3,
-                ["boolean", ["feature-state", "hovered"], false], 1.8, 0.6],
-            10, ["case",
-                ["boolean", ["feature-state", "highlighted"], false], 4,
-                ["boolean", ["feature-state", "hovered"], false], 2.5, 1.5],
-            12, ["case",
-                ["boolean", ["feature-state", "highlighted"], false], 5,
-                ["boolean", ["feature-state", "hovered"], false], 3, 2]
-          ],
+          "line-color": "rgba(0,0,0,0.15)",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.3, 6, 0.6, 10, 1.5, 12, 2],
           // Below z4 the border network packs into fewer pixels and greys the choropleth (stroke ink
           // ~0.198 km per km2 x width x km/px: darkening 4.8% at z4, 13.7% at z2). Opacity holds ink at
-          // its z4 level: 0.33 at z2, 0.67 at z3, 1 from z4. Hovered and selected ZIPs stay full.
-          // Recompute if line-width changes. ["zoom"] must be the outer interpolate, hence the repeats.
-          "line-opacity": [
+          // its z4 level: 0.33 at z2, 0.67 at z3, 1 from z4. Recompute if line-width changes.
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 2, 0.33, 3, 0.67, 4, 1],
+        }
+      }, beforeId);
+
+      // Selected and hovered ZIP edges, over the plain border. Selection wins over hover.
+      map.addLayer({
+        id: "zips-highlight",
+        type: "line",
+        source: HL_SOURCE,
+        "source-layer": SOURCE_LAYER,
+        paint: {
+          "line-color": ["case", isSelected, "#0086B3", "#1f2937"],
+          "line-width": [
             "interpolate", ["linear"], ["zoom"],
-            2, ["case", ["any",
-                ["boolean", ["feature-state", "highlighted"], false],
-                ["boolean", ["feature-state", "hovered"], false]], 1, 0.33],
-            3, ["case", ["any",
-                ["boolean", ["feature-state", "highlighted"], false],
-                ["boolean", ["feature-state", "hovered"], false]], 1, 0.67],
-            4, ["case", ["any",
-                ["boolean", ["feature-state", "highlighted"], false],
-                ["boolean", ["feature-state", "hovered"], false]], 1, 1]
-          ]
+            3, ["case", isSelected, 2, 1.2],
+            6, ["case", isSelected, 3, 1.8],
+            10, ["case", isSelected, 4, 2.5],
+            12, ["case", isSelected, 5, 3],
+          ],
+          "line-opacity": ["case", ["any", isSelected, isHovered], 1, 0],
         }
       }, beforeId);
 
@@ -786,6 +789,7 @@ export function MapLibreMap({
       if (selectedMetricRef.current !== selectedMetric) return;
       setHasPainted(true);
       finishMetricSwitch(ticket);
+      trackOnce("map_first_colour", { metric: selectedMetric, value_ms: Math.round(performance.now()) });
     });
   }, [isMapReady, pmtilesLoaded, classSource, selectedMetric]);
 
@@ -877,19 +881,19 @@ export function MapLibreMap({
   useEffect(() => {
     if (!isMapReady || !mapRef.current || !pmtilesLoaded) return;
     const map = mapRef.current;
-    if (!map.getSource("zips")) return;
+    if (!map.getSource(HL_SOURCE)) return;
 
     // Clear previous highlight
     if (highlightedZipRef.current && highlightedZipRef.current !== selectedZip) {
       map.setFeatureState(
-        { source: "zips", sourceLayer: "us_zip_codes", id: highlightedZipRef.current },
+        { source: HL_SOURCE, sourceLayer: SOURCE_LAYER, id: highlightedZipRef.current },
         { highlighted: false }
       );
     }
 
     if (selectedZip) {
       map.setFeatureState(
-        { source: "zips", sourceLayer: "us_zip_codes", id: selectedZip },
+        { source: HL_SOURCE, sourceLayer: SOURCE_LAYER, id: selectedZip },
         { highlighted: true }
       );
     }
@@ -911,8 +915,8 @@ export function MapLibreMap({
   const metroZipsRef = useRef<readonly string[]>([]);
   useEffect(() => {
     const map = mapRef.current;
-    if (!isMapReady || !map || !pmtilesLoaded || !map.getSource("zips")) return;
-    const target = { source: "zips", sourceLayer: "us_zip_codes" };
+    if (!isMapReady || !map || !pmtilesLoaded || !map.getSource(HL_SOURCE)) return;
+    const target = { source: HL_SOURCE, sourceLayer: SOURCE_LAYER };
     for (const id of metroZipsRef.current) map.setFeatureState({ ...target, id }, { metro: false });
     const zips = metroHighlight?.zips ?? [];
     for (const id of zips) map.setFeatureState({ ...target, id }, { metro: true });
@@ -922,6 +926,15 @@ export function MapLibreMap({
       map.fitBounds(metroHighlight.bounds, { padding, duration: 1500, maxZoom: 11 });
     }
   }, [isMapReady, pmtilesLoaded, metroHighlight, getDynamicPadding]);
+
+  // The mask repaints metro members in their own colour, so it needs their class on HL_SOURCE.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!isMapReady || !map || !pmtilesLoaded || !classSource || !map.getSource(HL_SOURCE)) return;
+    for (const id of metroHighlight?.zips ?? []) {
+      map.setFeatureState({ source: HL_SOURCE, sourceLayer: SOURCE_LAYER, id }, { k: classSource.classOf(id) });
+    }
+  }, [isMapReady, pmtilesLoaded, metroHighlight, classSource]);
 
   const handleResetBounds = useCallback(() => {
     const map = mapRef.current;
