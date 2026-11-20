@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  X, ArrowLeft, TrendingUp, TrendingDown, BarChart3, ChevronDown, Loader2,
+  X, ArrowLeft, BarChart3, ChevronDown, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TrendTriangle, TREND_UP_CLASS, TREND_DOWN_CLASS } from "./TrendTriangle";
 import { ZipData } from "./map/types";
 import type { ZipTable } from "@/lib/zip-table";
 import {
@@ -11,6 +12,7 @@ import {
 import { METRIC_GROUPS } from "@/lib/metrics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatRedfinWindow } from "@/lib/data-dates";
+import { yoyNoise, noiseNote } from "@/lib/change-noise";
 
 const ZipComparison = lazy(() => import("./ZipComparison").then(m => ({ default: m.ZipComparison })));
 // Lazy so the history chart and its fetch stay off the first-paint path entirely.
@@ -84,10 +86,12 @@ export function Sidebar({
   const [width, setWidth] = useSidebarWidth();
   const [dragging, setDragging] = useState(false);
 
-  // Focus management: move focus to heading when sidebar opens
+  // Focus management: move focus to heading when sidebar opens. preventScroll, because the
+  // heading is already at the top: on a phone the focus scrolled the half-open sheet's
+  // overflow-hidden body 24 px and the "Expand details" control covered the ZIP number.
   useEffect(() => {
     if (isOpen && zipData && headingRef.current) {
-      headingRef.current.focus();
+      headingRef.current.focus({ preventScroll: true });
     }
   }, [isOpen, zipData]);
 
@@ -356,7 +360,7 @@ function Hero({ zipData, metricKey }: { zipData: ZipData; metricKey: string }) {
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         {mom && !mom.isZero && <Delta change={mom} suffix="MoM" />}
-        {yoy && !yoy.isZero && <Delta change={yoy} suffix="YoY" />}
+        {yoy && !yoy.isZero && <Delta change={yoy} suffix="YoY" noise={yoyNoise(zipData, metricKey)} />}
       </div>
       <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
         {period}
@@ -458,7 +462,10 @@ function MetricGroup({
                 </span>
                 <span className="w-[88px] shrink-0 text-right">
                   {change && (
-                    <Delta change={change} suffix="YoY" compact showSuffix={false} />
+                    <Delta
+                      change={change} suffix="YoY" compact showSuffix={false}
+                      noise={yoyNoise(zipData, m.key as string)}
+                    />
                   )}
                 </span>
               </div>
@@ -471,7 +478,7 @@ function MetricGroup({
 }
 
 function Delta({
-  change, suffix, compact, showSuffix,
+  change, suffix, compact, showSuffix, noise = null,
 }: {
   change: { formatted: string; isPositive: boolean; isZero: boolean };
   suffix: string;
@@ -480,18 +487,22 @@ function Delta({
    *  a 32 px row does not. A compact row overrides this to mark the one
    *  metric whose change is NOT the column header's year-over-year. */
   showSuffix?: boolean;
+  /** Two standard errors, when the change is inside them: grey keeps the direction without
+   *  claiming it (audit M1). */
+  noise?: number | null;
 }) {
-  const Icon = change.isPositive ? TrendingUp : TrendingDown;
   const withSuffix = showSuffix ?? !compact;
+  const period = suffix === "YoY" ? "vs last year" : "vs last month";
   return (
     <span
-      className={`inline-flex items-center gap-0.5 tabular-nums ${compact ? "text-[11px]" : "text-xs"} ${
-        change.isPositive ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500"
+      className={`inline-flex items-center gap-1 tabular-nums ${compact ? "text-[11px]" : "text-xs"} ${
+        noise !== null ? "text-muted-foreground" : change.isPositive ? TREND_UP_CLASS : TREND_DOWN_CLASS
       }`}
-      title={`${change.formatted} ${suffix === "YoY" ? "vs last year" : "vs last month"}`}
+      title={`${change.formatted} ${period}${noise !== null ? `, ${noiseNote(noise)}` : ""}`}
     >
-      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-      {change.formatted}
+      <TrendTriangle up={change.isPositive} />
+      {change.formatted.replace(/^[+-]/, "")}
+      {noise !== null && <span className="sr-only">, {noiseNote(noise)}</span>}
       {withSuffix && <span className="ml-0.5 text-muted-foreground font-normal">{suffix}</span>}
     </span>
   );

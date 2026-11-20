@@ -37,7 +37,12 @@ const monthLabel = (iso) => iso
   : "";
 
 const usd = (v) => v == null ? "" : `$${Math.round(v).toLocaleString("en-US")}`;
-const pct = (v) => v == null ? "" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+const pct = (v) => {
+  if (v == null) return "";
+  const t = `${Math.abs(v).toFixed(1)}%`;
+  if (t === "0.0%") return t;
+  return v > 0 ? `<span class="up">&#9650; ${t}</span>` : `<span class="dn">&#9660; ${t}</span>`;
+};
 
 /** The snapshot's columns decoded into one plain object per ZIP. Wire format: src/lib/snapshot.ts. */
 export function decodeSnapshot(snap) {
@@ -190,12 +195,12 @@ function summary(name, rows, ctx) {
   const up = zv.filter((r) => r.zhvi_yoy > 0).length;
   const down = zv.filter((r) => r.zhvi_yoy < 0).length;
   const sales = rows.filter((r) => r.msp != null).length;
-  const parts = [`${esc(name)} has ${rows.length.toLocaleString("en-US")} ZIP codes with housing data.`];
+  const parts = [`${name} has ${rows.length.toLocaleString("en-US")} ZIP codes with housing data.`];
   if (zv.length) {
-    parts.push(`Over the year to ${esc(ctx.zhviMonth)}, the Zillow Home Value Index rose in ${up.toLocaleString("en-US")} of them and fell in ${down.toLocaleString("en-US")}.`);
+    parts.push(`Over the year to ${ctx.zhviMonth}, the Zillow Home Value Index rose in ${up.toLocaleString("en-US")} of them and fell in ${down.toLocaleString("en-US")}.`);
   }
   if (sales) {
-    parts.push(`Redfin reports a median sale price for ${sales.toLocaleString("en-US")} ZIP codes over the three months ending ${esc(ctx.salesPeriod)}.`);
+    parts.push(`Redfin reports a median sale price for ${sales.toLocaleString("en-US")} ZIP codes over the three months ending ${ctx.salesPeriod}.`);
   }
   return parts.join(" ");
 }
@@ -222,7 +227,7 @@ function metroPage(m, stateByCode, ctx) {
   const stateLinks = m.states.filter((c) => stateByCode.has(c))
     .map((c) => `<a href="${ctx.base}state/${c.toLowerCase()}/">${esc(stateByCode.get(c).name)}</a>`).join(", ");
   const title = `${m.name} housing market by ZIP code, ${ctx.zhviMonth}`;
-  const body = `<p class="lede">${summary(m.name, m.rows, ctx)}</p>
+  const body = `<p class="lede">${esc(summary(m.name, m.rows, ctx))}</p>
 <div class="map">${map.iframe}</div>
 <p><a class="cta" href="${esc(map.link)}">Open the full map</a></p>
 ${rankedLists(m.rows, ctx)}
@@ -232,7 +237,7 @@ ${stateLinks ? `<p>State: ${stateLinks}</p>` : ""}
 ${siblings.length ? `<p>Other metros in ${esc(home.name)}: ${siblings.map((x) => `<a href="${ctx.base}metro/${x.slug}/">${esc(x.name)}</a>`).join(", ")}</p>` : ""}
 </section>`;
   const crumbs = [["Domapus", ""], ...(home ? [[home.name, `state/${home.code.toLowerCase()}/`]] : []), [m.name, `metro/${m.slug}/`]];
-  return page({ ctx, path: `metro/${m.slug}/`, title, place: m.name, description: plain(summary(m.name, m.rows, ctx)), body, crumbs });
+  return page({ ctx, path: `metro/${m.slug}/`, title, place: m.name, description: summary(m.name, m.rows, ctx), body, crumbs });
 }
 
 function statePage(s, ctx) {
@@ -242,16 +247,14 @@ function statePage(s, ctx) {
     ? `<section><h2>Metro areas</h2><ul class="metros">${s.metros.map((m) =>
       `<li><a href="${ctx.base}metro/${m.slug}/">${esc(m.name)}</a> <span class="note">${m.rows.filter((r) => r.st === s.code).length} ZIP codes</span></li>`).join("")}</ul></section>`
     : "";
-  const body = `<p class="lede">${summary(s.name, s.rows, ctx)}</p>
+  const body = `<p class="lede">${esc(summary(s.name, s.rows, ctx))}</p>
 <div class="map">${map.iframe}</div>
 <p><a class="cta" href="${esc(map.link)}">Open the full map</a></p>
 ${rankedLists(s.rows, ctx)}
 ${metroList}`;
   const crumbs = [["Domapus", ""], [s.name, `state/${s.code.toLowerCase()}/`]];
-  return page({ ctx, path: `state/${s.code.toLowerCase()}/`, title, place: s.name, description: plain(summary(s.name, s.rows, ctx)), body, crumbs });
+  return page({ ctx, path: `state/${s.code.toLowerCase()}/`, title, place: s.name, description: summary(s.name, s.rows, ctx), body, crumbs });
 }
-
-const plain = (html) => html.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&");
 
 function page({ ctx, path: rel, title, place, description, body, crumbs }) {
   const url = SITE_ORIGIN + ctx.base + rel;

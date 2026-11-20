@@ -408,6 +408,15 @@ function Body({ mf }: { mf: Manifest }) {
           set the colour boundaries for a sample estimate (section 2), and which
           are eligible for the outlier analysis (section 5).
         </p>
+        <p>
+          The same margin applies to change. A year-over-year change in median
+          sale price or days on market compares two samples, each with its own
+          error. When the change is smaller than twice their combined standard
+          error, its arrow is drawn grey rather than green or red: the direction
+          is shown, but it could be sampling variation. The same rule greys a gap
+          between two ZIPs in the comparison view. Other metrics have no sampling
+          model, so their arrows keep their colour.
+        </p>
         <Table
           n="1"
           caption="Precision classes. The cut is on relative margin of error; the sales column is what that implies at this release's scale constant and moves when the constant moves."
