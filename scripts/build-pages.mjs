@@ -106,23 +106,12 @@ const mostCommon = (values) => {
   return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
 };
 
-/** Every page as { path, title, html }, keyed by its path below the base. */
-export function buildPages(snapshot, manifest, base) {
-  const rows = decodeSnapshot(snapshot).filter(hasData);
-  const ctx = {
-    base,
-    salesPeriod: monthLabel(snapshot.period_end),
-    zhviMonth: monthLabel(snapshot.zhvi_month),
-    released: (manifest.generated_utc ?? snapshot.built_utc ?? "").slice(0, 10),
-  };
-
+/** The metros that get a page. The app's panel links from this same list (vite.config.ts). */
+function selectMetros(rows) {
   const metroRows = new Map();
-  const stateRows = new Map();
   for (const r of rows) {
     if (r.me) (metroRows.get(r.me) ?? metroRows.set(r.me, []).get(r.me)).push(r);
-    if (r.st) (stateRows.get(r.st) ?? stateRows.set(r.st, []).get(r.st)).push(r);
   }
-
   const metros = [...metroRows]
     .filter(([, zs]) => zs.length >= MIN_METRO_ZIPS)
     .map(([name, zs]) => ({
@@ -135,6 +124,29 @@ export function buildPages(snapshot, manifest, base) {
   for (const m of metros) {
     if (slugs.has(m.slug)) throw new Error(`metro slug collision: ${slugs.get(m.slug)} and ${m.name}`);
     slugs.set(m.slug, m.name);
+  }
+  return metros;
+}
+
+/** Metro name to page slug, for every metro that has a page. */
+export function metroPageSlugs(snapshot) {
+  return Object.fromEntries(selectMetros(decodeSnapshot(snapshot).filter(hasData)).map((m) => [m.name, m.slug]));
+}
+
+/** Every page as { path, title, html }, keyed by its path below the base. */
+export function buildPages(snapshot, manifest, base) {
+  const rows = decodeSnapshot(snapshot).filter(hasData);
+  const ctx = {
+    base,
+    salesPeriod: monthLabel(snapshot.period_end),
+    zhviMonth: monthLabel(snapshot.zhvi_month),
+    released: (manifest.generated_utc ?? snapshot.built_utc ?? "").slice(0, 10),
+  };
+
+  const metros = selectMetros(rows);
+  const stateRows = new Map();
+  for (const r of rows) {
+    if (r.st) (stateRows.get(r.st) ?? stateRows.set(r.st, []).get(r.st)).push(r);
   }
 
   const states = [...stateRows]
@@ -153,6 +165,7 @@ export function buildPages(snapshot, manifest, base) {
   for (const s of states) {
     pages.push({ path: `state/${s.code.toLowerCase()}/`, title: s.name, html: statePage(s, ctx) });
   }
+  pages.push({ path: "places/", title: "All places", html: hubPage(states, ctx) });
   return { pages, metros, states, released: ctx.released };
 }
 
@@ -236,7 +249,7 @@ ${zipTable(m.rows, ctx)}
 ${stateLinks ? `<p>State: ${stateLinks}</p>` : ""}
 ${siblings.length ? `<p>Other metros in ${esc(home.name)}: ${siblings.map((x) => `<a href="${ctx.base}metro/${x.slug}/">${esc(x.name)}</a>`).join(", ")}</p>` : ""}
 </section>`;
-  const crumbs = [["Domapus", ""], ...(home ? [[home.name, `state/${home.code.toLowerCase()}/`]] : []), [m.name, `metro/${m.slug}/`]];
+  const crumbs = [...HUB, ...(home ? [[home.name, `state/${home.code.toLowerCase()}/`]] : []), [m.name, `metro/${m.slug}/`]];
   return page({ ctx, path: `metro/${m.slug}/`, title, place: m.name, description: summary(m.name, m.rows, ctx), body, crumbs });
 }
 
@@ -252,8 +265,22 @@ function statePage(s, ctx) {
 <p><a class="cta" href="${esc(map.link)}">Open the full map</a></p>
 ${rankedLists(s.rows, ctx)}
 ${metroList}`;
-  const crumbs = [["Domapus", ""], [s.name, `state/${s.code.toLowerCase()}/`]];
+  const crumbs = [...HUB, [s.name, `state/${s.code.toLowerCase()}/`]];
   return page({ ctx, path: `state/${s.code.toLowerCase()}/`, title, place: s.name, description: summary(s.name, s.rows, ctx), body, crumbs });
+}
+
+const HUB = [["Domapus", ""], ["All places", "places/"]];
+
+/** The one page that links every state and metro page, so they are reachable without the sitemap. */
+function hubPage(states, ctx) {
+  const metros = new Set(states.flatMap((s) => s.metros)).size;
+  const title = "Housing market by state and metro area";
+  const description = `ZIP code home values and sales for every state, D.C. and ${metros} metro areas, from Redfin and Zillow, updated monthly.`;
+  const body = `<p class="lede">${esc(description)} A metro area is listed when at least ${MIN_METRO_ZIPS} of its ZIP codes have data.</p>
+${states.map((s) => `<section><h2><a href="${ctx.base}state/${s.code.toLowerCase()}/">${esc(s.name)}</a></h2>${s.metros.length
+    ? `<ul class="metros">${s.metros.map((m) => `<li><a href="${ctx.base}metro/${m.slug}/">${esc(m.name)}</a></li>`).join("")}</ul>`
+    : ""}</section>`).join("\n")}`;
+  return page({ ctx, path: "places/", title, place: "United States", description, body, crumbs: HUB });
 }
 
 function page({ ctx, path: rel, title, place, description, body, crumbs }) {
@@ -296,8 +323,8 @@ function page({ ctx, path: rel, title, place, description, body, crumbs }) {
 <meta property="og:image" content="${SITE_ORIGIN}${ctx.base}preview.png">
 <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>
 <style>
-:root{--bg:#fff;--fg:#1a1f2b;--muted:#5b6475;--line:#e3e6ec;--accent:#1d4ed8;--panel:#f6f7f9}
-@media (prefers-color-scheme:dark){:root{--bg:#11141a;--fg:#e6e8ec;--muted:#9aa3b2;--line:#2a303b;--accent:#7aa2ff;--panel:#181c24}}
+:root{--bg:#fff;--fg:#1a1f2b;--muted:#5b6475;--line:#e3e6ec;--accent:#1d4ed8;--panel:#f6f7f9;--up:#15803d;--dn:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#11141a;--fg:#e6e8ec;--muted:#9aa3b2;--line:#2a303b;--accent:#7aa2ff;--panel:#181c24;--up:#22c55e;--dn:#ef4444}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:960px;margin:0 auto;padding:16px}a{color:var(--accent)}
 header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
@@ -311,7 +338,7 @@ h2{font-size:20px;margin:32px 0 8px}h3{font-size:16px;margin:8px 0}.lede{font-si
 table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
 th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 th:nth-child(-n+2),td:nth-child(-n+2){text-align:left}th{background:var(--panel);position:sticky;top:0}
-.note{color:var(--muted);font-size:13px}.metros{columns:2 240px;padding-left:18px}
+.note{color:var(--muted);font-size:13px}.up{color:var(--up)}.dn{color:var(--dn)}.metros{columns:2 240px;padding-left:18px}
 footer{max-width:960px;margin:32px auto;padding:16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
 </style>
 </head>
@@ -322,7 +349,7 @@ footer{max-width:960px;margin:32px auto;padding:16px;border-top:1px solid var(--
 <h1>${esc(title)}</h1>
 ${body}
 </main>
-<footer>Data from Redfin and Zillow, updated monthly. Release ${esc(ctx.released)}. <a href="${ctx.base}methodology/">How the numbers are made</a>.</footer>
+<footer>Data from Redfin and Zillow, updated monthly. Release ${esc(ctx.released)}. <a href="${ctx.base}places/">All states and metros</a>. <a href="${ctx.base}methodology/">How the numbers are made</a>.</footer>
 </body>
 </html>
 `;

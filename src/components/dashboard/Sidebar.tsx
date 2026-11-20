@@ -12,7 +12,9 @@ import {
 import { METRIC_GROUPS } from "@/lib/metrics";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatRedfinWindow } from "@/lib/data-dates";
+import { useMetroPageUrl } from "@/lib/landing-pages";
 import { yoyNoise, noiseNote } from "@/lib/change-noise";
+import { isEmbed } from "@/lib/embed";
 
 const ZipComparison = lazy(() => import("./ZipComparison").then(m => ({ default: m.ZipComparison })));
 // Lazy so the history chart and its fetch stay off the first-paint path entirely.
@@ -247,10 +249,8 @@ function Header({
     zipData.city,
     zipData.state ? getStateName(zipData.state) : null,
   ].filter(Boolean).join(", ");
-  const region = [
-    zipData.county ? `${zipData.county} County` : null,
-    zipData.metro,
-  ].filter(Boolean).join(" · ");
+  const county = zipData.county ? `${zipData.county} County` : null;
+  const metroUrl = useMetroPageUrl(zipData.metro);
 
   return (
     <div className="flex-none px-4 pt-3 pb-2.5 border-b border-dashboard-border bg-dashboard-panel z-10">
@@ -277,8 +277,21 @@ function Header({
           {place && (
             <p className="mt-1 text-sm font-medium text-foreground truncate">{place}</p>
           )}
-          {region && (
-            <p className="text-xs text-muted-foreground truncate">{region}</p>
+          {(county || zipData.metro) && (
+            <p className="text-xs text-muted-foreground truncate">
+              {county}
+              {county && zipData.metro && " · "}
+              {metroUrl ? (
+                // Embeds sit on other sites, so the page opens beside them, not inside the frame.
+                <a
+                  href={metroUrl}
+                  className="underline underline-offset-2 hover:text-foreground"
+                  {...(isEmbed(window.location.search) ? { target: "_blank", rel: "noopener" } : {})}
+                >
+                  {zipData.metro}
+                </a>
+              ) : zipData.metro}
+            </p>
           )}
         </div>
         <Button
