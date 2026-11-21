@@ -290,6 +290,10 @@ function Body({ mf }: { mf: Manifest }) {
           figure describes homes that actually sold in a three-month period. A ZHVI
           figure describes what a typical home in the area is estimated to be worth,
           whether or not it sold. Where the panel shows both, it names the source.
+          Zillow also re-scales each ZIP's whole index history every month, so a
+          past month's dollar value can differ by a percent or two from what this
+          site showed before; rates of change are unaffected, but dollar figures,
+          the forecast's included, move with it.
         </p>
         <p>
           Geography is the ZIP Code Tabulation Area (ZCTA), the U.S. Census

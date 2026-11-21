@@ -4025,6 +4025,110 @@ digest, and the Redfin column rename.
 Verification: 219 frontend tests (4 new) and 6 node tests pass, `tsc -b` clean, lint has no new
 warnings, production build succeeds. Not deployed.
 
+## 2026-11-17: audit follow-through (map freeze, data-run retries, workflow guards)
+
+From `docs/audit-2026-11-16.md`: P0, O1, O2, O3, S4, C1, C2, and S3 because C2's URL test
+fails without it. X1 (consent before Tag Manager) was rejected. Items that depend on the custom
+domain wait for it. The rest are ranked at the top of the audit file.
+
+**The map froze on load and on every metric switch (P0).** The metro search added three
+layers (halo, line, mask) to the ZIP source, next to the selection halo and the border, and all
+five read feature-state. MapLibre re-evaluates every feature-state layer on a source for each
+feature whose state changed, whichever key changed, so writing ~33,000 classes paid for five
+layers that draw nothing most of the time. Fix: those layers read a second source on the same
+tileset, `zips-hl`, where hover, selection and metro flags are written. The plain ZIP border
+stays on `zips` with constant paint; the selected and hovered strokes moved to a new
+`zips-highlight` layer above it. The mask needs the class of the metro's members, so those few
+hundred are copied to `zips-hl` whenever the metro or the class source changes.
+
+The second source first fetched every tile again: +1.34 MB and +7 requests on a cold load,
+because the browser did not serve the repeated range requests from cache. `shareTileFetches`
+in `pmtiles-protocol.ts` now gives concurrent requests for one tile URL one fetch, keeps a
+finished tile shareable for 5 s, hands each caller its own copy (MapLibre transfers the buffer
+to a worker, which detaches it), and aborts only when every caller has aborted. The first
+version copied only an `ArrayBuffer`, but pmtiles answers with a `Uint8Array`, so both sources
+got one buffer: the second found it detached, every `zips-hl` tile at the view's zoom errored,
+and MapLibre fell back to z3 parents. The bench still showed +1.0 MB and 53 requests, which is
+how it surfaced; the test now transfers one caller's buffer and reads the other. Rejected: a
+filter-driven highlight on one source, because `setFilter` reloads the source's tiles, which is
+the cost the paint table exists to avoid.
+
+Measured with real Chrome headless at 4x CPU (`--channel chrome`; Playwright 1.65's headless
+shell was not installed, which is audit item P4). `verify-choropleth.mjs`, two runs each:
+median metric switch 3.1-4.2 s before, 0.29-0.39 s after; longest task 4.1 s before,
+0.19-0.24 s after. `bench/run.mjs`, three cold loads each on slow 4G at 4x CPU: total blocking time 7,013 ms to 1,286 ms, longest task 4,890 ms to 388 ms, metric switch 1,828 ms to 494 ms; transfer (5.09 MB) and request count (41) unchanged, first paint unchanged. The before and after files are `bench/results/p0-before.json` and
+`p0-after.json`. The verify script now switches three metrics and fails a median switch or
+longest task over 250 ms per unit of CPU throttle; a MapLibreMap test fails if a layer on
+`zips` reads any state but `k`.
+
+**Data run retries (O1).** The 2026-09 and 2026-10 scheduled runs both failed on the 18th
+from real upstream changes and waited about a week for a manual dispatch after the fix. The
+schedule is now daily from the 18th to the 28th. An unchanged feed exits after the 0.2 s probe.
+A persistent failure comments on the standing failure issue once a night.
+
+**Workflow guards (O2, O3).** The two third-party actions that hold a write token are pinned
+to the commit their tag pointed at. `check_workflows.py` fails on `inputs.` or `github.event.`
+inside a `run:` block; `preview.yml`'s PR number moved to `env:` to comply.
+
+**Structured data (S4).** The `Dataset` node claimed the repo's Apache licence for Redfin and
+Zillow data. Removed from `index.html`; landing pages describe themselves as a `WebPage`.
+
+**Shared links redirected (S3, C2).** React Router writes the basename itself as the URL of
+`/`, so `/Domapus` produced `/Domapus?zip=...`, which GitHub Pages 301s. The basename keeps
+Vite's trailing slash. A bare `/Domapus` no longer matches a route, but GitHub Pages redirects
+it before the app loads and the bench server 404s it, so nothing reaches the app that way.
+
+**Test gaps (C2).** New tests: the address the app writes (fails on the old basename), the
+landing-page ranking (extremes of rankable ZIPs, ordered, disjoint), and the shared tile
+fetch. `tests/conftest.py` stops pytest on a Python other than `.python-version`: this
+machine's `python` is 3.13 and had been passing for 3.14. All 150 pass on 3.14.
+
+**One rules file (C1).** The rules live in `CLAUDE.md`; `AGENTS.md` is one line pointing to
+it, so the two 508-line copies cannot drift. (First done the other way round, `CLAUDE.md` as an
+`@AGENTS.md` import; reversed on request.)
+
+Verification: 229 frontend tests (10 new), 7 node tests and 150 pipeline tests on 3.14 pass; `tsc -b` clean; lint unchanged at 4 old warnings; production build succeeds; `check_workflows.py` passes and fails a planted `${{ inputs.x }}`. Real-Chrome screenshots of a Denver metro search with a selected and hovered ZIP match the old build pixel for pixel by eye, and after a metric switch the mask classes on `zips-hl` equal the fill classes on `zips`. Not deployed.
+
+## 2026-11-17 (later): six quick audit fixes
+
+The six items ranked as easy and obvious in `docs/audit-2026-11-16.md`: P4, S1, M2, U4, U1, U3.
+Also, `AGENTS.md` is now the pointer and `CLAUDE.md` holds the rules.
+
+**Methodology page returned 404 (S1).** GitHub Pages has no rewrite, so `/methodology` was
+served `404.html`, which bounced people to the app but told crawlers the page does not exist.
+The build now writes `methodology/index.html`: the app shell with the page's own title,
+canonical and `og:url`. The boot script already skipped the map's data there; a test pins that
+regex so the copy cannot start fetching the map. The URL with the slash is the one that file
+answers, so the sitemap, landing-page footers, in-app links and the runtime canonical moved to
+`methodology/`. Checked in headless Chrome: status 200, methodology headings render, no paint,
+snapshot or tile requests, and the in-app link lands on `/Domapus/methodology/?metric=zhvi`.
+
+**Landing-page lists ranked noise (M2).** They now rank by ZHVI YoY ("Home values rising and
+falling fastest"). The `rel >= 1` gate stays, which the audit's fix did not say: ZHVI for
+low-sales ZIPs is wider (1st to 99th percentile -12% to +16%, against -6% to +10% for rankable
+ZIPs), and without the gate Denver's top five were four rural ZIPs led by 80832 at +6.7%.
+Denver now opens with 80209 and 80206 at +1.9%.
+
+**Stale chunks after a deploy (U4).** `reloadOnStaleChunk` reloads once on
+`vite:preloadError`. Confirmed in the built bundle that a failed lazy import dispatches the
+event. A second failure within 60 s, or session storage that throws, falls through to the
+error boundary rather than risking a reload loop.
+
+**Phone deep link hid the ZIP number (U1).** Not a layout bug: the panel focuses its heading
+on open, and focusing scrolled the half-open sheet's overflow-hidden body by 24 px, sliding
+the heading under the "Expand details" control. `focus({ preventScroll: true })` fixes it;
+measured at 375 x 812, heading top 756 px against control bottom 744 px, focus kept.
+
+**Embed named no data source (U3).** The chip adds "Data: Zillow" or "Data: Redfin". The
+longest label left 20 px at 375 px, so the metric name now truncates first; at 300 px the
+source stays visible with no horizontal scroll.
+
+**Bench README (P4).** Says to reinstall the headless shell after a Playwright bump, or use
+`--channel chrome`.
+
+Verification: 233 frontend tests (4 new), 8 node tests pass, `tsc -b` clean, lint unchanged at
+4 old warnings, production build writes the methodology shell. Not deployed.
+
 ## 2026-11-18: Redfin brought back IS SEASONALLY ADJUSTED
 
 The scheduled 2026-11 run stopped at ingest: `IS SEASONALLY ADJUSTED` was back in the
@@ -4042,3 +4146,42 @@ written. `PROPERTY TYPE` stays forbidden.
 The same release renamed `MONTHS OF SUPPLY YOY (%)` to `(MONTHS)` and changed it from
 x100 to a plain difference, as days on market did in 2026-08. The new spelling is listed
 first; `_derive_scale` measured `months_of_supply=x1` on the full file.
+
+## 2026-11-20: grey arrows inside sampling noise, a hub page for the landing pages, the lockfile
+
+**Changes inside sampling noise are drawn grey (audit M1, todo 1d).** The panel showed every
+sale-price and days-on-market change as a green or red arrow. On the 2026-11 release 92.1%
+of sale-price changes and 91.9% of days-on-market changes are inside two standard errors of
+zero, so the colour claimed a direction the sample cannot support. This reverses decision 1b
+of 2026-09-24 (drop `msp_yoy_se`) in substance, though not its mechanism: no column was
+added. `msp_rse` and `dom_rse` are already K / sqrt(n) on the wire, and the year-ago sample
+is n / (1 + `homes_sold_yoy`), so the error of the log change is
+rse * sqrt(2 + homes_sold_yoy) in the browser (`src/lib/change-noise.ts`). Without a
+year-ago count it assumes equal samples. The comparison view applies the same test to the
+gap between two ZIPs, sqrt(rse_a^2 + rse_b^2).
+
+Grey keeps the triangle, so the direction is still visible; the tooltip and screen-reader
+text give the band. Rejected: an asterisk (72% of ZIPs are tier 0, so it would mark most
+values, and its absence on unmodelled metrics would read as "checked"), and hiding the
+change (loses the direction a reader may still want). Every other metric keeps its colour
+because there is no noise model for it. One paragraph on the methodology page explains grey.
+
+**Hub page and internal links to the landing pages (audit S2).** Nothing linked to the 631
+landing pages; only the sitemap reached them. `places/` lists every state and its metros.
+The top bar has a Places link at every width, every landing page's breadcrumb and footer
+link to the hub, and the detail panel's metro name links to that metro's page. The panel
+learns which metros have pages from `metroPageSlugs`, the same selection that writes them,
+inlined by `vite.config.ts` as `VITE_METRO_PAGES`. The list is 6.5 KB gzipped; inlined into
+the top bar or panel it landed in the first-paint `Index` chunk (+15%), so it is its own
+module (`src/lib/metro-pages.ts`) loaded when the first panel opens.
+
+**Deploy and CI had failed on every push since 2026-11-18.** The dependency update of
+2026-11-17 wrote `package-lock.json` with npm 11, which left out `@emnapi/core` and
+`@emnapi/runtime` 2.0.0-beta.2, dependencies of Rolldown's optional wasm32 binding. CI runs
+Node 20 and npm 10, whose `npm ci` refuses a lockfile missing them; npm 11 accepts it, so it
+passed locally. Regenerating with `npx npm@10 install --package-lock-only` adds the two
+entries and both npm versions accept the result. So the landing pages, the map-freeze fix
+and the 2026-11 data commit were not live.
+
+**Audit S6 measured and left; M3 gets one methodology sentence; M4 needs nothing.** See
+`docs/METHODOLOGY.md` section 11.
