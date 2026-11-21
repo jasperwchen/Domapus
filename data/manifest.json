@@ -1,0 +1,1339 @@
+{
+  "generated_utc": "2026-11-20T22:54:52.959814+00:00",
+  "previous_content_digest": "058564afa194e21975cb9fb3ffb9962f03678795a1c869cc8ed4ace19b94ad23",
+  "redfin": {
+    "period_end": "2026-10-31",
+    "period_begin": "2026-08-01",
+    "vintage": "2026-11-03",
+    "rows": 5020735,
+    "price_quality": {
+      "max_invalid_share": 0.001,
+      "ranges": {
+        "median_sale_price": [
+          1000.0,
+          100000000.0
+        ],
+        "median_ppsf": [
+          1.0,
+          1000000.0
+        ],
+        "median_list_price": [
+          1000.0,
+          1000000000.0
+        ],
+        "median_list_ppsf": [
+          1.0,
+          1000000000.0
+        ]
+      },
+      "invalid_cells": 1244,
+      "latest_affected": [
+        {
+          "metric": "median_list_ppsf",
+          "period": "2026-10-31",
+          "observed": 26614,
+          "invalid": 3,
+          "samples": [
+            {
+              "zip": "60958",
+              "value": 0.71
+            },
+            {
+              "zip": "74457",
+              "value": 0.01
+            },
+            {
+              "zip": "58580",
+              "value": 0.13
+            }
+          ]
+        },
+        {
+          "metric": "median_list_price",
+          "period": "2026-10-31",
+          "observed": 26661,
+          "invalid": 1,
+          "samples": [
+            {
+              "zip": "81649",
+              "value": 1062109206
+            }
+          ]
+        },
+        {
+          "metric": "median_ppsf",
+          "period": "2026-10-31",
+          "observed": 25517,
+          "invalid": 2,
+          "samples": [
+            {
+              "zip": "62927",
+              "value": 0.0
+            },
+            {
+              "zip": "39176",
+              "value": 0.45
+            }
+          ]
+        },
+        {
+          "metric": "median_sale_price",
+          "period": "2026-10-31",
+          "observed": 25564,
+          "invalid": 2,
+          "samples": [
+            {
+              "zip": "62927",
+              "value": 1
+            },
+            {
+              "zip": "39176",
+              "value": 800
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "zhvi": {
+    "period_end": "2026-10-31",
+    "zips": 27996,
+    "panel": {
+      "rows": 6520842,
+      "months": 320,
+      "zips": 27996,
+      "month_min": "2000-03-31",
+      "month_max": "2026-10-31",
+      "vintage": "2026-10-31",
+      "bytes": 52758676,
+      "fill_rate": 0.7279
+    }
+  },
+  "fingerprints": {
+    "redfin": "52d4812691173c0b",
+    "zhvi": "e3918f6e028384b5"
+  },
+  "upstream": {
+    "redfin": {
+      "last_modified": "Thu, 12 Nov 2026 13:13:38 GMT",
+      "content_length": 2036197835
+    },
+    "zhvi": {
+      "last_modified": "Mon, 16 Nov 2026 16:54:31 GMT",
+      "content_length": 124869546
+    }
+  },
+  "panel": {
+    "periods": 176,
+    "zips": 33981,
+    "rows": 5020735
+  },
+  "coverage": {
+    "both": 26986,
+    "redfin_only": 1926,
+    "zhvi_only": 996,
+    "no_data": 3863
+  },
+  "orphans": 831,
+  "changed": {
+    "status": "compared",
+    "zips": {
+      "total": 33771,
+      "added": 0,
+      "removed": 0,
+      "changed": 29803
+    },
+    "data_points": 844103,
+    "by_column": {
+      "zhvi": 27981,
+      "zhvi_yoy": 27476,
+      "zhvi_mom": 27442,
+      "mlp": 27349,
+      "lppsf": 27304,
+      "f_h12": 27061,
+      "msp": 26376,
+      "dom_rse": 26362,
+      "msp_rse": 26352,
+      "ppsf": 26080,
+      "mlp_yoy": 25736,
+      "lppsf_yoy": 25680,
+      "al_yoy": 25402,
+      "msp_yoy": 24549,
+      "nl_yoy": 24495,
+      "ppsf_yoy": 24429,
+      "inv_yoy": 24351,
+      "ps_yoy": 23532,
+      "s2l": 23526,
+      "om2_yoy": 23474,
+      "hs_yoy": 23282,
+      "dom_yoy_d": 23240,
+      "s2l_yoy": 23203,
+      "om2": 23057,
+      "mos": 22997,
+      "nl": 22913,
+      "al": 22728,
+      "mos_yoy_m": 22714,
+      "inv": 22332,
+      "dom": 21998,
+      "ps": 21958,
+      "hs": 21747,
+      "abv_yoy": 21269,
+      "abv": 19651,
+      "f_sigma": 10470,
+      "cov": 2203,
+      "rel": 1586,
+      "lisa": 994,
+      "f_tier": 804
+    },
+    "compared_against_built_utc": "2026-10-24T00:18:27.230061+00:00"
+  },
+  "validation": {
+    "period_age_days": {
+      "redfin": 20,
+      "zhvi": 20
+    },
+    "period_gap_months": 0,
+    "columns": 49,
+    "zips": 33771
+  },
+  "changes": {
+    "lag": 12,
+    "base_period": "2025-10-31",
+    "latest_period": "2026-10-31",
+    "filled": {
+      "homes_sold": 23234,
+      "median_sale_price": 23232,
+      "median_dom": 23214,
+      "avg_sale_to_list_ratio": 22311,
+      "sold_above_list": 23234,
+      "new_listings": 24455,
+      "active_listings": 26862,
+      "inventory": 24923,
+      "pending_sales": 23611,
+      "median_list_price": 24437,
+      "median_list_ppsf": 24383,
+      "median_ppsf": 23191,
+      "months_of_supply": 22172,
+      "off_market_in_two_weeks": 23611
+    },
+    "suppressed_degenerate_base": {},
+    "reconciliation": {
+      "checked": true,
+      "period": "2026-09-30",
+      "base_period": "2025-09-30",
+      "flat_tolerance": 0.02,
+      "max_share": 0.01,
+      "feed_scale": {
+        "median_dom": 1.0,
+        "months_of_supply": 1.0
+      },
+      "scale_evidence": {
+        "median_dom": {
+          "votes": 13148,
+          "compared": 23614,
+          "status": "established",
+          "agreement": {
+            "1.0": 1.0,
+            "100.0": 0.0
+          },
+          "tolerance": 1.5,
+          "discriminating_floor": 12.0,
+          "scale": 1.0
+        },
+        "months_of_supply": {
+          "votes": 6567,
+          "compared": 22597,
+          "status": "established",
+          "agreement": {
+            "1.0": 1.0,
+            "100.0": 0.0
+          },
+          "tolerance": 0.3,
+          "discriminating_floor": 2.4,
+          "scale": 1.0
+        }
+      },
+      "metrics": {
+        "median_sale_price": {
+          "compared": 23664,
+          "exceeded": 0,
+          "share": 0.0,
+          "max_abs_gap": 0.01,
+          "worst_zip": "11968"
+        },
+        "median_ppsf": {
+          "compared": 23620,
+          "exceeded": 56,
+          "share": 0.00237,
+          "max_abs_gap": 0.65,
+          "worst_zip": "50830"
+        },
+        "median_list_price": {
+          "compared": 24986,
+          "exceeded": 3,
+          "share": 0.00012,
+          "max_abs_gap": 2.54,
+          "worst_zip": "57722"
+        },
+        "median_list_ppsf": {
+          "compared": 24913,
+          "exceeded": 63,
+          "share": 0.00253,
+          "max_abs_gap": 23.77,
+          "worst_zip": "64841"
+        },
+        "median_dom": {
+          "compared": 23614,
+          "exceeded": 0,
+          "share": 0.0,
+          "max_abs_gap": 1.0,
+          "worst_zip": "07002",
+          "feed_scale": 1.0,
+          "status": "checked"
+        },
+        "months_of_supply": {
+          "compared": 22597,
+          "exceeded": 0,
+          "share": 0.0,
+          "max_abs_gap": 0.1,
+          "worst_zip": "77277",
+          "feed_scale": 1.0,
+          "status": "checked"
+        }
+      }
+    }
+  },
+  "gate": {
+    "failures": [
+      "coverage.both moved +5.4%, +1,385 ZIPs (limit +/-2% and 100 ZIPs)",
+      "coverage.redfin_only moved -41.8%, -1,385 ZIPs (limit +/-2% and 100 ZIPs)",
+      "coverage.zhvi_only moved +51.6%, +339 ZIPs (limit +/-2% and 100 ZIPs)",
+      "coverage.no_data moved -8.1%, -339 ZIPs (limit +/-2% and 100 ZIPs)"
+    ],
+    "observed": {
+      "median_sale_price": {
+        "moved_gt_25pct": 0.12222,
+        "comparable": 24235,
+        "national_median_shift": 0.00291
+      },
+      "median_list_price": {
+        "moved_gt_25pct": 0.12495,
+        "comparable": 25330,
+        "national_median_shift": -0.00242
+      },
+      "median_ppsf": {
+        "moved_gt_25pct": 0.09089,
+        "comparable": 24193,
+        "national_median_shift": -0.00129
+      },
+      "zhvi": {
+        "moved_gt_25pct": 0.00061,
+        "comparable": 26257,
+        "national_median_shift": -0.03138
+      },
+      "homes_sold": {
+        "national_total_shift": -0.08342
+      },
+      "coverage": {
+        "both": 0.0541,
+        "redfin_only": -0.4183,
+        "zhvi_only": 0.51598,
+        "no_data": -0.08068
+      }
+    },
+    "overridden": true,
+    "reason": "Include added ZIPs coverage from Zillow"
+  },
+  "snapshot": {
+    "zips": 33771,
+    "columns": 49,
+    "bytes": 10588699,
+    "payload_digest": "aa3145fae0d1b19c0044d484f21952a75ae7ab0910de22a1389913ed7af263d2"
+  },
+  "noise": {
+    "K": 0.5582,
+    "K_lag_used": 3,
+    "K_lag": [
+      0.2363,
+      0.405,
+      0.5582,
+      0.5785,
+      0.5968,
+      0.606,
+      0.6036
+    ],
+    "plateau_ratio": 1.0365,
+    "K_by_sample_size": {
+      "1-2": 0.5963,
+      "3-4": 0.6218,
+      "5-9": 0.6076,
+      "10-19": 0.5694,
+      "20-39": 0.5337,
+      "40-79": 0.5158,
+      "80-159": 0.5179,
+      "160+": 0.5269
+    },
+    "per_metric": {
+      "median_dom": {
+        "K": 1.4634,
+        "K_lag": [
+          0.5659,
+          1.0248,
+          1.4634,
+          1.6025,
+          1.7284,
+          1.7878,
+          1.7515
+        ],
+        "plateau_ratio": 1.0951,
+        "column": "dom_rse",
+        "filled": 25057
+      },
+      "avg_sale_to_list_ratio": {
+        "K": 0.0748,
+        "K_lag": [
+          0.0293,
+          0.0521,
+          0.0748,
+          0.08,
+          0.0842,
+          0.086,
+          0.0849
+        ],
+        "plateau_ratio": 1.0704
+      }
+    },
+    "tiers": {
+      "0": 24872,
+      "1": 5462,
+      "2": 2993,
+      "3": 444
+    },
+    "reporting_zips": 25073,
+    "rankable_zips": 8899,
+    "rankable_share": 0.3549,
+    "rankable_rse": 0.1,
+    "rankable_n_implied": 32,
+    "tier_n_implied": [
+      32,
+      87,
+      195
+    ]
+  },
+  "forecast": {
+    "horizon": 12,
+    "horizons": [
+      1,
+      3,
+      6,
+      12
+    ],
+    "window_months": 36,
+    "rho_shrink": 0.5,
+    "median_rho": 0.7919,
+    "vintage": "2026-10-31",
+    "zips_forecast": 27060,
+    "tier_counts": {
+      "0": 928,
+      "2": 2052,
+      "3": 25016
+    },
+    "median_sd_h12": 0.04109,
+    "backtest": {
+      "eligibility_at_origin": true,
+      "minimum_observations": 24,
+      "coverage_by_tier": {
+        "2": {
+          "1": {
+            "observations": 60746,
+            "coverage": 0.7673
+          },
+          "3": {
+            "observations": 60750,
+            "coverage": 0.8135
+          },
+          "6": {
+            "observations": 60749,
+            "coverage": 0.8538
+          },
+          "12": {
+            "observations": 60751,
+            "coverage": 0.911
+          }
+        },
+        "3": {
+          "1": {
+            "observations": 872532,
+            "coverage": 0.7875
+          },
+          "3": {
+            "observations": 872537,
+            "coverage": 0.8034
+          },
+          "6": {
+            "observations": 872533,
+            "coverage": 0.8195
+          },
+          "12": {
+            "observations": 872533,
+            "coverage": 0.8736
+          }
+        }
+      },
+      "origins": {
+        "total": 80,
+        "calibration": 41,
+        "evaluation": 39,
+        "stride_months": 3,
+        "last_calibration": 180,
+        "first_evaluation": 192,
+        "purged": 3,
+        "effective_independent": 20
+      },
+      "eligible_zips": 25814,
+      "q": {
+        "1": {
+          "0.5": [
+            -0.683,
+            0.6498
+          ],
+          "0.8": [
+            -1.3697,
+            1.3286
+          ],
+          "0.9": [
+            -1.8393,
+            1.8043
+          ],
+          "0.95": [
+            -2.3076,
+            2.2811
+          ],
+          "0.98": [
+            -2.9668,
+            2.9672
+          ],
+          "0.99": [
+            -3.5237,
+            3.5218
+          ]
+        },
+        "3": {
+          "0.5": [
+            -2.8394,
+            2.6826
+          ],
+          "0.8": [
+            -5.783,
+            5.4658
+          ],
+          "0.9": [
+            -7.8212,
+            7.4178
+          ],
+          "0.95": [
+            -9.7934,
+            9.4
+          ],
+          "0.98": [
+            -12.5029,
+            12.201
+          ],
+          "0.99": [
+            -14.9254,
+            14.653
+          ]
+        },
+        "6": {
+          "0.5": [
+            -6.4142,
+            6.0043
+          ],
+          "0.8": [
+            -13.4773,
+            12.1877
+          ],
+          "0.9": [
+            -18.6254,
+            16.5354
+          ],
+          "0.95": [
+            -23.5922,
+            20.9514
+          ],
+          "0.98": [
+            -29.907,
+            27.0576
+          ],
+          "0.99": [
+            -35.3131,
+            32.3813
+          ]
+        },
+        "12": {
+          "0.5": [
+            -13.4545,
+            12.8982
+          ],
+          "0.8": [
+            -32.5181,
+            25.9389
+          ],
+          "0.9": [
+            -46.9264,
+            35.3275
+          ],
+          "0.95": [
+            -60.4623,
+            44.6115
+          ],
+          "0.98": [
+            -77.5514,
+            57.1952
+          ],
+          "0.99": [
+            -90.71,
+            67.8656
+          ]
+        }
+      },
+      "coverage": {
+        "nominal": 0.8,
+        "random_walk_sqrt_h": {
+          "1": 0.7798,
+          "3": 0.4207,
+          "6": 0.296,
+          "12": 0.234
+        },
+        "ar1_closed_form": {
+          "1": 0.8606,
+          "3": 0.7614,
+          "6": 0.7375,
+          "12": 0.7496
+        },
+        "empirical_quantiles": {
+          "1": 0.7861,
+          "3": 0.8041,
+          "6": 0.8217,
+          "12": 0.8761
+        }
+      },
+      "mae_log_x100": {
+        "1": 0.288,
+        "3": 1.16,
+        "6": 2.505,
+        "12": 4.576
+      },
+      "naive_mae_log_x100": {
+        "1": 0.713,
+        "3": 2.017,
+        "6": 3.735,
+        "12": 6.785
+      },
+      "mase": {
+        "1": 0.404,
+        "3": 0.575,
+        "6": 0.671,
+        "12": 0.674
+      },
+      "beats_naive": true,
+      "complete_history_zips": 11610
+    }
+  },
+  "spatial": {
+    "gated": true,
+    "gate": "rel >= 1 (rse < 10%)",
+    "n": 8899,
+    "k_shipped": 8,
+    "permutations": 999,
+    "fdr_q": 0.05,
+    "moran_I_by_k": {
+      "4": 0.7643,
+      "8": 0.7274,
+      "16": 0.6772,
+      "32": 0.6285
+    },
+    "class_counts": {
+      "ns": 6263,
+      "HH": 1337,
+      "LL": 1243,
+      "LH": 20,
+      "HL": 36
+    },
+    "lisa_median_n_by_class": {
+      "ns": 78,
+      "HH": 65,
+      "LL": 64,
+      "LH": 48,
+      "HL": 72
+    },
+    "bh_significant": 2636,
+    "raw_p_below_05": 3474,
+    "hysteresis_held": 221,
+    "held": [
+      "01772",
+      "01845",
+      "01902",
+      "01952",
+      "02151",
+      "02339",
+      "02360",
+      "02370",
+      "02563",
+      "03842",
+      "06801",
+      "06811",
+      "07005",
+      "07013",
+      "07083",
+      "07407",
+      "07442",
+      "07621",
+      "07631",
+      "07652",
+      "07719",
+      "07730",
+      "07731",
+      "07751",
+      "07834",
+      "07869",
+      "08807",
+      "10306",
+      "10314",
+      "10461",
+      "10541",
+      "10552",
+      "10710",
+      "11361",
+      "11362",
+      "11367",
+      "11434",
+      "13206",
+      "14072",
+      "14215",
+      "14218",
+      "14468",
+      "15136",
+      "15226",
+      "16037",
+      "16117",
+      "17901",
+      "19073",
+      "19111",
+      "19121",
+      "19132",
+      "19134",
+      "19138",
+      "19301",
+      "19312",
+      "19355",
+      "20109",
+      "20152",
+      "20186",
+      "20902",
+      "20912",
+      "21221",
+      "22150",
+      "22151",
+      "22153",
+      "22315",
+      "28210",
+      "28562",
+      "29403",
+      "29803",
+      "30273",
+      "30297",
+      "30326",
+      "30814",
+      "31021",
+      "31794",
+      "33141",
+      "33155",
+      "33331",
+      "33478",
+      "34103",
+      "35023",
+      "35068",
+      "35160",
+      "35214",
+      "35661",
+      "35903",
+      "36203",
+      "36303",
+      "36305",
+      "37211",
+      "38134",
+      "38135",
+      "38372",
+      "39401",
+      "39482",
+      "40108",
+      "40204",
+      "40206",
+      "42501",
+      "43311",
+      "43420",
+      "44094",
+      "44281",
+      "45231",
+      "45503",
+      "45504",
+      "46221",
+      "46222",
+      "46228",
+      "46235",
+      "46319",
+      "46342",
+      "46368",
+      "46408",
+      "46410",
+      "46615",
+      "47240",
+      "47274",
+      "47331",
+      "47501",
+      "48161",
+      "48801",
+      "48879",
+      "49117",
+      "49721",
+      "49783",
+      "49829",
+      "49854",
+      "50035",
+      "53204",
+      "54114",
+      "54521",
+      "55803",
+      "59701",
+      "60061",
+      "60478",
+      "61364",
+      "61832",
+      "61853",
+      "62294",
+      "63118",
+      "63628",
+      "63640",
+      "64050",
+      "64116",
+      "64507",
+      "65340",
+      "65781",
+      "66049",
+      "67101",
+      "67204",
+      "67205",
+      "67206",
+      "67219",
+      "67220",
+      "67226",
+      "71913",
+      "72032",
+      "72076",
+      "72120",
+      "72143",
+      "72173",
+      "72315",
+      "73036",
+      "73703",
+      "75601",
+      "75604",
+      "75605",
+      "75633",
+      "76901",
+      "77056",
+      "77057",
+      "77072",
+      "77098",
+      "77904",
+      "78101",
+      "78114",
+      "78201",
+      "78202",
+      "78212",
+      "78252",
+      "78363",
+      "78373",
+      "78415",
+      "78504",
+      "78586",
+      "78597",
+      "78645",
+      "78751",
+      "80107",
+      "80112",
+      "80121",
+      "80134",
+      "80210",
+      "85050",
+      "87505",
+      "87571",
+      "92201",
+      "92203",
+      "92211",
+      "92236",
+      "92260",
+      "92264",
+      "92335",
+      "92336",
+      "95667",
+      "95688",
+      "95762",
+      "95765",
+      "96792",
+      "96816",
+      "96818",
+      "97035",
+      "97068",
+      "97070",
+      "97201",
+      "98070",
+      "98108",
+      "98201",
+      "98260"
+    ],
+    "median_8th_neighbour_km": 15.67,
+    "bonferroni_threshold": 5.618608832453085e-06,
+    "bonferroni_attainable": false,
+    "permutations_for_bonferroni": 177979
+  },
+  "classes": 14,
+  "classing": {
+    "zhvi": {
+      "scheme": "log_equal_p1_p99",
+      "classes": 14,
+      "breaks": [
+        129246.3186,
+        158742.631,
+        194970.5274,
+        239466.2751,
+        294116.7451,
+        361239.4259,
+        443680.6983,
+        544936.5376,
+        669300.7634,
+        822047.121,
+        1009652.9185,
+        1240073.7012,
+        1523080.6113
+      ],
+      "class_counts": [
+        2541,
+        2015,
+        3000,
+        3764,
+        3838,
+        3771,
+        2894,
+        2176,
+        1458,
+        1002,
+        572,
+        371,
+        244,
+        336
+      ],
+      "non_null": 27982,
+      "break_population": 8898,
+      "break_gate": "rankable",
+      "bottom_class_share": 0.0908,
+      "clamped_low": 2541,
+      "clamped_high": 336
+    },
+    "median_sale_price": {
+      "scheme": "log_equal_p1_p99",
+      "classes": 14,
+      "breaks": [
+        150363.4707,
+        183908.6144,
+        224937.4684,
+        275119.6014,
+        336497.0523,
+        411567.4262,
+        503385.5278,
+        615687.6698,
+        753043.7126,
+        921043.0238,
+        1126521.9237,
+        1377841.8725,
+        1685229.7195
+      ],
+      "class_counts": [
+        2726,
+        1630,
+        2416,
+        3119,
+        3486,
+        3353,
+        2687,
+        1938,
+        1383,
+        917,
+        488,
+        352,
+        226,
+        349
+      ],
+      "non_null": 25070,
+      "break_population": 8899,
+      "break_gate": "rankable",
+      "bottom_class_share": 0.1087,
+      "clamped_low": 2726,
+      "clamped_high": 349,
+      "selection_effect": {
+        "median_price_rankable": 391799.0,
+        "median_price_excluded": 279857.0,
+        "bottom_class_share_rankable": 0.0256,
+        "bottom_class_share_excluded": 0.1545
+      }
+    },
+    "median_ppsf": {
+      "scheme": "log_equal_p1_p99",
+      "classes": 14,
+      "breaks": [
+        103.4284,
+        124.4666,
+        149.7841,
+        180.2515,
+        216.9162,
+        261.0388,
+        314.1363,
+        378.0342,
+        454.9296,
+        547.4661,
+        658.8253,
+        792.836,
+        954.1055
+      ],
+      "class_counts": [
+        2967,
+        1869,
+        2982,
+        4028,
+        3923,
+        3122,
+        2058,
+        1388,
+        898,
+        622,
+        458,
+        267,
+        170,
+        274
+      ],
+      "non_null": 25026,
+      "break_population": 8899,
+      "break_gate": "rankable",
+      "bottom_class_share": 0.1186,
+      "clamped_low": 2967,
+      "clamped_high": 274
+    },
+    "homes_sold": {
+      "scheme": "quantile",
+      "classes": 14,
+      "breaks": [
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        6.0,
+        9.0,
+        14.0,
+        21.0,
+        31.0,
+        45.0,
+        63.0,
+        85.0,
+        119.0
+      ],
+      "class_counts": [
+        0,
+        3014,
+        2010,
+        1348,
+        1996,
+        2008,
+        2103,
+        1673,
+        1847,
+        1875,
+        1740,
+        1864,
+        1770,
+        1825
+      ],
+      "non_null": 25073,
+      "break_population": 25073,
+      "break_gate": "all_reporting",
+      "bottom_class_share": 0.0,
+      "clamped_low": 0,
+      "clamped_high": 1825
+    },
+    "active_listings": {
+      "scheme": "quantile",
+      "classes": 14,
+      "breaks": [
+        1.0,
+        3.0,
+        5.0,
+        7.0,
+        11.0,
+        17.0,
+        26.0,
+        41.0,
+        63.0,
+        93.0,
+        137.0,
+        194.0,
+        288.7143
+      ],
+      "class_counts": [
+        0,
+        3705,
+        2164,
+        1556,
+        2250,
+        2176,
+        2083,
+        2056,
+        2034,
+        1981,
+        2028,
+        2031,
+        2018,
+        2007
+      ],
+      "non_null": 28089,
+      "break_population": 28089,
+      "break_gate": "all_reporting",
+      "bottom_class_share": 0.0,
+      "clamped_low": 0,
+      "clamped_high": 2007
+    },
+    "median_dom": {
+      "scheme": "quantile",
+      "classes": 14,
+      "breaks": [
+        18.0,
+        24.0,
+        29.0,
+        34.0,
+        39.0,
+        43.0,
+        48.0,
+        52.0,
+        56.0,
+        62.0,
+        68.0,
+        76.0,
+        88.0
+      ],
+      "class_counts": [
+        2392,
+        1437,
+        1392,
+        1384,
+        1596,
+        1368,
+        1601,
+        1376,
+        1236,
+        1705,
+        1465,
+        1609,
+        1788,
+        4708
+      ],
+      "non_null": 25057,
+      "break_population": 8899,
+      "break_gate": "rankable",
+      "bottom_class_share": 0.0955,
+      "clamped_low": 2392,
+      "clamped_high": 4708
+    },
+    "sold_above_list": {
+      "scheme": "equal_interval_0_100",
+      "classes": 14,
+      "breaks": [
+        7.1429,
+        14.2857,
+        21.4286,
+        28.5714,
+        35.7143,
+        42.8571,
+        50.0,
+        57.1429,
+        64.2857,
+        71.4286,
+        78.5714,
+        85.7143,
+        92.8571
+      ],
+      "class_counts": [
+        9396,
+        3586,
+        3144,
+        2510,
+        1959,
+        1305,
+        1449,
+        412,
+        348,
+        306,
+        111,
+        60,
+        22,
+        465
+      ],
+      "non_null": 25073,
+      "break_population": 8899,
+      "break_gate": null,
+      "bottom_class_share": 0.3747,
+      "clamped_low": 9396,
+      "clamped_high": 465
+    },
+    "months_of_supply": {
+      "scheme": "quantile",
+      "classes": 14,
+      "breaks": [
+        1.9,
+        2.3,
+        2.6,
+        2.9,
+        3.2,
+        3.5,
+        3.8,
+        4.1,
+        4.5,
+        5.0,
+        5.4,
+        6.1,
+        7.3
+      ],
+      "class_counts": [
+        2209,
+        1320,
+        1127,
+        1222,
+        932,
+        2576,
+        1074,
+        1147,
+        1283,
+        1739,
+        1146,
+        1402,
+        2379,
+        4270
+      ],
+      "non_null": 23826,
+      "break_population": 8899,
+      "break_gate": "rankable",
+      "bottom_class_share": 0.0927,
+      "clamped_low": 2209,
+      "clamped_high": 4270
+    }
+  },
+  "history": {
+    "buckets": 6080,
+    "zips": 33401,
+    "periods": 176,
+    "zhvi_months": 320,
+    "series": [
+      "hs",
+      "msp",
+      "zhvi"
+    ],
+    "forecast_zips": 27060,
+    "bytes_total": 115366897,
+    "bytes_median": 19699,
+    "bytes_index": 50315,
+    "bucket_depth": 4,
+    "period_first": "2012-03-31",
+    "period_last": "2026-10-31"
+  },
+  "assets": {
+    "paint": {
+      "zhvi": {
+        "file": "paint/zhvi-ff34a60f.u8",
+        "bytes": 100000,
+        "sha256": "ff34a60f0b7e22cc132ead0c0de348ef0c3bc1c6d55149a9ea71e3a4ab99c599",
+        "zips_set": 27982,
+        "max_byte": 61,
+        "fade_exempt": false
+      },
+      "median_sale_price": {
+        "file": "paint/median_sale_price-7963a92a.u8",
+        "bytes": 100000,
+        "sha256": "7963a92a0cd0d1bb8469f275bcbce54c7fa1cdb0c0cad5158797068960aa310b",
+        "zips_set": 25070,
+        "max_byte": 62,
+        "fade_exempt": false
+      },
+      "median_ppsf": {
+        "file": "paint/median_ppsf-de406731.u8",
+        "bytes": 100000,
+        "sha256": "de40673183b9acc72bd86d29ddfc21de444abfde81b4def463d71059e274fd67",
+        "zips_set": 25026,
+        "max_byte": 60,
+        "fade_exempt": false
+      },
+      "homes_sold": {
+        "file": "paint/homes_sold-2dfccd2a.u8",
+        "bytes": 100000,
+        "sha256": "2dfccd2a3672589d7539f20370dc0598b443f6700c9d74a17dc4cf0bfb605bd9",
+        "zips_set": 25073,
+        "max_byte": 62,
+        "fade_exempt": false
+      },
+      "active_listings": {
+        "file": "paint/active_listings-e220547c.u8",
+        "bytes": 100000,
+        "sha256": "e220547c16f2b9c1a2a98f8f622a2d76e899ef11949bcd4cee2471a0f89e9810",
+        "zips_set": 28089,
+        "max_byte": 62,
+        "fade_exempt": true
+      },
+      "median_dom": {
+        "file": "paint/median_dom-626b2466.u8",
+        "bytes": 100000,
+        "sha256": "626b2466e9e8726d96218636dc63f87abcf9182f477d4ab5ae9e79f5c310b5a8",
+        "zips_set": 25057,
+        "max_byte": 62,
+        "fade_exempt": false
+      },
+      "sold_above_list": {
+        "file": "paint/sold_above_list-40abbad6.u8",
+        "bytes": 100000,
+        "sha256": "40abbad6c1d0cd05d2919d3cb7257ac7561b163930f23966bdac87269fb6df84",
+        "zips_set": 25073,
+        "max_byte": 58,
+        "fade_exempt": false
+      },
+      "months_of_supply": {
+        "file": "paint/months_of_supply-258dca14.u8",
+        "bytes": 100000,
+        "sha256": "258dca14ecc6cbc5bf9f070b703be828d11f2570e9a7aec7b208c3caec8c09e6",
+        "zips_set": 23826,
+        "max_byte": 62,
+        "fade_exempt": false
+      }
+    },
+    "snapshot": "releases/8c26cbb11c3de39faa4cb0c18b6bf3725c465a7af7d852a078e787d7a36a34d7/zip-data.json",
+    "history": "releases/8c26cbb11c3de39faa4cb0c18b6bf3725c465a7af7d852a078e787d7a36a34d7/history/<zip4>.json",
+    "archives": {
+      "snapshot": {
+        "file": "snapshot-8c26cbb11c3de39faa4cb0c18b6bf3725c465a7af7d852a078e787d7a36a34d7.json.gz",
+        "sha256": "4ea7ff637c64664a0d05458ebbd3c25763af7bc50f94126d8e915cdaab7fb7f4"
+      },
+      "history": {
+        "file": "history-8c26cbb11c3de39faa4cb0c18b6bf3725c465a7af7d852a078e787d7a36a34d7.tar.gz",
+        "sha256": "849bed4d4579bfb11d40abcd2437428fabcd2d267857831f836367482e5aa86d"
+      }
+    }
+  },
+  "release_id": "8c26cbb11c3de39faa4cb0c18b6bf3725c465a7af7d852a078e787d7a36a34d7",
+  "content_digest": "8c26cbb11c3de39faa4cb0c18b6bf3725c465a7af7d852a078e787d7a36a34d7",
+  "content_changed": true
+}
