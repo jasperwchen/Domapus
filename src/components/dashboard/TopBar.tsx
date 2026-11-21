@@ -6,6 +6,7 @@ import { MetricSelector, MetricType } from "./MetricSelector";
 import { SearchBox } from "./SearchBox";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { trackError } from "@/lib/analytics";
+import { useMapPresence } from "@/lib/map-presence";
 import { fetchDataDates, formatPeriod, formatPeriodDay, formatRedfinWindow, stalePeriod, EMPTY_DATA_DATES, type DataDates } from "@/lib/data-dates";
 
 const GithubIcon = ({ className }: { className?: string }) => (
@@ -22,25 +23,25 @@ const GithubIcon = ({ className }: { className?: string }) => (
 const BASE_PATH = import.meta.env.BASE_URL;
 
 /**
- * The header both routes share. Split out so the methodology page gets a header without the
- * map's metric selector and search.
+ * The header every page shares. The static landing pages copy its markup in
+ * scripts/build-pages.mjs (`topBar`); change the two together.
  */
 export function TopBarShell({
-  subtitle, center, actions, nav = "methodology",
+  center, actions, page = "map", onMap,
 }: {
-  /** The line under the wordmark. The map says what the site is; a document says
-   *  what the document is. */
-  subtitle: string;
   /** Page-specific controls. Empty on the methodology page. */
   center?: React.ReactNode;
   /** Page-specific actions, placed before the site-wide links. */
   actions?: React.ReactNode;
-  /** Which route the first button goes to: the one the reader is not on. A titled
-   *  icon is the exit a reader looks for, even though the logo also leads to the map. */
-  nav?: "methodology" | "map";
+  /** The map links out to the other pages. Every other page shows the same buttons
+   *  minus its own, so the way back to the map is always in the same place. */
+  page?: "map" | "methodology" | "export";
+  /** Export sits over the live map, so its Map button closes it rather than reloading. */
+  onMap?: () => void;
 }) {
   // Carry the query string so returning from methodology restores the map view.
   const { search } = useLocation();
+  const { alive } = useMapPresence();
 
   // Tailwind breakpoints, not `isMobile`: this row degrades in more than two steps.
   return (
@@ -70,7 +71,8 @@ export function TopBarShell({
               Domapus
             </h1>
             <p className="text-xs text-dashboard-text-secondary leading-tight truncate hidden sm:block">
-              {subtitle}
+              {/* Never change this text, on any page. */}
+              Housing Market Analysis
             </p>
           </div>
         </a>
@@ -81,11 +83,19 @@ export function TopBarShell({
         {actions}
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {nav === "map" ? (
-            <IconLink href={`${BASE_PATH}${search}`} label="Map">
+          {page !== "map" && (onMap ? (
+            <Button variant="outline" size="sm" onClick={onMap} title="Map">
+              <MapIcon className="h-4 w-4" />
+              <span className="hidden xl:inline">Map</span>
+            </Button>
+          ) : (
+            // Client-side back to the map kept mounted behind this page; a full load when there
+            // is none, so index.html's boot fetches start alongside the bundle.
+            <IconLink {...(alive ? { to: `/${search}` } : { href: `${BASE_PATH}${search}` })} label="Map">
               <MapIcon className="h-4 w-4" />
             </IconLink>
-          ) : (
+          ))}
+          {page !== "methodology" && (
             <IconLink to={`/methodology/${search}`} label="Methodology">
               <BookOpen className="h-4 w-4" />
             </IconLink>
@@ -210,7 +220,6 @@ export function TopBar({
   return (
     <>
       <TopBarShell
-        subtitle="Housing Market Analysis"
         center={!isMobile ? (
           <MetricSelector selectedMetric={selectedMetric} onMetricChange={onMetricChange} />
         ) : undefined}

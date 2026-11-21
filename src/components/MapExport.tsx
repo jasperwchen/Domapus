@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { ZipTable } from "@/lib/zip-table";
 import type { ClassingSpec } from "@/lib/class-source";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useMapPresence } from "@/lib/map-presence";
 
 const ExportSidebar = lazy(() => import("./dashboard/export/ExportSidebar").then(m => ({ default: m.ExportSidebar })));
 
@@ -22,10 +23,17 @@ interface MapExportProps {
 export function MapExport({ store, selectedMetric, breaks, classing = null, onExportModeChange }: MapExportProps) {
   const [isExportMode, setIsExportMode] = useState(false);
   const isMobile = useIsMobile();
+  const { visible } = useMapPresence();
 
   useEffect(() => {
     onExportModeChange(isExportMode);
   }, [isExportMode, onExportModeChange]);
+
+  // Leaving for methodology from the export's top bar closes it: the dialog sits in the
+  // browser's top layer, above the page that replaced the map.
+  useEffect(() => {
+    if (!visible) setIsExportMode(false);
+  }, [visible]);
 
   const handleClose = () => {
     setIsExportMode(false);

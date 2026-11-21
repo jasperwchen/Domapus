@@ -30,7 +30,7 @@ import { beginMetricSwitch } from "@/lib/perf";
 import { buildMetroIndex, metroBounds } from "@/lib/metros";
 import type { MetroHighlight } from "./MapLibreMap";
 import { track, trackOnce } from "@/lib/analytics";
-import { EmbedButton, EmbedCredit } from "./Embed";
+import { EmbedCredit } from "./Embed";
 import { isEmbed } from "@/lib/embed";
 
 function readUrlParams(search: string) {
@@ -484,7 +484,6 @@ export function HousingDashboard() {
           classing={manifest?.classing?.[selectedMetric] ?? null}
           onExportModeChange={setIsExportMode}
         />
-        {!isMobile && <EmbedButton metric={selectedMetric} />}
       </TopBar>}
       {manifest && !embed && (
         <details className="xl:hidden bg-dashboard-panel px-3 py-1 text-xs border-b">
@@ -509,6 +508,8 @@ export function HousingDashboard() {
             isOpen={sidebarOpen}
             onClose={handleSidebarClose}
             onExited={handleSheetExited}
+            // Picking the second ZIP by tapping the map needs the map in view.
+            peek={mode === "compare" && !compareZip}
           >
             <Sidebar
               isOpen={sidebarOpen || !!sheetZip}

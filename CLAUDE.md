@@ -131,8 +131,27 @@ lands in the first-paint chunk.
 credit chip linking to the same view on the full site. It names the data source ("Data:
 Zillow" or "Data: Redfin") because embeds sit on other people's pages; the metric name
 truncates first in a narrow frame. The chip sits top-left, or above the
-map attribution at phone widths where the legend takes top-left. The Embed button copies an
-iframe snippet with the selected ZIP dropped. Landing pages embed the map this way.
+map attribution at phone widths where the legend takes top-left. The export panel's Embed
+section copies an iframe snippet of the main map's view with the selected ZIP dropped; it is
+not in the top bar. Landing pages embed the map this way.
+
+**One top bar.** The line under the wordmark is always "Housing Market Analysis", on every page, app and static. `TopBarShell` is the header on the map, methodology and export screens. Off the
+map it shows Map, Methodology, Places and GitHub minus the page you are on (the places hub
+hides Places; metro and state pages keep it as the way up). In export, Map closes the export
+instead of reloading. The static landing pages copy its markup and the
+app's light palette in `topBar` in `scripts/build-pages.mjs` (the app has no dark mode); change
+the two together. The places hub has a search over states and metros, ranked by match position
+and then homes sold, as the export's metro search is.
+
+**The map stays mounted behind methodology.** `Pages` in `App.tsx` mounts the map on its first
+visit and then only hides it (opacity, `z-index: -1`, `inert`; visibility alone let MapLibre's
+attribution box show through), so the way back is a client-side link with no reload: 10 ms
+against a full startup. `MapPresence` (`src/lib/map-presence.ts`) tells the map it is hidden.
+While hidden, `useUrlState` writes nothing (a write would replace the methodology URL) and
+coming back to the same search is not a navigation (re-applying it moved the camera); export
+closes, and the portaled mobile sheet renders nothing. Anything new in the dashboard that
+writes the URL, listens on `document` or portals out of it must respect `visible` too. A
+visitor who lands on methodology never mounts the map, and its Map link stays a full load.
 
 ## The load path (why the first paint is fast)
 
@@ -459,7 +478,7 @@ The export maps are north-up; `PrintStage` shares the compass drawing between th
 
 The ZIP outline follows the open detail panel's primary ZIP, including in compare mode.
 Search moves the camera only after a valid lookup; it does not own the outline. Closing
-details clears the selection and URL ZIP. External URL navigation restores metric, ZIP and camera, cancelling stale viewport writes. Mobile details are nonmodal so core map controls remain usable; export stays modal. Delayed viewport writes merge with the latest URL
+details clears the selection and URL ZIP. External URL navigation restores metric, ZIP and camera, cancelling stale viewport writes. Mobile details are nonmodal so the map stays usable, but the sheet covers the bottom metric and search controls while open; export stays modal. Delayed viewport writes merge with the latest URL
 so they cannot restore a closed or previous selection.
 
 Metro search outlines only the metro's outer edge with no extra data: every member ZIP

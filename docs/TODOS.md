@@ -32,7 +32,7 @@ own. GitHub redirects the old `github.io` URL on its own. The cost is that the s
 sitemap, the social-preview URLs and the structured data all change together; the landing
 pages take the base from Vite and their origin from `SITE_ORIGIN` in `scripts/build-pages.mjs`.
 Decide before the landing pages are deployed and before the posting routine, because links
-earned on the old URL are worth less after a move.
+earned on the old URL are worth less after a move. After that: cache lifetime, title, favicon
 
 ### 1g. Sponsor credit for the Atlanta realtor (small once decided)
 
@@ -47,7 +47,7 @@ Recommended shape: a labelled sponsor credit scoped to the Atlanta, GA metro, no
 - The link carries `rel="sponsored noopener"` and UTM parameters; send `sponsor_view` and
   `sponsor_click` events through `track` in `src/lib/analytics.ts` so he can be given a monthly number.
 - Never on the national view, never a popup, never anything that changes the data.
-
+- small ad for georgia, atlanta metro, zip codes, that lead to his website 
 Needed from you: his display name, brokerage name as his ads must show it, link, and whether
 he wants a logo. Also decide the fate of `SponsorBanner.tsx`: its text says "proudly ad-free",
 which stops being true the day a sponsor credit ships.
@@ -55,16 +55,6 @@ which stops being true the day a sponsor credit ships.
 ---
 
 ## 2. Something only you can do
-
-### 2d. Get the November data live (small, now)
-
-The data commit landed on main (2026-11-20 dispatch), but Deploy failed, as it has on every
-push since the 18th: `npm ci` on CI's npm 10 rejected the lockfile. The fixed lockfile is in
-this branch and uncommitted. Once it reaches main, Deploy runs on that push.
-
-Expect `manifest.forecast.tier_counts["0"]` at 928: Zillow added ZIPs with under 24 months
-of history, which get no forecast. `CLAUDE.md` says to reopen the dropped metro forecast path
-when that count is above 0; decide whether no forecast is acceptable for those ZIPs.
 
 ### 2a. Forward the new events from Google Tag Manager to GA4 (small, after the events deploy)
 

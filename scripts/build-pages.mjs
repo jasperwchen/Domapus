@@ -36,6 +36,9 @@ const monthLabel = (iso) => iso
   ? new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" })
   : "";
 
+/** The same month a year earlier, for "From October 2025 to October 2026". */
+const yearBefore = (iso) => iso ? `${+iso.slice(0, 4) - 1}${iso.slice(4, 7)}-01` : "";
+
 const usd = (v) => v == null ? "" : `$${Math.round(v).toLocaleString("en-US")}`;
 const pct = (v) => {
   if (v == null) return "";
@@ -58,7 +61,7 @@ export function decodeSnapshot(snap) {
     };
   };
   const get = Object.fromEntries(
-    ["st", "ci", "me", "lat", "lng", "bw", "bs", "be", "bn", "zhvi", "zhvi_yoy", "msp", "msp_yoy", "dom", "rel"]
+    ["st", "ci", "me", "lat", "lng", "bw", "bs", "be", "bn", "zhvi", "zhvi_yoy", "msp", "msp_yoy", "dom", "rel", "hs"]
       .map((n) => [n, col(n)]),
   );
   return snap.z.map((zip, i) => {
@@ -140,6 +143,7 @@ export function buildPages(snapshot, manifest, base) {
     base,
     salesPeriod: monthLabel(snapshot.period_end),
     zhviMonth: monthLabel(snapshot.zhvi_month),
+    zhviYearBefore: monthLabel(yearBefore(snapshot.zhvi_month)),
     released: (manifest.generated_utc ?? snapshot.built_utc ?? "").slice(0, 10),
   };
 
@@ -208,12 +212,13 @@ function summary(name, rows, ctx) {
   const up = zv.filter((r) => r.zhvi_yoy > 0).length;
   const down = zv.filter((r) => r.zhvi_yoy < 0).length;
   const sales = rows.filter((r) => r.msp != null).length;
-  const parts = [`${name} has ${rows.length.toLocaleString("en-US")} ZIP codes with housing data.`];
+  const n = (v) => v.toLocaleString("en-US");
+  const total = `${name} has a total of ${n(rows.length)} ZIP codes with housing data`;
+  const parts = [sales
+    ? `${total}, ${n(sales)} of them with Redfin sales data for the three months ending ${ctx.salesPeriod}.`
+    : `${total}.`];
   if (zv.length) {
-    parts.push(`Over the year to ${ctx.zhviMonth}, the Zillow Home Value Index rose in ${up.toLocaleString("en-US")} of them and fell in ${down.toLocaleString("en-US")}.`);
-  }
-  if (sales) {
-    parts.push(`Redfin reports a median sale price for ${sales.toLocaleString("en-US")} ZIP codes over the three months ending ${ctx.salesPeriod}.`);
+    parts.push(`From ${ctx.zhviYearBefore} to ${ctx.zhviMonth}, the Zillow Home Value Index increased in ${n(up)} ZIP codes and decreased in ${n(down)}.`);
   }
   return parts.join(" ");
 }
@@ -229,7 +234,8 @@ function zipTable(rows, ctx) {
 <thead><tr><th>ZIP</th><th>City</th><th>Home value</th><th>1-year change</th><th>Median sale price</th><th>Days on market</th></tr></thead>
 <tbody>${sorted.map(tr).join("\n")}</tbody>
 </table></div>
-<p class="note">Home value is the Zillow Home Value Index for ${esc(ctx.zhviMonth)}. Sale price and days on market are Redfin medians over the three months ending ${esc(ctx.salesPeriod)}. * Too few sales for a reliable median.</p>
+<p class="note">Home value is the Zillow Home Value Index for ${esc(ctx.zhviMonth)}. Sale price and days on market are Redfin medians over the three months ending ${esc(ctx.salesPeriod)}.</p>
+<p class="note">* Too few sales for a reliable median.</p>
 </section>`;
 }
 
@@ -242,7 +248,7 @@ function metroPage(m, stateByCode, ctx) {
   const title = `${m.name} housing market by ZIP code, ${ctx.zhviMonth}`;
   const body = `<p class="lede">${esc(summary(m.name, m.rows, ctx))}</p>
 <div class="map">${map.iframe}</div>
-<p><a class="cta" href="${esc(map.link)}">Open the full map</a></p>
+<p><a class="cta" href="${esc(map.link)}" target="_blank" rel="noopener">Open the full map</a></p>
 ${rankedLists(m.rows, ctx)}
 ${zipTable(m.rows, ctx)}
 <section><h2>Nearby</h2>
@@ -262,7 +268,7 @@ function statePage(s, ctx) {
     : "";
   const body = `<p class="lede">${esc(summary(s.name, s.rows, ctx))}</p>
 <div class="map">${map.iframe}</div>
-<p><a class="cta" href="${esc(map.link)}">Open the full map</a></p>
+<p><a class="cta" href="${esc(map.link)}" target="_blank" rel="noopener">Open the full map</a></p>
 ${rankedLists(s.rows, ctx)}
 ${metroList}`;
   const crumbs = [...HUB, [s.name, `state/${s.code.toLowerCase()}/`]];
@@ -276,11 +282,102 @@ function hubPage(states, ctx) {
   const metros = new Set(states.flatMap((s) => s.metros)).size;
   const title = "Housing market by state and metro area";
   const description = `ZIP code home values and sales for every state, D.C. and ${metros} metro areas, from Redfin and Zillow, updated monthly.`;
+  // Each link carries its size and kind, so the search reads its list from the page.
   const body = `<p class="lede">${esc(description)} A metro area is listed when at least ${MIN_METRO_ZIPS} of its ZIP codes have data.</p>
-${states.map((s) => `<section><h2><a href="${ctx.base}state/${s.code.toLowerCase()}/">${esc(s.name)}</a></h2>${s.metros.length
-    ? `<ul class="metros">${s.metros.map((m) => `<li><a href="${ctx.base}metro/${m.slug}/">${esc(m.name)}</a></li>`).join("")}</ul>`
+${SEARCH}
+${states.map((s) => `<section><h2><a href="${ctx.base}state/${s.code.toLowerCase()}/" data-s="${sold(s.rows)}" data-k="State">${esc(s.name)}</a></h2>${s.metros.length
+    ? `<ul class="metros">${s.metros.map((m) => `<li><a href="${ctx.base}metro/${m.slug}/" data-s="${sold(m.rows)}" data-k="Metro">${esc(m.name)}</a></li>`).join("")}</ul>`
     : ""}</section>`).join("\n")}`;
   return page({ ctx, path: "places/", title, place: "United States", description, body, crumbs: HUB });
+}
+
+// Bigger markets first, by homes sold, as the export's metro search ranks them: ZIP count
+// put Pittsburgh above Chicago because Pennsylvania cuts its metros into small ZIPs.
+const sold = (rows) => Math.round(rows.reduce((t, r) => t + (r.hs ?? 0), 0));
+
+// A metro is listed under every state it touches, so the script keeps one entry per page.
+const SEARCH = `<div class="search">
+<input id="q" type="search" placeholder="Search states and metro areas" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="q-list" aria-autocomplete="list" aria-label="Search states and metro areas">
+<div id="q-list" role="listbox" aria-label="States and metro areas" hidden></div>
+</div>
+<script>(() => {
+  const q = document.getElementById("q"), box = document.getElementById("q-list");
+  // Read on first use: this script runs before the links below it are parsed.
+  let items = null, shown = [], act = 0;
+  const read = () => {
+    const seen = new Set();
+    items = [];
+    for (const a of document.querySelectorAll("a[data-s]")) {
+      if (seen.has(a.href)) continue;
+      seen.add(a.href);
+      items.push({ n: a.textContent, l: a.textContent.toLowerCase(), u: a.href, s: +a.dataset.s, k: a.dataset.k });
+    }
+  };
+  const close = () => { box.hidden = true; q.setAttribute("aria-expanded", "false"); q.removeAttribute("aria-activedescendant"); };
+  const mark = () => {
+    box.querySelectorAll("[role=option]").forEach((o, j) => o.setAttribute("aria-selected", j === act));
+    const o = document.getElementById("q-" + act);
+    if (o) { q.setAttribute("aria-activedescendant", o.id); o.scrollIntoView({ block: "nearest" }); }
+  };
+  const draw = () => {
+    if (!items) read();
+    const t = q.value.trim().toLowerCase();
+    shown = items.filter((i) => i.l.includes(t))
+      .sort((a, b) => (t ? a.l.indexOf(t) - b.l.indexOf(t) : 0) || b.s - a.s || a.n.localeCompare(b.n));
+    act = 0;
+    box.replaceChildren(...(shown.length ? shown.map((i, j) => {
+      const o = document.createElement("a");
+      o.href = i.u; o.id = "q-" + j; o.tabIndex = -1;
+      o.setAttribute("role", "option");
+      o.textContent = i.n;
+      const k = document.createElement("span");
+      k.textContent = i.k;
+      o.append(k);
+      o.onmouseenter = () => { act = j; mark(); };
+      return o;
+    }) : [Object.assign(document.createElement("p"), { textContent: "No states or metro areas match." })]));
+    box.hidden = false;
+    q.setAttribute("aria-expanded", "true");
+    mark();
+  };
+  q.addEventListener("input", draw);
+  q.addEventListener("focus", draw);
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") return close();
+    if (box.hidden || !shown.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      act = (act + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length;
+      mark();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      location.href = shown[act].u;
+    }
+  });
+  document.addEventListener("mousedown", (e) => { if (!e.target.closest(".search")) close(); });
+})();</script>`;
+
+const icon = (paths) => `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ICONS = {
+  map: icon('<path d="M14.106 5.553a2 2 0 0 0 1.788 0l3.659-1.83A1 1 0 0 1 21 4.619v12.764a1 1 0 0 1-.553.894l-4.553 2.277a2 2 0 0 1-1.788 0l-4.212-2.106a2 2 0 0 0-1.788 0l-3.659 1.83A1 1 0 0 1 3 19.381V6.618a1 1 0 0 1 .553-.894l4.553-2.277a2 2 0 0 1 1.788 0z"/><path d="M15 5.764v15"/><path d="M9 3.236v15"/>'),
+  book: icon('<path d="M12 5v16"/><path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z"/>'),
+  list: icon('<path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>'),
+  github: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>',
+};
+
+/** The app's top bar (TopBarShell in src/components/dashboard/TopBar.tsx) as static markup.
+ *  Change the two together, so every page keeps the same way back to the map.
+ *  Never change the subtitle ("Housing Market Analysis"), on any page. */
+function topBar(base, hub) {
+  return `<header class="top">
+<a class="brand" href="${base}" title="Reset the map"><img src="${base}Logo.svg" alt="Domapus Logo" width="40" height="40"><span><b>Domapus</b><small>Housing Market Analysis</small></span></a>
+<nav class="links">
+<a class="btn" href="${base}" title="Map">${ICONS.map}<span>Map</span></a>
+<a class="btn" href="${base}methodology/" title="Methodology">${ICONS.book}<span>Methodology</span></a>
+${hub ? "" : `<a class="btn" href="${base}places/" title="Places">${ICONS.list}<span>Places</span></a>
+`}<a class="btn" href="https://github.com/jasperwchen/Domapus" title="GitHub" aria-label="GitHub (opens in a new tab)" target="_blank" rel="noopener noreferrer">${ICONS.github}<span>GitHub</span></a>
+</nav>
+</header>`;
 }
 
 function page({ ctx, path: rel, title, place, description, body, crumbs }) {
@@ -323,18 +420,29 @@ function page({ ctx, path: rel, title, place, description, body, crumbs }) {
 <meta property="og:image" content="${SITE_ORIGIN}${ctx.base}preview.png">
 <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>
 <style>
-:root{--bg:#fff;--fg:#1a1f2b;--muted:#5b6475;--line:#e3e6ec;--accent:#1d4ed8;--panel:#f6f7f9;--up:#15803d;--dn:#dc2626}
-@media (prefers-color-scheme:dark){:root{--bg:#11141a;--fg:#e6e8ec;--muted:#9aa3b2;--line:#2a303b;--accent:#7aa2ff;--panel:#181c24;--up:#22c55e;--dn:#ef4444}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+:root{color-scheme:light;--bg:hsl(210 20% 98%);--card:#fff;--fg:hsl(222.2 84% 4.9%);--muted:hsl(215.4 16.3% 46.9%);--line:hsl(214.3 31.8% 91.4%);--accent:hsl(221.2 83.2% 53.3%);--panel:hsl(210 40% 96%);--up:#15803d;--dn:#dc2626}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:960px;margin:0 auto;padding:16px}a{color:var(--accent)}
-header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
-header a{color:var(--fg);font-weight:600;text-decoration:none;display:flex;align-items:center;gap:8px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;height:56px;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;min-width:0;color:var(--fg);text-decoration:none;font-family:Inter,sans-serif}.brand:hover{opacity:.8}
+.brand img{width:32px;height:32px;flex-shrink:0}.brand span{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.brand b{font-size:16px}.brand small{display:none;font-size:12px;color:var(--muted)}
+.links{display:flex;gap:6px;flex-shrink:0}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:hsl(210 40% 98%);color:var(--fg);font-size:14px;font-weight:500;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--panel)}.btn span{display:none}
+@media (min-width:640px){.top{height:64px;padding:8px 20px}.brand img{width:36px;height:36px}.brand small{display:block}}
+@media (min-width:1280px){.btn span{display:inline}}
+.search{position:relative;max-width:480px;margin:16px 0 8px}
+#q{width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);font:inherit;font-size:15px}
+#q-list{position:absolute;z-index:10;left:0;right:0;margin-top:4px;max-height:300px;overflow-y:auto;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 4px 12px rgb(0 0 0/.08)}
+#q-list a{display:flex;justify-content:space-between;gap:12px;padding:6px 8px;border-radius:4px;color:var(--fg);text-decoration:none;font-size:14px}
+#q-list a[aria-selected=true]{background:var(--panel)}#q-list span{color:var(--muted);font-size:12px}#q-list p{margin:16px;text-align:center;color:var(--muted);font-size:14px}
 .crumbs{font-size:14px;color:var(--muted);margin:8px 0 0}h1{font-size:28px;line-height:1.2;margin:8px 0 12px}
 h2{font-size:20px;margin:32px 0 8px}h3{font-size:16px;margin:8px 0}.lede{font-size:17px}
 .map iframe{width:100%;height:450px;border:1px solid var(--line);border-radius:8px}
 .cta{display:inline-block;padding:8px 14px;border-radius:6px;background:var(--accent);color:var(--bg);text-decoration:none;font-weight:600}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
 table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
 th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 th:nth-child(-n+2),td:nth-child(-n+2){text-align:left}th{background:var(--panel);position:sticky;top:0}
@@ -343,7 +451,7 @@ footer{max-width:960px;margin:32px auto;padding:16px;border-top:1px solid var(--
 </style>
 </head>
 <body>
-<header><a href="${ctx.base}"><img src="${ctx.base}Logo.svg" alt="" width="24" height="24">Domapus</a></header>
+${topBar(ctx.base, rel === "places/")}
 <main>
 <p class="crumbs">${nav}</p>
 <h1>${esc(title)}</h1>

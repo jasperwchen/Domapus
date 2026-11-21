@@ -6,10 +6,11 @@
 // tables carry units, limitations get their own section.
 
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { fetchManifest, type Manifest } from "@/lib/manifest";
 import { TopBarShell } from "@/components/dashboard/TopBar";
+import { useMapPresence } from "@/lib/map-presence";
 
 interface Backtest {
   eligibility_at_origin?: boolean;
@@ -191,7 +192,7 @@ export default function Methodology() {
 
   return (
     <div className="min-h-screen bg-dashboard-bg">
-      <TopBarShell subtitle="Methodology" nav="map" />
+      <TopBarShell page="methodology" />
       <main className="max-w-3xl mx-auto px-6 py-10">
         {/* Above the title, and outside `body()` on purpose: if the manifest
             fails this page renders one line of error text, and that is exactly
@@ -218,15 +219,13 @@ export default function Methodology() {
  */
 function BackToMap({ className = "" }: { className?: string }) {
   const { search } = useLocation();
-  return (
-    <a
-      href={`${import.meta.env.BASE_URL}${search}`}
-      className={`inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors ${className}`}
-    >
-      <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-      Back to map
-    </a>
-  );
+  const { alive } = useMapPresence();
+  const cls = `inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors ${className}`;
+  const inner = <><ArrowLeft className="h-4 w-4" aria-hidden="true" />Back to map</>;
+  // The map kept mounted behind this page comes back without a reload.
+  return alive
+    ? <Link to={`/${search}`} className={cls}>{inner}</Link>
+    : <a href={`${import.meta.env.BASE_URL}${search}`} className={cls}>{inner}</a>;
 }
 
 function Body({ mf }: { mf: Manifest }) {

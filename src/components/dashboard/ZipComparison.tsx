@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, X, MousePointerClick } from 'lucide-react';
@@ -20,6 +21,7 @@ interface ZipComparisonProps {
 export function ZipComparison({
   currentZip, compareZip, onCompareZipChange, store,
 }: ZipComparisonProps) {
+  const isMobile = useIsMobile();
   const [searchZip, setSearchZip] = useState('');
   const [error, setError] = useState('');
 
@@ -62,7 +64,7 @@ export function ZipComparison({
 
       <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <MousePointerClick className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        Or click any ZIP on the map.
+        Or {isMobile ? 'tap' : 'click'} any ZIP on the map.
       </p>
 
       {error && <p className="text-xs text-rose-600">{error}</p>}

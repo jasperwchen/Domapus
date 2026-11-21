@@ -4185,3 +4185,45 @@ and the 2026-11 data commit were not live.
 
 **Audit S6 measured and left; M3 gets one methodology sentence; M4 needs nothing.** See
 `docs/METHODOLOGY.md` section 11.
+
+## 2026-11-21: one top bar, embed moves into export, the map kept behind methodology
+
+**One top bar on every page.** The methodology page, the export screen and the 631 static
+landing pages now carry the map's header with the same four buttons (Map, Methodology,
+Places, GitHub), the current one marked. The landing pages are plain HTML, so
+`scripts/build-pages.mjs` copies the markup and the app's light palette; they used to follow
+the system dark mode, which the app itself never had. Export used to cover the whole screen
+with no way out but Cancel; its Map button now closes it in place.
+
+**Embed left the top bar for the export panel.** It is a way of publishing the map, which is
+what export is for, and the top bar had no room to spare at the widths where labels show.
+
+**Landing-page copy.** The summary now leads with the totals ("a total of 205 ZIP codes with
+housing data, 204 of them with Redfin sales data") and states the ZHVI comparison as a span
+of months rather than "over the year to". "Open the full map" opens a new tab: most readers
+arrive from search, and the page they were reading should survive the click. The hub got a
+search ranked by homes sold, the export's ranking, because ZIP count ranks Pittsburgh above
+Chicago.
+
+**The map stays mounted behind methodology.** Going back used to be a full reload. The data
+came from the browser cache (0 bytes transferred, measured), but the startup repeated: ZIP
+table, worker, map, tiles. Now the map is mounted once and hidden; the return is a
+client-side link measured at 10 ms with no requests, the open ZIP panel and camera intact.
+Hiding with `visibility` alone leaked: MapLibre's CSS sets the open attribution box back to
+visible and its controls back to `pointer-events: auto`, so the attribution showed and was
+clickable over the document. Opacity, a negative z-index and `inert` cannot be overridden
+by a child. Static landing pages cannot share this; their return is a page load by nature.
+
+**Workflows moved from Node 20 to Node 24.** The 2026-11-18 CI break came back with the next
+`npm update`: npm 11 again wrote a lockfile without `@emnapi/core` and `@emnapi/runtime`, which
+npm 10's `npm ci` refuses. Listing the two in `package.json` was rejected because it would pin
+a beta of a dependency nothing imports, which goes stale the next time Rolldown bumps it.
+Node 24 ships npm 11, so CI now reads the lockfile with the same npm that writes it locally;
+Node 20 was also past end of life. A clean `npm ci` of the current lockfile on Node 24 passes.
+
+**Top bar and phone panel follow-ups, 2026-11-21.** Each page's top bar now omits its own
+button (the places hub drops Places; metro and state pages keep it as the way up), and the
+subtitle is fixed at "Housing Market Analysis" everywhere, so `TopBarShell` no longer takes a
+`subtitle`. On phones the ZIP panel is layered above the metric and search controls instead of
+stopping above them, and starting a comparison with no second ZIP drops it to peek height so
+the map can be tapped to pick one.

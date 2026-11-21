@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { TopBarShell } from "../TopBar";
+import { EmbedSection } from "../Embed";
 import { PrintStage, PrintStageRef, EXPORT_CANVAS_W, EXPORT_CANVAS_H } from "./PrintStage";
 import { cn } from "@/lib/utils";
 import { jsPDF, jsPDFOptions } from "jspdf";
@@ -403,266 +405,271 @@ export function ExportSidebar({ allZipData, selectedMetric, breaks, classing = n
 
   return (
     <Modal label="Export map" busy={isExporting} onClose={onClose}
-      className="fixed inset-0 bg-muted z-50 flex flex-col overflow-y-auto md:flex-row md:overflow-hidden md:bg-background"
+      className="fixed inset-0 bg-muted z-50 flex flex-col overflow-y-auto md:overflow-hidden md:bg-background"
     >
-      {/* Preview Area (top on mobile).
-          On a phone the whole dialog scrolls as one column from the top, and the
-          preview takes exactly the stage's 4:3 so nothing is letterboxed. Pinning
-          the panel to the bottom instead put Export and Cancel under the browser's
-          own navigation bar, which covers the bottom of a `fixed inset-0`. */}
-      <div className="order-1 md:order-2 w-full flex-none aspect-[4/3] md:aspect-auto md:flex-1 md:p-6 overflow-hidden flex flex-col bg-muted/30 md:min-h-0">
-        <div className="flex-1 flex items-center justify-center min-h-0 w-full">
-          {hasValidSelection ? (
-            <PrintStage
-              key={mapAttempt}
-              ref={printStageRef}
-              filteredData={filteredData}
-              selectedMetric={selectedMetric}
-              zhviPeriod={zhviPeriod}
-              breaks={areaCut ?? breaks}
-              scaleLabel={areaCut ? regionName : null}
-              regionScope={regionScope}
-              regionName={regionName}
-              includeLegend={includeLegend}
-              includeTitle={includeTitle}
-              showCities={showCities}
-              onReady={() => setIsMapReady(true)}
-              onLoading={() => { setIsMapReady(false); setMapError(null); }}
-              onError={message => { setIsMapReady(false); setMapError(message); }}
-            />
-          ) : (
-            <div className="bg-white/50 border border-dashed rounded-lg w-full h-full flex items-center justify-center text-muted-foreground text-sm">
-              {regionScope === 'state' ? "Select a state to preview" : "Select a metro area to preview"}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Settings (immediately under the preview on mobile) */}
-      {/* No drop shadow under the panel on mobile: it ends mid-page, right below
-          Cancel, and a shadow there reads as a floating card. The page below is
-          darker instead, with the panel's own border closing it off. */}
-      <div className="order-2 md:order-1 w-full md:w-80 bg-background border-y md:border-y-0 md:border-r h-auto md:h-full md:shadow-xl flex flex-col md:max-h-full">
-        <fieldset disabled={isExporting} className="p-3 md:p-4 space-y-3 md:space-y-4 md:flex-1 md:overflow-y-auto min-w-0">
-          <div className="flex items-center gap-2">
-            <Download className="h-4 w-4 text-primary" />
-            <h2 className="text-base font-semibold">Export Settings</h2>
-          </div>
-
-          <div className="p-2 md:p-3 rounded-md border bg-muted/20">
-            {/* One row of four on a phone. The state and metro pickers and the notes need
-                a full row there, so they are ordered under it; on desktop they follow their
-                own section. */}
-            <div className="grid grid-cols-4 md:grid-cols-1 gap-x-2 gap-y-3 md:gap-4">
-              <div className="min-w-0 space-y-2 md:space-y-3">
-                <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
-                  <Microscope className="h-3.5 w-3.5 shrink-0" />
-                  <span>Region</span>
-                </div>
-                <RadioGroup value={regionScope} onValueChange={(v) => setRegionScope(v as "national" | "state" | "metro")} className="space-y-1.5 md:space-y-2">
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="national" id="r-national" /><Label htmlFor="r-national" className="text-xs md:text-sm">National</Label></div>
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="state" id="r-state" /><Label htmlFor="r-state" className="text-xs md:text-sm">State</Label></div>
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="metro" id="r-metro" /><Label htmlFor="r-metro" className="text-xs md:text-sm">Metro</Label></div>
-                </RadioGroup>
+      <TopBarShell page="export" onMap={() => { if (!isExporting) onClose(); }} />
+      <div className="flex flex-col md:flex-row md:flex-1 md:min-h-0">
+        {/* Preview Area (top on mobile).
+            On a phone the whole dialog scrolls as one column from the top, and the
+            preview takes exactly the stage's 4:3 so nothing is letterboxed. Pinning
+            the panel to the bottom instead put Export and Cancel under the browser's
+            own navigation bar, which covers the bottom of a `fixed inset-0`. */}
+        <div className="order-1 md:order-2 w-full flex-none aspect-[4/3] md:aspect-auto md:flex-1 md:p-6 overflow-hidden flex flex-col bg-muted/30 md:min-h-0">
+          <div className="flex-1 flex items-center justify-center min-h-0 w-full">
+            {hasValidSelection ? (
+              <PrintStage
+                key={mapAttempt}
+                ref={printStageRef}
+                filteredData={filteredData}
+                selectedMetric={selectedMetric}
+                zhviPeriod={zhviPeriod}
+                breaks={areaCut ?? breaks}
+                scaleLabel={areaCut ? regionName : null}
+                regionScope={regionScope}
+                regionName={regionName}
+                includeLegend={includeLegend}
+                includeTitle={includeTitle}
+                showCities={showCities}
+                onReady={() => setIsMapReady(true)}
+                onLoading={() => { setIsMapReady(false); setMapError(null); }}
+                onError={message => { setIsMapReady(false); setMapError(message); }}
+              />
+            ) : (
+              <div className="bg-white/50 border border-dashed rounded-lg w-full h-full flex items-center justify-center text-muted-foreground text-sm">
+                {regionScope === 'state' ? "Select a state to preview" : "Select a metro area to preview"}
               </div>
+            )}
+          </div>
+        </div>
 
-              {(regionScope !== "national" || showCount) && (
-                <div className="order-5 col-span-4 md:order-none md:col-span-1 md:-mt-1 space-y-2 md:space-y-3">
-                  {regionScope === 'state' && (
-                    <Select value={selectedState} onValueChange={setSelectedState}>
-                      <SelectTrigger aria-label="Select a state" className="h-8 md:h-9"><SelectValue placeholder="Select a state" /></SelectTrigger>
-                      <SelectContent>{availableStates.map(state => (<SelectItem key={state.code} value={state.code}>{state.name}</SelectItem>))}</SelectContent>
-                    </Select>
-                  )}
+        {/* Settings (immediately under the preview on mobile) */}
+        {/* No drop shadow under the panel on mobile: it ends mid-page, right below
+            Cancel, and a shadow there reads as a floating card. The page below is
+            darker instead, with the panel's own border closing it off. */}
+        <div className="order-2 md:order-1 w-full md:w-80 bg-background border-y md:border-y-0 md:border-r h-auto md:h-full md:shadow-xl flex flex-col md:max-h-full">
+          <fieldset disabled={isExporting} className="p-3 md:p-4 space-y-3 md:space-y-4 md:flex-1 md:overflow-y-auto min-w-0">
+            <div className="flex items-center gap-2">
+              <Download className="h-4 w-4 text-primary" />
+              <h2 className="text-base font-semibold">Export Settings</h2>
+            </div>
 
-                  {regionScope === 'metro' && (
-                    <div className="space-y-2 relative" ref={metroContainerRef}>
-                      <div className="relative">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Type to search metros..."
-                          value={metroSearch}
-                          role="combobox"
-                          aria-expanded={isMetroListOpen}
-                          aria-controls="metro-listbox"
-                          aria-autocomplete="list"
-                          aria-activedescendant={
-                            isMetroListOpen && filteredMetros.length > 0
-                              ? `metro-opt-${activeMetro}`
-                              : undefined
-                          }
-                          onKeyDown={onMetroKeyDown}
-                          onChange={(e) => {
-                            setMetroSearch(e.target.value);
-                            setIsMetroListOpen(true);
-                            if (selectedMetro && e.target.value !== selectedMetro) setSelectedMetro("");
-                          }}
-                          onFocus={(e) => {
-                            setIsMetroListOpen(true);
-                            const target = e.currentTarget;
-                            setTimeout(() => target.select(), 0);
-                          }}
-                          className="pl-8 h-8 md:h-9 pr-8 text-xs md:text-sm"
-                        />
-                        {metroSearch && (
-                          <button
-                            type="button"
-                            onClick={clearMetroSelection}
-                            aria-label="Clear metro selection"
-                            className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
+            <div className="p-2 md:p-3 rounded-md border bg-muted/20">
+              {/* One row of four on a phone. The state and metro pickers and the notes need
+                  a full row there, so they are ordered under it; on desktop they follow their
+                  own section. */}
+              <div className="grid grid-cols-4 md:grid-cols-1 gap-x-2 gap-y-3 md:gap-4">
+                <div className="min-w-0 space-y-2 md:space-y-3">
+                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
+                    <Microscope className="h-3.5 w-3.5 shrink-0" />
+                    <span>Region</span>
+                  </div>
+                  <RadioGroup value={regionScope} onValueChange={(v) => setRegionScope(v as "national" | "state" | "metro")} className="space-y-1.5 md:space-y-2">
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="national" id="r-national" /><Label htmlFor="r-national" className="text-xs md:text-sm">National</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="state" id="r-state" /><Label htmlFor="r-state" className="text-xs md:text-sm">State</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="metro" id="r-metro" /><Label htmlFor="r-metro" className="text-xs md:text-sm">Metro</Label></div>
+                  </RadioGroup>
+                </div>
 
-                      {isMetroListOpen && (
-                        <div
-                          ref={metroListRef}
-                          className="absolute z-10 w-full mt-1 bg-popover text-popover-foreground border rounded-md shadow-md max-h-[250px] overflow-y-auto"
-                        >
-                          {filteredMetros.length > 0 ? (
-                            <div className="p-1" id="metro-listbox" role="listbox" aria-label="Metro areas">
-                              {filteredMetros.map((m, i) => (
-                                <button
-                                  key={m}
-                                  id={`metro-opt-${i}`}
-                                  data-idx={i}
-                                  type="button"
-                                  role="option"
-                                  tabIndex={-1}
-                                  aria-selected={i === activeMetro}
-                                  onMouseEnter={() => setActiveMetro(i)}
-                                  onClick={() => selectMetro(m)}
-                                  className={cn(
-                                    "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-left text-sm outline-none",
-                                    i === activeMetro && "bg-accent text-accent-foreground",
-                                    selectedMetro === m && "font-medium"
-                                  )}
-                                >
-                                  {m}
-                                </button>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="py-6 text-center text-sm text-muted-foreground">No metro areas found.</div>
+                {(regionScope !== "national" || showCount) && (
+                  <div className="order-5 col-span-4 md:order-none md:col-span-1 md:-mt-1 space-y-2 md:space-y-3">
+                    {regionScope === 'state' && (
+                      <Select value={selectedState} onValueChange={setSelectedState}>
+                        <SelectTrigger aria-label="Select a state" className="h-8 md:h-9"><SelectValue placeholder="Select a state" /></SelectTrigger>
+                        <SelectContent>{availableStates.map(state => (<SelectItem key={state.code} value={state.code}>{state.name}</SelectItem>))}</SelectContent>
+                      </Select>
+                    )}
+
+                    {regionScope === 'metro' && (
+                      <div className="space-y-2 relative" ref={metroContainerRef}>
+                        <div className="relative">
+                          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Type to search metros..."
+                            value={metroSearch}
+                            role="combobox"
+                            aria-expanded={isMetroListOpen}
+                            aria-controls="metro-listbox"
+                            aria-autocomplete="list"
+                            aria-activedescendant={
+                              isMetroListOpen && filteredMetros.length > 0
+                                ? `metro-opt-${activeMetro}`
+                                : undefined
+                            }
+                            onKeyDown={onMetroKeyDown}
+                            onChange={(e) => {
+                              setMetroSearch(e.target.value);
+                              setIsMetroListOpen(true);
+                              if (selectedMetro && e.target.value !== selectedMetro) setSelectedMetro("");
+                            }}
+                            onFocus={(e) => {
+                              setIsMetroListOpen(true);
+                              const target = e.currentTarget;
+                              setTimeout(() => target.select(), 0);
+                            }}
+                            className="pl-8 h-8 md:h-9 pr-8 text-xs md:text-sm"
+                          />
+                          {metroSearch && (
+                            <button
+                              type="button"
+                              onClick={clearMetroSelection}
+                              aria-label="Clear metro selection"
+                              className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
                           )}
                         </div>
-                      )}
-                    </div>
-                  )}
 
-                  {showCount && (
-                    <p className="text-[11px] leading-snug text-muted-foreground tabular-nums">
-                      {withData.toLocaleString()} of {filteredData.length.toLocaleString()} ZIP codes report this metric
-                    </p>
-                  )}
-                </div>
-              )}
+                        {isMetroListOpen && (
+                          <div
+                            ref={metroListRef}
+                            className="absolute z-10 w-full mt-1 bg-popover text-popover-foreground border rounded-md shadow-md max-h-[250px] overflow-y-auto"
+                          >
+                            {filteredMetros.length > 0 ? (
+                              <div className="p-1" id="metro-listbox" role="listbox" aria-label="Metro areas">
+                                {filteredMetros.map((m, i) => (
+                                  <button
+                                    key={m}
+                                    id={`metro-opt-${i}`}
+                                    data-idx={i}
+                                    type="button"
+                                    role="option"
+                                    tabIndex={-1}
+                                    aria-selected={i === activeMetro}
+                                    onMouseEnter={() => setActiveMetro(i)}
+                                    onClick={() => selectMetro(m)}
+                                    className={cn(
+                                      "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 px-2 text-left text-sm outline-none",
+                                      i === activeMetro && "bg-accent text-accent-foreground",
+                                      selectedMetro === m && "font-medium"
+                                    )}
+                                  >
+                                    {m}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="py-6 text-center text-sm text-muted-foreground">No metro areas found.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-              <div className="min-w-0 space-y-2 md:space-y-3">
-                <div ref={scaleInfoRef} className="relative flex items-center gap-2 text-xs md:text-sm font-medium">
-                  <Palette className="h-3.5 w-3.5 shrink-0" />
-                  <span className="md:hidden">Scale</span>
-                  <span className="hidden md:inline">Color scale</span>
-                  <button
-                    type="button"
-                    aria-label="About the color scale"
-                    aria-expanded={scaleInfoOpen}
-                    onClick={() => setScaleInfoOpen(o => !o)}
-                    className="-ml-1 text-muted-foreground hover:text-foreground"
-                  >
-                    <Info className="h-3.5 w-3.5" />
-                  </button>
-                  {scaleInfoOpen && (
-                    <div
-                      role="note"
-                      className="absolute left-0 top-full z-20 mt-1 w-60 space-y-1.5 rounded-md border bg-popover p-3 text-xs font-normal leading-snug text-popover-foreground shadow-md"
-                    >
-                      <p><strong>National:</strong> Based on national values, true across U.S.</p>
-                      <p><strong>{areaWord}:</strong> Based on {areaWord} values, shows differences within the selected area.</p>
-                    </div>
-                  )}
-                </div>
-                <RadioGroup
-                  value={scaleEnabled ? colorScale : "national"}
-                  onValueChange={(v) => setColorScale(v as "national" | "region")}
-                  disabled={!scaleEnabled}
-                  className="space-y-1.5 md:space-y-2"
-                >
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="national" id="s-national" aria-label="National scale" /><Label htmlFor="s-national" className={cn("text-xs md:text-sm", !scaleEnabled && DISABLED_LABEL)}>National</Label></div>
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="region" id="s-region" aria-label={`${areaWord} scale`} /><Label htmlFor="s-region" className={cn("text-xs md:text-sm", !scaleEnabled && DISABLED_LABEL)}>{areaWord}</Label></div>
-                </RadioGroup>
-              </div>
-
-              {scaleNote && (
-                <p className="order-6 col-span-4 md:order-none md:col-span-1 md:-mt-2.5 text-[11px] leading-snug text-muted-foreground">{scaleNote}</p>
-              )}
-
-              <div className="min-w-0 space-y-2 md:space-y-3">
-                <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
-                  <Settings2 className="h-3.5 w-3.5 shrink-0" />
-                  <span className="md:hidden">Options</span>
-                  <span className="hidden md:inline">Customization</span>
-                </div>
-                <div className="space-y-1.5 md:space-y-2">
-                  <div className="flex items-center space-x-2"><Checkbox id="c-title" checked={includeTitle} onCheckedChange={(c) => setIncludeTitle(c === true)} /><Label htmlFor="c-title" className="text-xs md:text-sm">Title</Label></div>
-                  <div className="flex items-center space-x-2"><Checkbox id="c-legend" checked={includeLegend} onCheckedChange={(c) => setIncludeLegend(c === true)} /><Label htmlFor="c-legend" className="text-xs md:text-sm">Legend</Label></div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="c-cities"
-                      checked={showCities && citiesAllowed}
-                      disabled={!citiesAllowed}
-                      onCheckedChange={(c) => setShowCities(c === true)}
-                    />
-                    <Label
-                      htmlFor="c-cities"
-                      className={cn("text-xs md:text-sm", !citiesAllowed && DISABLED_LABEL)}
-                    >
-                      Cities
-                    </Label>
+                    {showCount && (
+                      <p className="text-[11px] leading-snug text-muted-foreground tabular-nums">
+                        {withData.toLocaleString()} of {filteredData.length.toLocaleString()} ZIP codes report this metric
+                      </p>
+                    )}
                   </div>
-                  {/* Hidden on a phone, where the column is too narrow for it; the
-                      greyed-out box says the same. */}
-                  {!citiesAllowed && (
-                    <p className="hidden md:block text-[11px] leading-snug text-muted-foreground pl-6">
-                      Unavailable at national scale
-                    </p>
-                  )}
-                </div>
-              </div>
+                )}
 
-              <div className="min-w-0 space-y-2 md:space-y-3">
-                <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
-                  <FileImage className="h-3.5 w-3.5 shrink-0" />
-                  <span>File</span>
+                <div className="min-w-0 space-y-2 md:space-y-3">
+                  <div ref={scaleInfoRef} className="relative flex items-center gap-2 text-xs md:text-sm font-medium">
+                    <Palette className="h-3.5 w-3.5 shrink-0" />
+                    <span className="md:hidden">Scale</span>
+                    <span className="hidden md:inline">Color scale</span>
+                    <button
+                      type="button"
+                      aria-label="About the color scale"
+                      aria-expanded={scaleInfoOpen}
+                      onClick={() => setScaleInfoOpen(o => !o)}
+                      className="-ml-1 text-muted-foreground hover:text-foreground"
+                    >
+                      <Info className="h-3.5 w-3.5" />
+                    </button>
+                    {scaleInfoOpen && (
+                      <div
+                        role="note"
+                        className="absolute left-0 top-full z-20 mt-1 w-60 space-y-1.5 rounded-md border bg-popover p-3 text-xs font-normal leading-snug text-popover-foreground shadow-md"
+                      >
+                        <p><strong>National:</strong> Based on national values, true across U.S.</p>
+                        <p><strong>{areaWord}:</strong> Based on {areaWord} values, shows differences within the selected area.</p>
+                      </div>
+                    )}
+                  </div>
+                  <RadioGroup
+                    value={scaleEnabled ? colorScale : "national"}
+                    onValueChange={(v) => setColorScale(v as "national" | "region")}
+                    disabled={!scaleEnabled}
+                    className="space-y-1.5 md:space-y-2"
+                  >
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="national" id="s-national" aria-label="National scale" /><Label htmlFor="s-national" className={cn("text-xs md:text-sm", !scaleEnabled && DISABLED_LABEL)}>National</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="region" id="s-region" aria-label={`${areaWord} scale`} /><Label htmlFor="s-region" className={cn("text-xs md:text-sm", !scaleEnabled && DISABLED_LABEL)}>{areaWord}</Label></div>
+                  </RadioGroup>
                 </div>
-                <RadioGroup value={fileFormat} onValueChange={(v) => setFileFormat(v as "png" | "pdf")} className="space-y-1.5 md:space-y-2">
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="png" id="r-png" /><Label htmlFor="r-png" className="text-xs md:text-sm">PNG</Label></div>
-                  <div className="flex items-center space-x-2"><RadioGroupItem value="pdf" id="r-pdf" /><Label htmlFor="r-pdf" className="text-xs md:text-sm">PDF</Label></div>
-                </RadioGroup>
+
+                {scaleNote && (
+                  <p className="order-6 col-span-4 md:order-none md:col-span-1 md:-mt-2.5 text-[11px] leading-snug text-muted-foreground">{scaleNote}</p>
+                )}
+
+                <div className="min-w-0 space-y-2 md:space-y-3">
+                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
+                    <Settings2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="md:hidden">Options</span>
+                    <span className="hidden md:inline">Customization</span>
+                  </div>
+                  <div className="space-y-1.5 md:space-y-2">
+                    <div className="flex items-center space-x-2"><Checkbox id="c-title" checked={includeTitle} onCheckedChange={(c) => setIncludeTitle(c === true)} /><Label htmlFor="c-title" className="text-xs md:text-sm">Title</Label></div>
+                    <div className="flex items-center space-x-2"><Checkbox id="c-legend" checked={includeLegend} onCheckedChange={(c) => setIncludeLegend(c === true)} /><Label htmlFor="c-legend" className="text-xs md:text-sm">Legend</Label></div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="c-cities"
+                        checked={showCities && citiesAllowed}
+                        disabled={!citiesAllowed}
+                        onCheckedChange={(c) => setShowCities(c === true)}
+                      />
+                      <Label
+                        htmlFor="c-cities"
+                        className={cn("text-xs md:text-sm", !citiesAllowed && DISABLED_LABEL)}
+                      >
+                        Cities
+                      </Label>
+                    </div>
+                    {/* Hidden on a phone, where the column is too narrow for it; the
+                        greyed-out box says the same. */}
+                    {!citiesAllowed && (
+                      <p className="hidden md:block text-[11px] leading-snug text-muted-foreground pl-6">
+                        Unavailable at national scale
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="min-w-0 space-y-2 md:space-y-3">
+                  <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
+                    <FileImage className="h-3.5 w-3.5 shrink-0" />
+                    <span>File</span>
+                  </div>
+                  <RadioGroup value={fileFormat} onValueChange={(v) => setFileFormat(v as "png" | "pdf")} className="space-y-1.5 md:space-y-2">
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="png" id="r-png" /><Label htmlFor="r-png" className="text-xs md:text-sm">PNG</Label></div>
+                    <div className="flex items-center space-x-2"><RadioGroupItem value="pdf" id="r-pdf" /><Label htmlFor="r-pdf" className="text-xs md:text-sm">PDF</Label></div>
+                  </RadioGroup>
+                </div>
               </div>
             </div>
-          </div>
-        </fieldset>
 
-        <div
-          className="p-3 md:p-4 space-y-2 border-t bg-background"
-          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
-        >
-          {mapError && <p role="alert" className="text-sm text-destructive">
-            {mapError} <button className="underline" onClick={() => setMapAttempt(n => n + 1)}>Retry maps</button>
-          </p>}
-          <Button id="btn-map-export" onClick={handleExport} disabled={isExportDisabled()} className="w-full" size="default">
-            {(isExporting || (!isMapReady && hasValidSelection && scaleAvailable && filteredData.length > 0)) && (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-            )}
-            {!isExporting && hasValidSelection && filteredData.length > 0 && isMapReady && (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            {getButtonText()}
-          </Button>
-          <Button onClick={onClose} variant="outline" className="w-full" disabled={isExporting}>Cancel</Button>
+            <EmbedSection metric={selectedMetric} />
+          </fieldset>
+
+          <div
+            className="p-3 md:p-4 space-y-2 border-t bg-background"
+            style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+          >
+            {mapError && <p role="alert" className="text-sm text-destructive">
+              {mapError} <button className="underline" onClick={() => setMapAttempt(n => n + 1)}>Retry maps</button>
+            </p>}
+            <Button id="btn-map-export" onClick={handleExport} disabled={isExportDisabled()} className="w-full" size="default">
+              {(isExporting || (!isMapReady && hasValidSelection && scaleAvailable && filteredData.length > 0)) && (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+              )}
+              {!isExporting && hasValidSelection && filteredData.length > 0 && isMapReady && (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {getButtonText()}
+            </Button>
+            <Button onClick={onClose} variant="outline" className="w-full" disabled={isExporting}>Cancel</Button>
+          </div>
         </div>
       </div>
     </Modal>

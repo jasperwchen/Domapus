@@ -7,7 +7,9 @@ import { embedCode } from "@/lib/embed";
 
 const BASE_PATH = import.meta.env.BASE_URL;
 
-export function EmbedButton({ metric }: { metric: string }) {
+/** In the export panel: the embed is the live map rather than a picture, so it copies the
+ *  main map's view, not the export's region. */
+export function EmbedSection({ metric }: { metric: string }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(embedCode(window.location.href));
@@ -21,10 +23,18 @@ export function EmbedButton({ metric }: { metric: string }) {
     }
   };
   return (
-    <Button variant="outline" size="sm" onClick={copy} aria-label="Copy embed code" title="Copy embed code">
-      <Code2 className="h-4 w-4" />
-      <span className="hidden xl:inline">Embed</span>
-    </Button>
+    <div className="p-2 md:p-3 rounded-md border bg-muted/20 space-y-2">
+      <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
+        <Code2 className="h-3.5 w-3.5 shrink-0" />
+        <span>Embed</span>
+      </div>
+      <p className="text-[11px] leading-snug text-muted-foreground">
+        Put the live map on your own page. It opens on the metric and view the main map has now.
+      </p>
+      <Button type="button" variant="outline" size="sm" onClick={copy} className="w-full">
+        Copy embed code
+      </Button>
+    </div>
   );
 }
 

@@ -10,11 +10,15 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent } from "@testing-library/react";
-import { createRef } from "react";
+import { createRef, type ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { ExportSidebar } from "../export/ExportSidebar";
 import { PrintStage, PrintStageRef, ExportRender } from "../export/PrintStage";
 import * as maplibregl from "maplibre-gl";
 import { ZipData } from "../map/types";
+
+// The export carries the site top bar, whose links need a router.
+const renderExport = (ui: ReactElement) => render(ui, { wrapper: MemoryRouter });
 import { BASEMAP_STYLE, withoutTransportation } from "@/lib/basemap";
 
 // ---------------------------------------------------------------------------
@@ -313,32 +317,32 @@ async function advanceToMapReady() {
 // ---------------------------------------------------------------------------
 describe("ExportSidebar", () => {
   it("renders the Export Settings heading", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     expect(screen.getByText("Export Settings")).toBeInTheDocument();
   });
 
   it("defaults to national scope and PNG format", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     expect(screen.getByRole("radio", { name: /^national$/i })).toBeChecked();
     expect(screen.getByRole("radio", { name: /png/i })).toBeChecked();
   });
 
   it("shows the Cancel button and calls onClose when clicked", () => {
     const onClose = vi.fn();
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={onClose} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("export button is disabled while map is rendering", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     // Button has id="btn-map-export"; its accessible name is its text content
     const btn = document.getElementById("btn-map-export") as HTMLButtonElement;
     expect(btn).toBeDisabled();
   });
 
   it("export button becomes enabled after map reports ready", async () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     await advanceToMapReady();
     // After fake timers drain, React has processed state updates synchronously inside act
     const btn = document.getElementById("btn-map-export") as HTMLButtonElement;
@@ -346,7 +350,7 @@ describe("ExportSidebar", () => {
   }, 10_000);
 
   it("switches to state scope and shows state dropdown trigger", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^state$/i }));
     // Select trigger placeholder is rendered as a button with "Select a state" text
     const trigger = screen.getByRole("combobox");
@@ -377,7 +381,7 @@ describe("ExportSidebar", () => {
     };
 
     it("stays disabled until a state or metro is in scope", () => {
-      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      renderExport(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
       expect(screen.getByRole("radio", { name: /local scale/i })).toBeDisabled();
       pickMetro("Austin");
       expect(screen.getByRole("radio", { name: /metro scale/i })).toBeEnabled();
@@ -385,7 +389,7 @@ describe("ExportSidebar", () => {
 
     it("explains itself on demand, and Escape closes the note before the dialog", () => {
       const onClose = vi.fn();
-      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={onClose} />);
+      renderExport(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={onClose} />);
       fireEvent.click(screen.getByRole("button", { name: /about the color scale/i }));
       expect(screen.getByRole("note")).toHaveTextContent(/National:.*national values/i);
       expect(screen.getByRole("note")).toHaveTextContent(/Local:.*selected area/i);
@@ -395,7 +399,7 @@ describe("ExportSidebar", () => {
     });
 
     it("repaints the preview in place when switched, without rebuilding or waiting", async () => {
-      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      renderExport(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
       pickMetro("Austin");
       await advanceToMapReady();
       const built = mapMock.__getMaps().length;
@@ -413,7 +417,7 @@ describe("ExportSidebar", () => {
     }, 10_000);
 
     it("cuts the colours on the exported metro and names it in the key", () => {
-      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      renderExport(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
       pickMetro("Austin");
       expect(screen.queryByText(/\(Austin, TX scale\)$/)).toBeNull();
       fireEvent.click(screen.getByRole("radio", { name: /metro scale/i }));
@@ -421,7 +425,7 @@ describe("ExportSidebar", () => {
     });
 
     it("keeps the national scale for an area too small to cut, and says why", () => {
-      render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
+      renderExport(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} classing={CLASSING} onClose={vi.fn()} />);
       pickMetro("Anchorage");
       fireEvent.click(screen.getByRole("radio", { name: /metro scale/i }));
       expect(screen.getByText(/too few ZIP codes here/i)).toBeInTheDocument();
@@ -430,13 +434,13 @@ describe("ExportSidebar", () => {
   });
 
   it("switches to metro scope and shows metro search input", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
     expect(screen.getByPlaceholderText(/type to search metros/i)).toBeInTheDocument();
   });
 
   it("takes the top metro suggestion on Enter", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
     const input = screen.getByPlaceholderText(/type to search metros/i);
     fireEvent.focus(input);
@@ -445,7 +449,7 @@ describe("ExportSidebar", () => {
   });
 
   it("moves the metro highlight with the arrow keys", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
     const input = screen.getByPlaceholderText(/type to search metros/i);
     fireEvent.focus(input);
@@ -463,7 +467,7 @@ describe("ExportSidebar", () => {
       "95110": makeZip({ zipCode: "95110", metro: "San Jose", homes_sold: 25 }),
       "95111": makeZip({ zipCode: "95111", metro: "San Jose", homes_sold: 15 }),
     };
-    render(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
     const input = screen.getByPlaceholderText(/type to search metros/i);
     fireEvent.focus(input);
@@ -477,7 +481,7 @@ describe("ExportSidebar", () => {
   });
 
   it("wraps the metro highlight to the last suggestion on ArrowUp", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
     const input = screen.getByPlaceholderText(/type to search metros/i);
     fireEvent.focus(input);
@@ -487,7 +491,7 @@ describe("ExportSidebar", () => {
   });
 
   it("toggles the Legend checkbox", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     const checkbox = screen.getByRole("checkbox", { name: /^legend$/i });
     expect(checkbox).toBeChecked();
     fireEvent.click(checkbox);
@@ -495,7 +499,7 @@ describe("ExportSidebar", () => {
   });
 
   it("toggles the Title checkbox", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     const checkbox = screen.getByRole("checkbox", { name: /^title$/i });
     expect(checkbox).toBeChecked();
     fireEvent.click(checkbox);
@@ -503,17 +507,17 @@ describe("ExportSidebar", () => {
   });
 
   it("renders with empty allZipData without crashing", () => {
-    render(<ExportSidebar allZipData={{}} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={{}} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     expect(screen.getByText("Export Settings")).toBeInTheDocument();
   });
 
   it("shows PDF radio option", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     expect(screen.getByRole("radio", { name: /pdf/i })).toBeInTheDocument();
   });
 
   it("switching to PDF selects the PDF radio", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     const pdfRadio = screen.getByRole("radio", { name: /pdf/i });
     fireEvent.click(pdfRadio);
     expect(pdfRadio).toBeChecked();
@@ -791,12 +795,12 @@ describe("PrintStage colour", () => {
 // ---------------------------------------------------------------------------
 describe("city labels", () => {
   it("are unavailable at national scale", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     expect(screen.getByRole("checkbox", { name: /^cities$/i })).toBeDisabled();
   });
 
   it("become available once a metro is in scope", () => {
-    render(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
+    renderExport(<ExportSidebar allZipData={SAMPLE_ZIP_DATA} selectedMetric="zhvi" breaks={BREAKS} onClose={vi.fn()} />);
     fireEvent.click(screen.getByRole("radio", { name: /^metro$/i }));
     expect(screen.getByRole("checkbox", { name: /^cities$/i })).not.toBeDisabled();
   });

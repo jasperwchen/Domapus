@@ -1,11 +1,14 @@
 import { useRef, useEffect, useLayoutEffect, useCallback, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useMapPresence } from "@/lib/map-presence";
 
 interface MobileBottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
   /** Fires after the close animation finishes and the sheet unmounts. */
   onExited?: () => void;
+  /** Drops the sheet to its peek height when this turns true, uncovering the map. */
+  peek?: boolean;
   children: ReactNode;
 }
 
@@ -15,7 +18,7 @@ const SNAP_FULL = 100;
 const VELOCITY_THRESHOLD = 0.5;
 const DRAG_THRESHOLD = 10;
 
-export function MobileBottomSheet({ isOpen, onClose, onExited, children }: MobileBottomSheetProps) {
+export function MobileBottomSheet({ isOpen, onClose, onExited, peek = false, children }: MobileBottomSheetProps) {
   const dragRef = useRef({
     isDragging: false,
     startY: 0,
@@ -30,6 +33,7 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
   const [sheetHeight, setSheetHeight] = useState(SNAP_CLOSED);
   const [isDragging, setIsDragging] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
+  const mapVisible = useMapPresence().visible;
   const [maxSheetHeightPx, setMaxSheetHeightPx] = useState(0);
   const [bottomOffset, setBottomOffset] = useState(0);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -40,14 +44,13 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
   useEffect(() => {
     const updateLayout = () => {
       const header = document.querySelector<HTMLElement>('[data-top-bar]');
-      const controls = document.querySelector<HTMLElement>('[data-mobile-controls]');
       const vv = window.visualViewport;
       const layoutH = window.innerHeight;
       const keyboardGap = vv
         ? Math.max(0, layoutH - (vv.offsetTop + vv.height))
         : 0;
-      const controlsTop = controls?.getBoundingClientRect().top ?? layoutH;
-      setBottomOffset(Math.max(keyboardGap, layoutH - controlsTop));
+      // The sheet covers the metric and search controls rather than sitting above them.
+      setBottomOffset(keyboardGap);
 
       const topBarBottom = header
         ? header.getBoundingClientRect().bottom
@@ -56,7 +59,7 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
         ? vv.offsetTop + vv.height
         : layoutH;
 
-      const available = Math.max(0, Math.min(availableBottom, controlsTop) - topBarBottom);
+      const available = Math.max(0, availableBottom - topBarBottom);
       setMaxSheetHeightPx(available);
     };
 
@@ -66,12 +69,10 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
     window.visualViewport?.addEventListener('scroll', updateLayout);
 
     const header = document.querySelector<HTMLElement>('[data-top-bar]');
-    const controls = document.querySelector<HTMLElement>('[data-mobile-controls]');
     const observer = new ResizeObserver(updateLayout);
     if (header && observer) {
       observer.observe(header);
     }
-    if (controls) observer.observe(controls);
 
     return () => {
       window.removeEventListener('resize', updateLayout);
@@ -100,6 +101,11 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (peek && isOpen) setSheetHeight(h => Math.min(h, SNAP_PEEK));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peek]);
 
   const snapTo = useCallback((targetHeight: number) => {
     if (targetHeight <= 10) {
@@ -223,7 +229,7 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !mapVisible) return;
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]')) return;
       event.preventDefault();
@@ -231,9 +237,10 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, mapVisible, onClose]);
 
-  if (!isVisible) return null;
+  // Portaled to the body, so the hidden map's wrapper does not hide it.
+  if (!isVisible || !mapVisible) return null;
 
   const sheetHeightPx = (sheetHeight / 100) * maxSheetHeightPx;
 
@@ -243,13 +250,14 @@ export function MobileBottomSheet({ isOpen, onClose, onExited, children }: Mobil
         role="dialog"
         aria-label="ZIP details"
         tabIndex={-1}
-        className="fixed left-0 right-0 z-50 bg-dashboard-panel rounded-t-[14px] flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.15)]"
+        className="fixed left-0 right-0 z-[1002] bg-dashboard-panel rounded-t-[14px] flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.15)]"
         style={{
           bottom: `${bottomOffset}px`,
           height: `${sheetHeightPx}px`,
           transition: isDragging ? 'none' : 'height 300ms cubic-bezier(0.32, 0.72, 0, 1), bottom 100ms ease',
           willChange: 'height, bottom',
           maxHeight: `${maxSheetHeightPx}px`,
+          paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
         {/* Drag handle area */}

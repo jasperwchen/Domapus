@@ -1,5 +1,6 @@
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useMapPresence } from '@/lib/map-presence';
 
 export interface UrlState {
   zip?: string;
@@ -32,7 +33,22 @@ export function useUrlState() {
   paramsRef.current = searchParams;
   writerRef.current = setSearchParams;
   const debounceTimerRef = useRef<number | null>(null);
+  const { visible } = useMapPresence();
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  // The search the map last showed. Coming back to it from a page the map sat hidden behind is
+  // not a navigation: re-applying it would move the camera and reset the panels.
+  const shownSearchRef = useRef(location.search);
+  const hiddenRef = useRef(!visible);
   useLayoutEffect(() => {
+    if (!visible) {
+      hiddenRef.current = true;
+      return;
+    }
+    const returning = hiddenRef.current;
+    hiddenRef.current = false;
+    if (returning && location.search === shownSearchRef.current) return;
+    shownSearchRef.current = location.search;
     if (ownSearchRef.current === location.search) {
       ownSearchRef.current = null;
       return;
@@ -43,7 +59,7 @@ export function useUrlState() {
       debounceTimerRef.current = null;
     }
     setNavigation(location);
-  }, [location]);
+  }, [location, visible]);
   useEffect(() => () => {
     if (debounceTimerRef.current !== null) window.clearTimeout(debounceTimerRef.current);
   }, []);
@@ -51,6 +67,8 @@ export function useUrlState() {
   // Update URL state (replaceState to avoid polluting browser history)
   const setUrlState = useCallback((updates: Partial<UrlState>, debounce = false) => {
     const updateParams = () => {
+      // Hidden behind another page, a write would put the map's address over that page's.
+      if (!visibleRef.current) return;
       // Delayed viewport writes must merge with the latest selection, including a close.
       const newParams = new URLSearchParams(paramsRef.current);
       Object.entries(updates).forEach(([key, value]) => {

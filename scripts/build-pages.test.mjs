@@ -20,7 +20,7 @@ function fixture(n) {
   }
   const cols = { st, ci: z.map(() => 0), me, lat: z.map(() => 3970000), lng: z.map(() => -10500000),
     bw: z.map(() => -100), bs: z.map(() => -100), be: z.map(() => 100), bn: z.map(() => 100),
-    zhvi, zhvi_yoy: yoy, msp, msp_yoy, dom: z.map(() => 30), rel };
+    zhvi, zhvi_yoy: yoy, msp, msp_yoy, dom: z.map(() => 30), rel, hs: z.map(() => 5) };
   return {
     f: Object.keys(cols), d: Object.values(cols), z, null_sentinel: S,
     dicts: { st: ["AL", "CO"], ci: ["Denver"], me: ["Denver, CO", "Tiny <Town>, CO"] },
@@ -66,7 +66,9 @@ test("a metro page names the place, links home, ranks reliable ZIPs and escapes 
   assert.match(html, /href="\/base\/state\/co\/"/);
   assert.match(html, /src="\/base\/\?embed=1&amp;metric=zhvi&amp;lat=/);
   assert.match(html, /<h3>Rising<\/h3><ol><li><a href="\/base\/\?zip=80001&amp;metric=zhvi"/);
-  assert.match(html, /rose in 6 of them and fell in 6/);
+  assert.match(html, /has a total of 12 ZIP codes with housing data, 12 of them with Redfin sales data/);
+  assert.match(html, /From September 2025 to September 2026, the Zillow Home Value Index increased in 6 ZIP codes and decreased in 6\./);
+  assert.match(html, /<a class="cta" href="[^"]+" target="_blank" rel="noopener">Open the full map<\/a>/);
   assert.doesNotMatch(html, /<Town>/);
 });
 

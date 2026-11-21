@@ -22,22 +22,31 @@
 
 ### Main Dashboard
 <p align="center">Visualize median price, inventory, and sales trends nationwide. Hover over a ZIP code to show value.</p>
-<p align="center"><img src="public/readme/dashboard.png" width="80%" alt="Main Dashboard"></p>
+<p align="center"><img src="public/readme/dashboard.png" width="100%" alt="Main Dashboard"></p>
 <br>
 
 ### Granular ZIP Details
 <p align="center">Click on a ZIP code to access detailed market data.</p>
-<p align="center"><img src="public/readme/detail.png" width="80%" alt="Sidebar Details"></p>
+<p align="center"><img src="public/readme/detail.png" width="100%" alt="Sidebar Details"></p>
 <br>
 
 ### Comparative Analysis
 <p align="center">Compare two ZIP codes side-by-side to evaluate relative market performance across all available metrics.</p>
-<p align="center"><img src="public/readme/compare.png" width="80%" alt="Comparison Mode"></p>
+<p align="center"><img src="public/readme/compare.png" width="100%" alt="Comparison Mode"></p>
 <br>
 
 ### Export
 <p align="center">Generate report-ready maps with customizations.</p>
-<p align="center"><img src="public/readme/export.png" width="80%" alt="Export Feature"></p>
+<p align="center"><img src="public/readme/export.png" width="100%" alt="Export Feature"></p>
+<br>
+
+### Embed
+Put the live map on your own page.
+
+```html
+<iframe src="https://jasperwchen.github.io/Domapus/?embed=1&metric=zhvi&lat=33.75&lng=-84.39&zoom=8" width="100%" height="520" style="border:0" loading="lazy" title="Domapus housing map"></iframe>
+```
+
 
 ---
 
