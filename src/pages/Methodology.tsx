@@ -290,6 +290,10 @@ function Body({ mf }: { mf: Manifest }) {
           figure describes homes that actually sold in a three-month period. A ZHVI
           figure describes what a typical home in the area is estimated to be worth,
           whether or not it sold. Where the panel shows both, it names the source.
+          Zillow also re-scales each ZIP's whole index history every month, so a
+          past month's dollar value can differ by a percent or two from what this
+          site showed before; rates of change are unaffected, but dollar figures,
+          the forecast's included, move with it.
         </p>
         <p>
           Geography is the ZIP Code Tabulation Area (ZCTA), the U.S. Census
@@ -407,6 +411,15 @@ function Body({ mf }: { mf: Manifest }) {
           That threshold decides two things, so it is stated once: which ZIPs may
           set the colour boundaries for a sample estimate (section 2), and which
           are eligible for the outlier analysis (section 5).
+        </p>
+        <p>
+          The same margin applies to change. A year-over-year change in median
+          sale price or days on market compares two samples, each with its own
+          error. When the change is smaller than twice their combined standard
+          error, its arrow is drawn grey rather than green or red: the direction
+          is shown, but it could be sampling variation. The same rule greys a gap
+          between two ZIPs in the comparison view. Other metrics have no sampling
+          model, so their arrows keep their colour.
         </p>
         <Table
           n="1"

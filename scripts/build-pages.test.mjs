@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildPages, sitemap, slugify, viewOf, methodologyShell, MIN_METRO_ZIPS } from "./build-pages.mjs";
+import { buildPages, sitemap, slugify, viewOf, methodologyShell, metroPageSlugs, MIN_METRO_ZIPS } from "./build-pages.mjs";
 import { readFileSync } from "node:fs";
 
 const S = -2147483648;
@@ -38,7 +38,24 @@ test("slugs drop accents and punctuation", () => {
 test("pages exist for each state and each metro that passes the threshold", () => {
   const { pages, metros } = buildPages(fixture(MIN_METRO_ZIPS), { generated_utc: "2026-10-24T00:00:00Z" }, "/Domapus/");
   assert.deepEqual(metros.map((m) => m.name), ["Denver, CO"]);
-  assert.deepEqual(pages.map((p) => p.path), ["metro/denver-co/", "state/co/"]);
+  assert.deepEqual(pages.map((p) => p.path), ["metro/denver-co/", "state/co/", "places/"]);
+});
+
+test("the hub links every state and metro page, and every page links back to it", () => {
+  const { pages } = buildPages(fixture(MIN_METRO_ZIPS), { generated_utc: "2026-10-24T00:00:00Z" }, "/b/");
+  const hub = pages.find((p) => p.path === "places/").html;
+  for (const p of pages.filter((x) => x.path !== "places/")) {
+    assert.ok(hub.includes(`href="/b/${p.path}"`), p.path);
+    assert.match(p.html, /<p class="crumbs"><a href="\/b\/">Domapus<\/a> \/ <a href="\/b\/places\/">All places<\/a>/);
+    assert.ok(p.html.includes('<footer>') && p.html.includes('href="/b/places/">All states and metros'));
+  }
+});
+
+test("the panel's metro links come from the same list the pages do", () => {
+  const snap = fixture(MIN_METRO_ZIPS);
+  const { metros } = buildPages(snap, { generated_utc: "2026-10-24T00:00:00Z" }, "/b/");
+  assert.deepEqual(metroPageSlugs(snap), Object.fromEntries(metros.map((m) => [m.name, m.slug])));
+  assert.deepEqual(metroPageSlugs(snap), { "Denver, CO": "denver-co" });
 });
 
 test("a metro page names the place, links home, ranks reliable ZIPs and escapes text", () => {

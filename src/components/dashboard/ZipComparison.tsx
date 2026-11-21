@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, X, MousePointerClick, ArrowUp } from 'lucide-react';
+import { Search, X, MousePointerClick } from 'lucide-react';
+import { TrendTriangle, TREND_UP_CLASS, TREND_DOWN_CLASS } from './TrendTriangle';
 import { ZipData } from './map/types';
 import type { ZipTable } from '@/lib/zip-table';
 import { formatMetricValue, METRIC_DEFINITIONS, FormatType } from './map/utils';
 import { METRIC_GROUPS } from '@/lib/metrics';
+import { differenceNoise, noiseNote } from '@/lib/change-noise';
 
 interface ZipComparisonProps {
   currentZip: ZipData;
@@ -135,6 +137,7 @@ function Group({
       <div className="rounded-lg border border-border bg-card divide-y divide-border/60">
         {rows.map(({ m, av, bv }) => {
           const rel = relative(av, bv, m.format as FormatType);
+          const noise = rel.dir !== 0 ? differenceNoise(a, b, m.key as string) : null;
           return (
             <div key={m.key as string} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-3 py-2">
               <span
@@ -145,15 +148,18 @@ function Group({
               <Value v={av} format={m.format as FormatType} higher={rel.dir < 0} />
               <Value v={bv} format={m.format as FormatType} higher={rel.dir > 0} />
               <span
-                className={`w-[52px] shrink-0 text-right text-[11px] tabular-nums ${
-                  rel.dir > 0
-                    ? 'text-emerald-600 dark:text-emerald-500'
-                    : rel.dir < 0
-                      ? 'text-rose-600 dark:text-rose-500'
-                      : 'text-muted-foreground'
+                className={`inline-flex w-[52px] shrink-0 items-center justify-end gap-1 text-[11px] tabular-nums ${
+                  noise !== null || rel.dir === 0
+                    ? 'text-muted-foreground'
+                    : rel.dir > 0
+                      ? TREND_UP_CLASS
+                      : TREND_DOWN_CLASS
                 }`}
+                title={noise !== null ? noiseNote(noise) : undefined}
               >
+                {rel.dir !== 0 && <TrendTriangle up={rel.dir > 0} />}
                 {rel.text}
+                {noise !== null && <span className="sr-only">, {noiseNote(noise)}</span>}
               </span>
             </div>
           );
@@ -174,11 +180,9 @@ function Value({
   return (
     <span className="flex w-[66px] shrink-0 items-baseline justify-end">
       {higher && (
-        // Compensate for the icon's internal padding.
-        <ArrowUp
-          className="-mr-px h-3 w-3 shrink-0 self-center text-foreground/70"
-          aria-label="higher"
-        />
+        <span className="mr-1 self-center text-xs text-foreground/70" aria-label="higher">
+          <TrendTriangle up />
+        </span>
       )}
       <span className="text-xs font-semibold tabular-nums text-foreground">
         {formatMetricValue(v, format)}
@@ -200,10 +204,10 @@ function relative(
     // One decimal under 10: sale-to-list ratios sit near 100 and differ by a point or two.
     const text = Math.abs(pts) < 10 ? pts.toFixed(1) : pts.toFixed(0);
     if (Number(text) === 0) return { text: '±0 pts', dir: 0 };
-    return { text: `${pts > 0 ? '+' : ''}${text} pts`, dir: pts > 0 ? 1 : -1 };
+    return { text: `${text.replace('-', '')} pts`, dir: pts > 0 ? 1 : -1 };
   }
   if (a === 0) return { text: 'n/a', dir: 0 };
   const pct = ((b as number) - (a as number)) / Math.abs(a as number) * 100;
   if (Math.abs(pct) < 0.5) return { text: '±0%', dir: 0 };
-  return { text: `${pct > 0 ? '+' : ''}${pct.toFixed(0)}%`, dir: pct > 0 ? 1 : -1 };
+  return { text: `${Math.abs(pct).toFixed(0)}%`, dir: pct > 0 ? 1 : -1 };
 }

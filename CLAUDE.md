@@ -1,8 +1,8 @@
 # Global instructions
 
-Maintain `docs/TODOS.md` with unfinished tasks only. Update active work before parallel batches and remove completed tasks. Put useful standing rules and decisions in `AGENTS.md` or concise code comments, never in `TODOS.md`.
+Maintain `docs/TODOS.md` with unfinished tasks only. Update active work before parallel batches and remove completed tasks. Put useful standing rules and decisions in `CLAUDE.md` or concise code comments, never in `TODOS.md`.
 
-Keep updated with AGENTS.md
+`AGENTS.md` only points to this file, so edit the rules here.
 
 ## Pull requests
 
@@ -74,7 +74,7 @@ npm run tree           # regenerate tree.txt (the pre-commit hook does this)
 npm run data:sync      # restore public/data/history for the manifest's release (needs gh; the post-merge hook does this)
 npm run geometry       # rebuild the ZCTA tileset (Docker + tippecanoe); geometry:verify checks it
 pip install -r requirements-dev.txt   # pipeline + test deps; the data run installs requirements.txt only
-pytest                 # pipeline tests in tests/
+pytest                 # pipeline tests in tests/; refuses any Python but .python-version (py -3.14 -m pytest)
 python -m pipeline     # full data run; --redfin-csv / --zhvi-csv reuse a local download
 ```
 
@@ -85,7 +85,7 @@ history buckets, and the build refuses that mix.
 
 ## Routes
 
-Two real pages, both under the `/Domapus/` base path:
+Two app routes, both under the `/Domapus/` base path:
 
 | Route | Component | URL |
 |---|---|---|
@@ -94,16 +94,45 @@ Two real pages, both under the `/Domapus/` base path:
 
 The base path is not optional. `vite.config.ts` sets `base: "/Domapus/"` in production and the
 router takes its `basename` from `import.meta.env.BASE_URL`, so every published URL, sitemap
-entry, and canonical link includes it. A URL without `/Domapus/` is a different site.
+entry, and canonical link includes it. A URL without `/Domapus/` is a different site. The
+basename keeps its trailing slash (`routerBasename`): without it the app wrote
+`/Domapus?zip=...`, which GitHub Pages 301s to `/Domapus/?zip=...` on every shared link.
+`url-writer.test.tsx` checks the address the app writes.
 
 GitHub Pages cannot rewrite unknown paths to the app shell, so `public/404.html` does it in the
 browser: it stashes the requested path in `sessionStorage`, bounces to `/Domapus/`, and
 `App.tsx` restores the path with `history.replaceState`. Any new route depends on that
-mechanism working.
+mechanism working. A person sees the page after the bounce, but a crawler sees status 404 and
+drops it, so the build also writes `methodology/index.html`: the app shell with the page's own
+title and canonical (`methodologyShell` in `scripts/build-pages.mjs`). Links, the sitemap and
+the canonical use `methodology/` with the slash, which is the URL that file answers.
 
 The methodology page reads every figure it prints from `manifest.json` at runtime rather than
 having them typed in, so it cannot drift from the release that built the map. If the pipeline
 stops publishing a figure, the section quoting it disappears instead of going stale.
+
+**Landing pages are static files, not routes.** `scripts/build-pages.mjs` runs in the Vite
+build's `writeBundle`, after `stagePublic`, and writes `metro/<slug>/index.html` (580 metros
+with at least 10 ZIPs that have data on the 2026-11 release), `state/<code>/index.html` (51; PR and VI have no
+data), the `places/` hub that links them all, and `sitemap.xml`, all from the committed `zip-data.json` and `manifest.json`. They are
+real files, so GitHub Pages serves them without the 404 bounce, and Deploy regenerates them
+with each release. They take the resolved Vite base, so PR previews link correctly. No
+metro-wide median is published: a median of ZIP medians is not the metro's median. The
+ranked lists use ZHVI YoY over rankable ZIPs (`rel >= 1`) only: sale-price YoY ranked the
+noise (92% of ZIPs within 2 standard errors of zero), and thin-market ZHVI fills the extremes
+when the rel gate is dropped. There is no
+hand-written sitemap. The app reaches them through the top bar's Places link and the detail
+panel's metro name. The panel links only to metros in `metroPageSlugs`, the same selection that
+writes the pages, inlined as `VITE_METRO_PAGES` into `src/lib/metro-pages.ts`; keep that its
+own lazily imported module, because inlined anywhere the top bar or map imports, its 6.5 KB
+lands in the first-paint chunk.
+
+**Embed mode.** `?embed=1` hides the top bar, mobile controls and date strip and adds a
+credit chip linking to the same view on the full site. It names the data source ("Data:
+Zillow" or "Data: Redfin") because embeds sit on other people's pages; the metric name
+truncates first in a narrow frame. The chip sits top-left, or above the
+map attribution at phone widths where the legend takes top-left. The Embed button copies an
+iframe snippet with the selected ZIP dropped. Landing pages embed the map this way.
 
 ## The load path (why the first paint is fast)
 
@@ -153,8 +182,22 @@ loudly on that mismatch, which is the gate. The order is: push the branch, dispa
 the map and counts any call on a `zips-*` layer; `bench/run.mjs` and `bench/verify-choropleth.mjs`
 assert it stays 0. It replaced a wrapper nothing called, which made that assertion vacuous.
 
+**Only the fill reads feature-state on the `zips` source.** MapLibre re-evaluates every
+feature-state layer on a source for each ZIP whose state changes, whichever key changed, so
+any such layer is paid for on every one of the ~33,000 class writes. Five highlight layers
+there made a metric switch take 3.2-4.2 s at 4x CPU and blocked the load for 7 s (audit
+2026-11-16, P0). Hover, selection and metro flags live on `zips-hl`, a second source on the
+same tileset; `zips-border` on `zips` has constant paint. `shareTileFetches` in
+`pmtiles-protocol.ts` makes the two sources share one fetch per tile, or the second source
+costs +1.3 MB. A MapLibreMap test fails if a layer on `zips` reads any state but `k`, and
+`bench/verify-choropleth.mjs` fails a median switch or longest task over 250 ms per unit of
+CPU throttle.
+
 **Workflow inputs never go inside `run:` as `${{ }}`.** Pass them through `env:` and quote the
 variable. `--override-reason ${{ toJSON(...) }}` let a reason containing `$(...)` execute.
+`scripts/check_workflows.py` fails on `inputs.` or `github.event.` inside any `run:`.
+Third-party actions that get a write token are pinned to a commit hash, with the tag in a
+comment; bump both together.
 
 **The goldens have a producer now.** `python scripts/make_golden.py --write` recomputes
 `tests/golden/*.json` from `build/zip-data.json` using the real `classify` and `paint`, changing
@@ -167,6 +210,9 @@ tier, a property of the transaction sample rather than of whatever is being pain
 stays in the paint byte for wire agreement with the snapshot; the map no longer fades on it
 (opacity is always full). Precision is shown as a number in the popup, detail panel, and
 legend share line. `fade_exempt` in the paint inventory is unused and left for digest stability.
+A sale-price or days-on-market change inside two standard errors draws its arrow grey, as
+does the gap between two compared ZIPs (`src/lib/change-noise.ts`, from `msp_rse`, `dom_rse`
+and `homes_sold_yoy`; no extra column). Metrics with no noise model keep green and red.
 
 **A LISA hold expires after one release, and only `manifest.spatial.held` can prove it.**
 The hold keeps a ZIP's significant class for one month when Moran's I drops it to `ns`, so
@@ -218,6 +264,15 @@ column and a logged gap. Keeping `redfin.PANEL_COLUMNS` fixed that way is the po
 column that vanishes crashes `changes` and `noise` two stages later, where nothing remembers
 why. The 2026-09-18 run died on a renamed `MEDIAN DAYS ON MARKET YOY (%)`, a column whose
 value is discarded before publication.
+
+**Sparse invalid prices become null at ingest, before any calculation.** `redfin.py`
+applies the four price bounds in `contracts.RANGES` to every period. It nulls only the
+invalid price and its feed YoY, preserving other metrics and the ZIP. More than 0.1%
+of observed prices for any metric/month fails ingestion; null inputs do not dilute
+that denominator, and counts span CSV batches. Snapshot validation remains strict.
+The S2 receipt records bounds, counts, periods, and sample ZIPs. The manifest's
+`redfin.price_quality` keeps totals and latest-period details to stay small on first
+load. The cleaned panel feeds history, YoY, and noise estimates.
 
 **The header is bound at S0, off the 1 MB probe, not after the 1.33 GB download.** Same check
 and same message, 25 s and 1.33 GB earlier. `sources.probe_header` parses that line as CSV
@@ -282,8 +337,9 @@ become the problem.
 
 ## Data flow and deploy
 
-`update_data.yml` runs on the 18th of each month. It probes upstream first (~0.2 s) and exits 0
-without downloading if nothing changed. A diff gate can block publication; overriding it
+`update_data.yml` runs daily from the 18th to the 28th. It probes upstream first (~0.2 s) and
+exits 0 without downloading if nothing changed, so the extra nights cost nothing and a fix
+pushed after a failed run is picked up the next night without a manual dispatch. A diff gate can block publication; overriding it
 requires a reason that is recorded verbatim in the manifest.
 
 The 18th is set by the later of the two publishers. Zillow ships ZHVI on the 16th and does not
@@ -294,15 +350,11 @@ a run when *either* feed moves, a run landing between the two publishes half a r
 `serialize.validate` compares the two period ends: a one-month gap warns and publishes, two
 months fails.
 
-`deploy.yml` is invoked through `workflow_call` from inside the data run, not by `on: push`.
+The data run invokes `deploy.yml` through `workflow_call`; direct pushes to main also
+trigger deployment.
 A push made with the default `GITHUB_TOKEN` does not trigger workflows, so the data commit used
 to sit on `main` unpublished. A miswired `workflow_call` looks exactly like that original bug,
 so verify a Deploy job actually appears in the run graph rather than that the YAML parses.
-
-## Scope decisions
-
-- AUD-06 (mobile empty-class legend) and AUD-08 (export basemap credits) were rejected by the user on 2026-11-01. Do not reopen them without a new request.
-- Main-map search takes a ZIP or a metro name (added 2026-11-08 on request). Tapping a ZIP selects it without a hover preview. City search, touch previews, county layers and Realtor.com are product additions, not outstanding bug fixes.
 
 ## Docs
 
@@ -403,16 +455,31 @@ transposes it into typed arrays, and transfers them to `src/lib/zip-table.ts`.
 GL + PMTiles), `Legend`, `MetricSelector`, `SearchBox`, `Sidebar` (the detail panel),
 `ZipComparison`, `TopBar`, `MobileBottomSheet`, and the export pair
 `export/ExportSidebar.tsx` + `export/PrintStage.tsx` (PNG via canvas, PDF via jsPDF).
+The export maps are north-up; `PrintStage` shares the compass drawing between the preview and PNG/PDF output.
+
+The ZIP outline follows the open detail panel's primary ZIP, including in compare mode.
+Search moves the camera only after a valid lookup; it does not own the outline. Closing
+details clears the selection and URL ZIP. External URL navigation restores metric, ZIP and camera, cancelling stale viewport writes. Mobile details are nonmodal so core map controls remain usable; export stays modal. Delayed viewport writes merge with the latest URL
+so they cannot restore a closed or previous selection.
 
 Metro search outlines only the metro's outer edge with no extra data: every member ZIP
 strokes its own edge (`zips-metro-halo`/`zips-metro-line`), then `zips-metro-mask` repaints
 those ZIPs' own fill over it, so interior edges are covered from both sides. The mask must
-keep the fill's paint expression and `fill-antialias: false`. The map reset button is
+keep the fill's paint expression and `fill-antialias: false`. It sits on `zips-hl`, so the
+members' classes are copied there whenever the metro or the class source changes. The map reset button is
 portaled into the NavigationControl's own group as its fourth button, not a positioned
 sibling, so it keeps the zoom buttons' size and divider on every screen.
 
 **Hooks.** `useDataWorker` (worker lifecycle), `useUrlState` (synchronizes metric, selected ZIP and camera with the
 query string), `use-mobile` (768 px breakpoint), `use-toast`.
+
+**Analytics.** `src/lib/analytics.ts` pushes to Tag Manager's `dataLayer`. `track` clears
+every key it does not set, because the data layer keeps a key's last value; add a key to
+`PARAM_KEYS` before sending it. Events: `metric_change`, `zip_select` (method `map`,
+`search` or `link`), `search` (ZIP or metro; typed metro misses send their text only when it
+has no digit), `compare_open`, `auto_scale_toggle`, `deep_link_open`, `embed_view`,
+`embed_copy`, and `map_first_colour` with `value_ms`. Embeds run on other sites where GA
+cookies are often blocked, so count embed traffic from `embed_view`, not users.
 
 ## Tests and benchmarks
 
@@ -446,8 +513,8 @@ before/after claims stay comparable.
 
 | File | Trigger | What it does |
 |---|---|---|
-| `ci.yml` | PR, push to main | Two jobs: frontend (lint, `tsc -b`, vitest, license-year check) and pipeline (`check_workflows.py`, pytest). |
-| `update_data.yml` | 18th monthly, or dispatch | The data run. Probes, builds, gates, publishes, then calls Deploy. Dispatch takes `override_diff_gate` + `override_reason` and `force_deploy`. |
+| `ci.yml` | PR, push to main | Two jobs: frontend (lint, `tsc -b`, vitest, `node --test` for release staging and landing pages, license-year check) and pipeline (`check_workflows.py`, pytest). |
+| `update_data.yml` | daily 18th-28th, or dispatch | The data run. Probes, builds, gates, publishes, then calls Deploy. Dispatch takes `override_diff_gate` + `override_reason` and `force_deploy`. |
 | `deploy.yml` | `workflow_call` from the data run, dispatch, push | Builds and publishes to `gh-pages`. |
 | `preview.yml` | PR opened/updated/closed | Per-PR preview on `gh-pages`. Shares the `gh-pages-write` concurrency group with Deploy. |
 | `geometry.yml` | dispatch | Rebuilds the ZCTA tileset and verifies it. Given a `release_tag` it also cuts a `geometry-vN` release. |
@@ -464,6 +531,9 @@ run the job that would have caught it.
   the shadcn generator.
 - Prose comments explain *why*, usually with the measurement or the bug that forced the
   decision. Match that when editing; do not add comments that restate the code.
+- Keep the operational reason beside the code. Use git for detailed history and ignored
+  build diagnostics for test logs. Record substantive reasoning in `docs/CHANGES.md`
+  without a length quota or an entry for every session. Do not run a separate repository-wide cleanup.
 - `tree.txt` is generated. `src/lib/choropleth.generated.ts` is generated. Never hand-edit
   either.
 - Windows is the primary dev machine. Both PowerShell and Git Bash are in play; watch for path

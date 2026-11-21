@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Calendar, BookOpen, Map as MapIcon } from "lucide-react";
+import { Calendar, BookOpen, List, Map as MapIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MetricSelector, MetricType } from "./MetricSelector";
 import { SearchBox } from "./SearchBox";
@@ -90,6 +90,10 @@ export function TopBarShell({
               <BookOpen className="h-4 w-4" />
             </IconLink>
           )}
+          {/* A static page, so a full load like the Map link. */}
+          <IconLink href={`${BASE_PATH}places/`} label="Places">
+            <List className="h-4 w-4" />
+          </IconLink>
           <IconLink href="https://github.com/jasperwchen/Domapus" label="GitHub" external>
             <GithubIcon className="h-4 w-4" />
           </IconLink>

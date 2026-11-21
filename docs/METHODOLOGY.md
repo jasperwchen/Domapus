@@ -339,3 +339,42 @@ regression — which is the guard the repo lacked when phase 0 and phase 3 stopp
 being comparable.
 
 Never quote a performance number that is not in `bench/results/`.
+
+---
+
+## 11. Upstream revisions we measure but do not correct
+
+Both feeds rewrite published numbers after the fact. Neither is a pipeline bug. Decision
+2026-11-20: the reader-facing page gets one sentence on the ZHVI re-scaling (section 1);
+the Redfin factor is too small to mention anywhere a visitor reads. The scripts that measured them are in
+`build/audit-2026-11-16/` (local, gitignored).
+
+**Zillow re-scales each ZIP's whole ZHVI history every month.** Each new file multiplies
+a ZIP's entire series, back to 2000, by one per-ZIP factor. Growth rates are untouched
+(YoY from the two vintages agrees to 0.001 points at the 90th percentile; the factor's
+spread across a ZIP's last 60 months is 0.0000). Dollar levels are not. Change in a
+ZIP's level from one vintage (the newest month in Zillow's file) to a later one, across
+~26,260 ZIPs:
+
+| From, to | Median | 90th pct of size |
+|---|---:|---:|
+| 2026-07 to 2026-09 (two steps) | -1.88% | 4.05% |
+| 2026-08 to 2026-09 | -1.08% | 3.70% |
+| 2026-09 to 2026-10 | -0.62% | 3.03% (19.1% of ZIPs over 2%) |
+
+The first row spans a change to `zhvi.py`, so it only supports the others. Every step
+measured is downward. What it touches: anyone comparing this month's dollar
+figure with last month's, and the 12-month forecast, which is a dollar level whose
+backtest runs inside one vintage, so its band measures growth error and not re-scaling.
+If the drift stays one-directional, the next step is leading the panel's forecast with its
+percentage change and putting the dollar figure second.
+
+**Redfin's newest month is preliminary and carries a near-constant factor.** In every
+older period about 79% of median sale prices are exact $500 multiples (59% of list
+prices). In the newest period it is 0.0-0.1%, in all three releases checked. ZIPs whose
+sales count does not change in the next release come back at a ratio of 0.999778
+(2026-07), 0.99971 (2026-09) and 0.999706 (2026-10 file, 92% within 0.05% of it); the
+month before is exactly 1.000000. Cause unknown. The factor is negligible next to
+sampling noise. The revision that matters is late sales: a release later, 37% of ZIPs
+have a different sales count for that month and 4.4% a sale price more than 2% different
+(0.8% more than 10%), against 10.7% and 1.7% for the month before.

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import { readFileSync } from "fs";
 import path from "path";
 import { stagePublic } from "./scripts/stage-public.mjs";
-import { writePages } from "./scripts/build-pages.mjs";
+import { writePages, metroPageSlugs } from "./scripts/build-pages.mjs";
 
 // Inline hashed paint filenames so paint and manifest requests start together.
 function paintMap(): string {
@@ -21,6 +21,16 @@ function paintMap(): string {
   }
 }
 
+// Metro name to landing-page slug, so the detail panel links only to pages the build writes.
+function metroPages(): string {
+  try {
+    return JSON.stringify(metroPageSlugs(JSON.parse(readFileSync("public/data/zip-data.json", "utf8"))));
+  } catch (err) {
+    console.warn("[vite] no metro page list inlined:", (err as Error).message);
+    return "{}";
+  }
+}
+
 export default defineConfig(({ mode, command }) => {
   const base = mode === "production" ? "/Domapus/" : "/";
   // The CLI's --base (PR previews) overrides `base`; the landing pages must use the final one.
@@ -30,6 +40,7 @@ export default defineConfig(({ mode, command }) => {
   process.env.VITE_DATA_BASE = process.env.VITE_DATA_BASE || `${base}data/`;
 
   process.env.VITE_PAINT_MAP = paintMap();
+  process.env.VITE_METRO_PAGES = metroPages();
   try {
     const mf = JSON.parse(readFileSync("public/data/manifest.json", "utf8"));
     process.env.VITE_SNAPSHOT_FILE = mf.assets?.snapshot ?? "zip-data.json";
