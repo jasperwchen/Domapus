@@ -14,12 +14,6 @@ Size is a rough guess: small is under an hour, medium is a few hours, large is a
 
 ---
 
-## 0. Audit of 2026-11-16, open items
-
-The open findings are ranked at the top of `docs/audit-2026-11-16.md`, easiest and most
-obvious first. Items tied to the custom domain wait for 1e. Work from that list and move each
-finished item to the file's Done section.
-
 ## 1. Decide
 
 ****** from jasper: the domapus.com domain change will porb be after thanksgiving break. so postpone related changes

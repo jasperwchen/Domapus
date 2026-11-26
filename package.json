@@ -4,6 +4,7 @@
   "version": "3.0.0",
   "license": "Apache-2.0",
   "type": "module",
+  "packageManager": "npm@11.19.1",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/prune-dist.mjs",

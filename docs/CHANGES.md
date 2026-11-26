@@ -4221,6 +4221,14 @@ a beta of a dependency nothing imports, which goes stale the next time Rolldown 
 Node 24 ships npm 11, so CI now reads the lockfile with the same npm that writes it locally;
 Node 20 was also past end of life. A clean `npm ci` of the current lockfile on Node 24 passes.
 
+**Correction, 2026-11-25: that fix did not hold.** The Node 24 check ran locally on npm
+11.6.2; setup-node gave CI Node 24.22 with npm 11.19.1, which refuses the same lockfile, so
+CI and Deploy failed on the push of 20ae69e2 and the top bar work was not live. "Node 24"
+names a moving npm on both sides. `packageManager` now pins npm 11.19.1, every workflow
+installs it before `npm ci`, and the pre-commit hook dry-runs `npm ci` with it on any commit
+that stages `package.json` or `package-lock.json`, failing with the regenerate command. The
+check takes about 2 seconds and needs the network the first time it fetches that npm.
+
 **Top bar and phone panel follow-ups, 2026-11-21.** Each page's top bar now omits its own
 button (the places hub drops Places; metro and state pages keep it as the way up), and the
 subtitle is fixed at "Housing Market Analysis" everywhere, so `TopBarShell` no longer takes a

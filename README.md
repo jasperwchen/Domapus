@@ -206,23 +206,6 @@ Data reflects monthly aggregates published by Redfin and Zillow, with a typical 
 
 ---
 
-## Contributing
-
-1. Fork the repository and create a feature branch.
-2. Enable the repo hooks: `git config core.hooksPath .githooks`.
-3. Verify your changes before opening a PR:
-
-   ```bash
-   npm run lint
-   npm test
-   npm run build
-   pytest   # only if pipeline/ was modified
-   ```
-
-4. Push your branch and open a Pull Request.
-
----
-
 ## About the Name
 
 **Domapus** combines **dom**, meaning house, **map**, and **us**, meaning the United States.

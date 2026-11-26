@@ -47,7 +47,10 @@ jobs:
           node-version: 24
           cache: 'npm'
 
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          npm install -g "$(node -p "require('./package.json').packageManager")"
+          npm ci
 
       - name: Restore and verify the release history
         env:

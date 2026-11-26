@@ -27,7 +27,9 @@ jobs:
 
       - name: Install dependencies
         if: github.event.action != 'closed'
-        run: npm ci
+        run: |
+          npm install -g "$(node -p "require('./package.json').packageManager")"
+          npm ci
 
       - name: Build with preview base path
         if: github.event.action != 'closed'

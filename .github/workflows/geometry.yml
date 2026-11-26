@@ -29,7 +29,10 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-      - run: npm ci
+      - name: Install dependencies
+        run: |
+          npm install -g "$(node -p "require('./package.json').packageManager")"
+          npm ci
 
       # Same pinned image the local script uses, built from the committed Dockerfile rather
       # than pulled from a third party — that Dockerfile plus build_geometry.sh is the whole

@@ -79,7 +79,9 @@ python -m pipeline     # full data run; --redfin-csv / --zhvi-csv reuse a local 
 ```
 
 Enable the repo hooks once: `git config core.hooksPath .githooks`. The pre-commit hook keeps
-`tree.txt` current and refuses a commit whose workflow YAML does not parse. The post-merge
+`tree.txt` current, refuses a commit whose workflow YAML does not parse, and refuses a staged
+lockfile that the npm pinned in `package.json`'s `packageManager` cannot `npm ci`
+(`scripts/check-lockfile.mjs`). Every workflow installs that npm, so bump the pin, not Node. The post-merge
 hook runs `data:sync`, because a pull updates the manifest and snapshot but not the gitignored
 history buckets, and the build refuses that mix.
 

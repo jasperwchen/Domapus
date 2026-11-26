@@ -10,3 +10,6 @@ git add tree.txt
 # can be caught before it reaches GitHub, because a broken ci.yml cannot run the
 # job that would have checked itself. Skips silently without PyYAML.
 python scripts/check_workflows.py || exit 1
+
+# A lockfile CI's npm refuses fails CI and Deploy while installing fine locally.
+node scripts/check-lockfile.mjs || exit 1
